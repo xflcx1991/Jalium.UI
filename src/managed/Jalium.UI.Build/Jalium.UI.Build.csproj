@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Jalium.UI.Build</RootNamespace>
+
+    <!-- 设置为 MSBuild 任务程序集 -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageId>Jalium.UI.Build</PackageId>
+    <Version>1.0.10</Version>
+    <Description>MSBuild tasks for compiling Jalium.UI JALXAML files</Description>
+    <Authors>Jalium</Authors>
+
+    <!-- NuGet 包设置 -->
+    <PackageProjectUrl>https://github.com/jalium/jalium-ui</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/jalium/jalium-ui</RepositoryUrl>
+    <PackageTags>jalium;ui;xaml;msbuild;build</PackageTags>
+    <DevelopmentDependency>true</DevelopmentDependency>
+    <NoPackageAnalysis>true</NoPackageAnalysis>
+
+    <!-- 将 targets 和 props 文件包含到包中 -->
+    <BuildOutputTargetFolder>tasks</BuildOutputTargetFolder>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+
+    <!-- 抑制 MSBuild 包的传递依赖漏洞警告（仅构建时使用） -->
+    <NoWarn>$(NoWarn);NU1903</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Build.Framework" Version="17.12.6" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.Build.Utilities.Core" Version="17.12.6" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <!-- 包含 targets 文件到 NuGet 包 -->
+  <ItemGroup>
+    <Content Include="build\**\*" PackagePath="build\" />
+    <Content Include="buildMultiTargeting\**\*" PackagePath="buildMultiTargeting\" />
+  </ItemGroup>
+
+  <!-- 包含编译器到 NuGet 包 -->
+  <ItemGroup>
+    <Content Include="..\Jalium.UI.Compiler\bin\$(Configuration)\net10.0-windows\win-x64\publish\jalxamlc.exe" PackagePath="tools\" Condition="Exists('..\Jalium.UI.Compiler\bin\$(Configuration)\net10.0-windows\win-x64\publish\jalxamlc.exe')" />
+    <Content Include="..\Jalium.UI.Compiler\bin\$(Configuration)\net10.0-windows\win-x64\jalxamlc.exe" PackagePath="tools\" Condition="!Exists('..\Jalium.UI.Compiler\bin\$(Configuration)\net10.0-windows\win-x64\publish\jalxamlc.exe')" />
+  </ItemGroup>
+
+</Project>

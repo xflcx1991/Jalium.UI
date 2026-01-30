@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Jalium.UI.Markup</RootNamespace>
+    <AssemblyName>Jalium.UI.Xaml</AssemblyName>
+    <Description>XAML parser and markup extensions for Jalium.UI framework.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Jalium.UI.Core\Jalium.UI.Core.csproj" />
+    <ProjectReference Include="..\Jalium.UI.Media\Jalium.UI.Media.csproj" />
+    <ProjectReference Include="..\Jalium.UI.Controls\Jalium.UI.Controls.csproj" />
+  </ItemGroup>
+
+</Project>

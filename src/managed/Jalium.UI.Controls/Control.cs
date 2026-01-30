@@ -1,0 +1,365 @@
+using Jalium.UI.Media;
+
+namespace Jalium.UI.Controls;
+
+/// <summary>
+/// Base class for all controls with a visual template.
+/// </summary>
+public class Control : FrameworkElement
+{
+    #region Dependency Properties
+
+    /// <summary>
+    /// Identifies the Background dependency property.
+    /// </summary>
+    public static readonly DependencyProperty BackgroundProperty =
+        DependencyProperty.Register(nameof(Background), typeof(Brush), typeof(Control),
+            new PropertyMetadata(null, OnVisualPropertyChanged));
+
+    /// <summary>
+    /// Identifies the Foreground dependency property.
+    /// </summary>
+    public static readonly DependencyProperty ForegroundProperty =
+        DependencyProperty.Register(nameof(Foreground), typeof(Brush), typeof(Control),
+            new PropertyMetadata(new SolidColorBrush(Color.Black), OnVisualPropertyChanged));
+
+    /// <summary>
+    /// Identifies the BorderBrush dependency property.
+    /// </summary>
+    public static readonly DependencyProperty BorderBrushProperty =
+        DependencyProperty.Register(nameof(BorderBrush), typeof(Brush), typeof(Control),
+            new PropertyMetadata(null, OnVisualPropertyChanged));
+
+    /// <summary>
+    /// Identifies the BorderThickness dependency property.
+    /// </summary>
+    public static readonly DependencyProperty BorderThicknessProperty =
+        DependencyProperty.Register(nameof(BorderThickness), typeof(Thickness), typeof(Control),
+            new PropertyMetadata(new Thickness(0), OnLayoutPropertyChanged));
+
+    /// <summary>
+    /// Identifies the Padding dependency property.
+    /// </summary>
+    public static readonly DependencyProperty PaddingProperty =
+        DependencyProperty.Register(nameof(Padding), typeof(Thickness), typeof(Control),
+            new PropertyMetadata(new Thickness(0), OnLayoutPropertyChanged));
+
+    /// <summary>
+    /// Identifies the FontFamily dependency property.
+    /// </summary>
+    public static readonly DependencyProperty FontFamilyProperty =
+        DependencyProperty.Register(nameof(FontFamily), typeof(string), typeof(Control),
+            new PropertyMetadata("Segoe UI", OnVisualPropertyChanged));
+
+    /// <summary>
+    /// Identifies the FontSize dependency property.
+    /// </summary>
+    public static readonly DependencyProperty FontSizeProperty =
+        DependencyProperty.Register(nameof(FontSize), typeof(double), typeof(Control),
+            new PropertyMetadata(14.0, OnLayoutPropertyChanged));
+
+    /// <summary>
+    /// Identifies the CornerRadius dependency property.
+    /// </summary>
+    public static readonly DependencyProperty CornerRadiusProperty =
+        DependencyProperty.Register(nameof(CornerRadius), typeof(CornerRadius), typeof(Control),
+            new PropertyMetadata(new CornerRadius(0), OnVisualPropertyChanged));
+
+    /// <summary>
+    /// Identifies the Template dependency property.
+    /// </summary>
+    public static readonly DependencyProperty TemplateProperty =
+        DependencyProperty.Register(nameof(Template), typeof(ControlTemplate), typeof(Control),
+            new PropertyMetadata(null, OnTemplateChanged));
+
+    #endregion
+
+    #region Template Fields
+
+    private FrameworkElement? _templateRoot;
+    private bool _templateApplied;
+
+    #endregion
+
+    #region CLR Properties
+
+    /// <summary>
+    /// Gets or sets the background brush.
+    /// </summary>
+    public Brush? Background
+    {
+        get => (Brush?)GetValue(BackgroundProperty);
+        set => SetValue(BackgroundProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the foreground brush.
+    /// </summary>
+    public Brush? Foreground
+    {
+        get => (Brush?)GetValue(ForegroundProperty);
+        set => SetValue(ForegroundProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the border brush.
+    /// </summary>
+    public Brush? BorderBrush
+    {
+        get => (Brush?)GetValue(BorderBrushProperty);
+        set => SetValue(BorderBrushProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the border thickness.
+    /// </summary>
+    public Thickness BorderThickness
+    {
+        get => (Thickness)(GetValue(BorderThicknessProperty) ?? new Thickness(0));
+        set => SetValue(BorderThicknessProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the padding.
+    /// </summary>
+    public Thickness Padding
+    {
+        get => (Thickness)(GetValue(PaddingProperty) ?? new Thickness(0));
+        set => SetValue(PaddingProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the font family.
+    /// </summary>
+    public string FontFamily
+    {
+        get => (string)(GetValue(FontFamilyProperty) ?? "Segoe UI");
+        set => SetValue(FontFamilyProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the font size.
+    /// </summary>
+    public double FontSize
+    {
+        get => (double)(GetValue(FontSizeProperty) ?? 14.0);
+        set => SetValue(FontSizeProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the corner radius for rounded corners.
+    /// </summary>
+    public CornerRadius CornerRadius
+    {
+        get => (CornerRadius)(GetValue(CornerRadiusProperty) ?? new CornerRadius(0));
+        set => SetValue(CornerRadiusProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the template that defines the visual appearance of the control.
+    /// </summary>
+    public ControlTemplate? Template
+    {
+        get => (ControlTemplate?)GetValue(TemplateProperty);
+        set => SetValue(TemplateProperty, value);
+    }
+
+    #endregion
+
+    #region Template Methods
+
+    /// <summary>
+    /// Applies the template if not already applied.
+    /// </summary>
+    /// <returns>True if the template was applied; otherwise, false.</returns>
+    public bool ApplyTemplate()
+    {
+        if (_templateApplied)
+            return false;
+
+        _templateApplied = true;
+
+        // Clear existing template content
+        ClearTemplateContent();
+
+        // Load new template
+        var template = Template;
+        if (template != null)
+        {
+            _templateRoot = template.LoadContent();
+            if (_templateRoot != null)
+            {
+                // Set the templated parent for template bindings
+                SetTemplatedParentRecursive(_templateRoot, this);
+
+                // Add to visual tree
+                AddVisualChild(_templateRoot);
+
+                // Call OnApplyTemplate for derived classes to get template parts
+                OnApplyTemplate();
+
+                InvalidateMeasure();
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Called after the template is applied. Override this to get references to template parts.
+    /// </summary>
+    protected virtual void OnApplyTemplate()
+    {
+    }
+
+    /// <summary>
+    /// Gets a named element from the applied template.
+    /// </summary>
+    /// <param name="childName">The name of the element to find.</param>
+    /// <returns>The named element, or null if not found.</returns>
+    protected DependencyObject? GetTemplateChild(string childName)
+    {
+        if (string.IsNullOrEmpty(childName) || _templateRoot == null)
+            return null;
+
+        return FindNameInTemplate(_templateRoot, childName);
+    }
+
+    private static DependencyObject? FindNameInTemplate(FrameworkElement root, string name)
+    {
+        // Check if the root has the name
+        if (root.Name == name)
+            return root;
+
+        // Check named elements registry
+        var found = root.FindName(name);
+        if (found != null)
+            return found as DependencyObject;
+
+        // Recursively search children
+        var childCount = root.VisualChildrenCount;
+        for (int i = 0; i < childCount; i++)
+        {
+            if (root.GetVisualChild(i) is FrameworkElement child)
+            {
+                if (child.Name == name)
+                    return child;
+
+                var result = FindNameInTemplate(child, name);
+                if (result != null)
+                    return result;
+            }
+        }
+
+        return null;
+    }
+
+    private void ClearTemplateContent()
+    {
+        if (_templateRoot != null)
+        {
+            RemoveVisualChild(_templateRoot);
+            _templateRoot = null;
+        }
+    }
+
+    private static void SetTemplatedParentRecursive(FrameworkElement element, FrameworkElement parent)
+    {
+        element.SetTemplatedParent(parent);
+
+        // Register name if set
+        if (!string.IsNullOrEmpty(element.Name))
+        {
+            parent.RegisterName(element.Name, element);
+        }
+
+        // Process children
+        var childCount = element.VisualChildrenCount;
+        for (int i = 0; i < childCount; i++)
+        {
+            if (element.GetVisualChild(i) is FrameworkElement child)
+            {
+                SetTemplatedParentRecursive(child, parent);
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public override int VisualChildrenCount => _templateRoot != null ? 1 : 0;
+
+    /// <inheritdoc />
+    public override Visual? GetVisualChild(int index)
+    {
+        if (index != 0 || _templateRoot == null)
+            return base.GetVisualChild(index);
+
+        return _templateRoot;
+    }
+
+    /// <inheritdoc />
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        // Apply template if not yet applied
+        if (!_templateApplied)
+        {
+            ApplyTemplate();
+        }
+
+        // Measure template root
+        if (_templateRoot != null)
+        {
+            _templateRoot.Measure(availableSize);
+            return _templateRoot.DesiredSize;
+        }
+
+        return base.MeasureOverride(availableSize);
+    }
+
+    /// <inheritdoc />
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        // Arrange template root
+        if (_templateRoot != null)
+        {
+            _templateRoot.Arrange(new Rect(0, 0, finalSize.Width, finalSize.Height));
+            // Note: Do NOT call SetVisualBounds here - ArrangeCore already handles margin
+            return finalSize;
+        }
+
+        return base.ArrangeOverride(finalSize);
+    }
+
+    #endregion
+
+    #region Property Changed Callbacks
+
+    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is Control control)
+        {
+            control.InvalidateVisual();
+        }
+    }
+
+    private static void OnLayoutPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is Control control)
+        {
+            control.InvalidateMeasure();
+        }
+    }
+
+    private static void OnTemplateChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is Control control)
+        {
+            // Reset template application flag to force re-application
+            control._templateApplied = false;
+            control.ClearTemplateContent();
+            control.InvalidateMeasure();
+        }
+    }
+
+    #endregion
+}

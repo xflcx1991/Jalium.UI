@@ -1,0 +1,280 @@
+namespace Jalium.UI.Media;
+
+/// <summary>
+/// Represents the source of an image.
+/// </summary>
+public abstract class ImageSource
+{
+    /// <summary>
+    /// Gets the width of the image in pixels.
+    /// </summary>
+    public abstract double Width { get; }
+
+    /// <summary>
+    /// Gets the height of the image in pixels.
+    /// </summary>
+    public abstract double Height { get; }
+
+    /// <summary>
+    /// Gets the native handle of the image (platform-specific).
+    /// </summary>
+    public abstract nint NativeHandle { get; }
+}
+
+/// <summary>
+/// Represents a bitmap image source.
+/// </summary>
+public class BitmapImage : ImageSource
+{
+    private nint _nativeHandle;
+    private double _width;
+    private double _height;
+    private Uri? _uriSource;
+    private byte[]? _imageData;
+
+    /// <summary>
+    /// Occurs when the image has been loaded from a remote source.
+    /// </summary>
+    public event EventHandler? OnImageLoaded;
+
+    /// <summary>
+    /// Gets the width of the image.
+    /// </summary>
+    public override double Width => _width;
+
+    /// <summary>
+    /// Gets the height of the image.
+    /// </summary>
+    public override double Height => _height;
+
+    /// <summary>
+    /// Gets the native handle.
+    /// </summary>
+    public override nint NativeHandle => _nativeHandle;
+
+    /// <summary>
+    /// Gets the raw image data bytes.
+    /// </summary>
+    public byte[]? ImageData => _imageData;
+
+    /// <summary>
+    /// Gets or sets the URI source of the bitmap image.
+    /// </summary>
+    public Uri? UriSource
+    {
+        get => _uriSource;
+        set
+        {
+            _uriSource = value;
+            if (value != null)
+            {
+                LoadFromUri(value);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="BitmapImage"/> class.
+    /// </summary>
+    public BitmapImage()
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="BitmapImage"/> class with the specified URI.
+    /// </summary>
+    public BitmapImage(Uri uriSource)
+    {
+        UriSource = uriSource;
+    }
+
+    /// <summary>
+    /// Creates a BitmapImage from a file path.
+    /// </summary>
+    public static BitmapImage FromFile(string filePath)
+    {
+        var image = new BitmapImage();
+        image.LoadFromFile(filePath);
+        return image;
+    }
+
+    /// <summary>
+    /// Creates a BitmapImage from raw pixel data.
+    /// </summary>
+    /// <param name="pixels">The pixel data in BGRA format.</param>
+    /// <param name="width">The width in pixels.</param>
+    /// <param name="height">The height in pixels.</param>
+    public static BitmapImage FromPixels(byte[] pixels, int width, int height)
+    {
+        var image = new BitmapImage
+        {
+            _width = width,
+            _height = height
+        };
+        // Native image creation will be done by the rendering backend
+        return image;
+    }
+
+    private void LoadFromUri(Uri uri)
+    {
+        if (uri.IsFile || uri.Scheme == "file")
+        {
+            LoadFromFile(uri.LocalPath);
+        }
+        else if (uri.Scheme == "http" || uri.Scheme == "https")
+        {
+            // Load asynchronously from HTTP/HTTPS URL
+            _ = LoadFromHttpAsync(uri);
+        }
+    }
+
+    private async Task LoadFromHttpAsync(Uri uri)
+    {
+        try
+        {
+            using var httpClient = new System.Net.Http.HttpClient();
+            var bytes = await httpClient.GetByteArrayAsync(uri);
+            LoadFromBytes(bytes);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to load image from {uri}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Creates a BitmapImage from a byte array.
+    /// </summary>
+    public static BitmapImage FromBytes(byte[] data)
+    {
+        var image = new BitmapImage();
+        image.LoadFromBytes(data);
+        return image;
+    }
+
+    private void LoadFromBytes(byte[] data)
+    {
+        // Store the raw bytes for the native rendering backend to process
+        _imageData = data;
+
+        // Try to read image dimensions from the header
+        if (TryReadImageDimensions(data, out var width, out var height))
+        {
+            _width = width;
+            _height = height;
+        }
+        else
+        {
+            // Default dimensions if we can't read the header
+            _width = 100;
+            _height = 100;
+        }
+
+        // Notify that the image has been updated
+        OnImageLoaded?.Invoke(this, EventArgs.Empty);
+    }
+
+    private static bool TryReadImageDimensions(byte[] data, out int width, out int height)
+    {
+        width = 0;
+        height = 0;
+
+        if (data == null || data.Length < 24)
+            return false;
+
+        // Check for PNG signature
+        if (data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47)
+        {
+            // PNG: width at offset 16, height at offset 20 (big-endian)
+            width = (data[16] << 24) | (data[17] << 16) | (data[18] << 8) | data[19];
+            height = (data[20] << 24) | (data[21] << 16) | (data[22] << 8) | data[23];
+            return true;
+        }
+
+        // Check for JPEG signature
+        if (data[0] == 0xFF && data[1] == 0xD8)
+        {
+            // JPEG: need to parse markers to find SOF
+            int offset = 2;
+            while (offset < data.Length - 8)
+            {
+                if (data[offset] != 0xFF)
+                {
+                    offset++;
+                    continue;
+                }
+
+                byte marker = data[offset + 1];
+
+                // SOF0, SOF1, SOF2 (Start of Frame markers)
+                if (marker == 0xC0 || marker == 0xC1 || marker == 0xC2)
+                {
+                    height = (data[offset + 5] << 8) | data[offset + 6];
+                    width = (data[offset + 7] << 8) | data[offset + 8];
+                    return true;
+                }
+
+                // Skip to next marker
+                int length = (data[offset + 2] << 8) | data[offset + 3];
+                offset += length + 2;
+            }
+        }
+
+        return false;
+    }
+
+    private void LoadFromFile(string filePath)
+    {
+        if (!System.IO.File.Exists(filePath))
+        {
+            System.Diagnostics.Debug.WriteLine($"Image file not found: {filePath}");
+            return;
+        }
+
+        try
+        {
+            // Read the file bytes and load using the bytes loader
+            // The native rendering backend (NativeBitmap) will decode the image
+            // using Windows Imaging Component (WIC) which supports PNG, JPG, BMP, GIF, etc.
+            var bytes = System.IO.File.ReadAllBytes(filePath);
+            LoadFromBytes(bytes);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to load image from {filePath}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Sets the native handle and dimensions (called by the rendering backend).
+    /// </summary>
+    internal void SetNativeImage(nint handle, double width, double height)
+    {
+        _nativeHandle = handle;
+        _width = width;
+        _height = height;
+    }
+}
+
+// Note: Stretch enum is defined in Brush.cs
+
+/// <summary>
+/// Describes the horizontal position of content in a container.
+/// </summary>
+public enum StretchDirection
+{
+    /// <summary>
+    /// The content scales upward only when it is smaller than the parent.
+    /// </summary>
+    UpOnly,
+
+    /// <summary>
+    /// The content scales downward only when it is larger than the parent.
+    /// </summary>
+    DownOnly,
+
+    /// <summary>
+    /// The content stretches to fit the parent according to the Stretch property.
+    /// </summary>
+    Both
+}

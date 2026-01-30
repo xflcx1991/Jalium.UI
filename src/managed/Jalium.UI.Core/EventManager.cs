@@ -1,0 +1,134 @@
+namespace Jalium.UI;
+
+/// <summary>
+/// Provides static methods for registering and managing routed events.
+/// </summary>
+public static class EventManager
+{
+    private static readonly Dictionary<(Type, string), RoutedEvent> _registeredEvents = new();
+    private static readonly Dictionary<RoutedEvent, List<ClassHandlerInfo>> _classHandlers = new();
+    private static readonly object _lock = new();
+
+    /// <summary>
+    /// Registers a routed event.
+    /// </summary>
+    /// <param name="name">The name of the event.</param>
+    /// <param name="routingStrategy">The routing strategy.</param>
+    /// <param name="handlerType">The type of the event handler delegate.</param>
+    /// <param name="ownerType">The owner type.</param>
+    /// <returns>The registered routed event.</returns>
+    public static RoutedEvent RegisterRoutedEvent(string name, RoutingStrategy routingStrategy, Type handlerType, Type ownerType)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        ArgumentNullException.ThrowIfNull(handlerType);
+        ArgumentNullException.ThrowIfNull(ownerType);
+
+        lock (_lock)
+        {
+            var key = (ownerType, name);
+
+            // Return existing event if already registered (handles concurrent registration)
+            if (_registeredEvents.TryGetValue(key, out var existingEvent))
+            {
+                return existingEvent;
+            }
+
+            var routedEvent = new RoutedEvent(name, routingStrategy, handlerType, ownerType);
+            _registeredEvents[key] = routedEvent;
+            return routedEvent;
+        }
+    }
+
+    /// <summary>
+    /// Registers a class handler for a routed event.
+    /// </summary>
+    /// <param name="classType">The class type to register the handler for.</param>
+    /// <param name="routedEvent">The routed event.</param>
+    /// <param name="handler">The event handler.</param>
+    public static void RegisterClassHandler(Type classType, RoutedEvent routedEvent, Delegate handler)
+    {
+        RegisterClassHandler(classType, routedEvent, handler, handledEventsToo: false);
+    }
+
+    /// <summary>
+    /// Registers a class handler for a routed event.
+    /// </summary>
+    /// <param name="classType">The class type to register the handler for.</param>
+    /// <param name="routedEvent">The routed event.</param>
+    /// <param name="handler">The event handler.</param>
+    /// <param name="handledEventsToo">Whether to invoke the handler even if the event is already handled.</param>
+    public static void RegisterClassHandler(Type classType, RoutedEvent routedEvent, Delegate handler, bool handledEventsToo)
+    {
+        ArgumentNullException.ThrowIfNull(classType);
+        ArgumentNullException.ThrowIfNull(routedEvent);
+        ArgumentNullException.ThrowIfNull(handler);
+
+        lock (_lock)
+        {
+            if (!_classHandlers.TryGetValue(routedEvent, out var handlers))
+            {
+                handlers = new List<ClassHandlerInfo>();
+                _classHandlers[routedEvent] = handlers;
+            }
+
+            handlers.Add(new ClassHandlerInfo(classType, handler, handledEventsToo));
+        }
+    }
+
+    /// <summary>
+    /// Gets the class handlers for a routed event.
+    /// </summary>
+    internal static IEnumerable<ClassHandlerInfo> GetClassHandlers(RoutedEvent routedEvent, Type targetType)
+    {
+        lock (_lock)
+        {
+            if (!_classHandlers.TryGetValue(routedEvent, out var handlers))
+            {
+                yield break;
+            }
+
+            foreach (var handler in handlers)
+            {
+                if (handler.ClassType.IsAssignableFrom(targetType))
+                {
+                    yield return handler;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets all routed events registered for a type.
+    /// </summary>
+    /// <param name="ownerType">The owner type.</param>
+    /// <returns>An array of routed events.</returns>
+    public static RoutedEvent[] GetRoutedEventsForOwner(Type ownerType)
+    {
+        ArgumentNullException.ThrowIfNull(ownerType);
+
+        lock (_lock)
+        {
+            return _registeredEvents
+                .Where(kvp => kvp.Key.Item1 == ownerType)
+                .Select(kvp => kvp.Value)
+                .ToArray();
+        }
+    }
+}
+
+/// <summary>
+/// Information about a class-level event handler.
+/// </summary>
+internal sealed class ClassHandlerInfo
+{
+    public Type ClassType { get; }
+    public Delegate Handler { get; }
+    public bool HandledEventsToo { get; }
+
+    public ClassHandlerInfo(Type classType, Delegate handler, bool handledEventsToo)
+    {
+        ClassType = classType;
+        Handler = handler;
+        HandledEventsToo = handledEventsToo;
+    }
+}

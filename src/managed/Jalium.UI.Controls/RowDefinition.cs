@@ -1,0 +1,145 @@
+using Jalium.UI;
+
+namespace Jalium.UI.Controls;
+
+/// <summary>
+/// Defines row-specific properties that apply to Grid elements.
+/// </summary>
+public class RowDefinition : DependencyObject
+{
+    /// <summary>
+    /// Identifies the Height dependency property.
+    /// </summary>
+    public static readonly DependencyProperty HeightProperty =
+        DependencyProperty.Register(nameof(Height), typeof(GridLength), typeof(RowDefinition),
+            new PropertyMetadata(new GridLength(1.0, GridUnitType.Star)));
+
+    /// <summary>
+    /// Identifies the MinHeight dependency property.
+    /// </summary>
+    public static readonly DependencyProperty MinHeightProperty =
+        DependencyProperty.Register(nameof(MinHeight), typeof(double), typeof(RowDefinition),
+            new PropertyMetadata(0.0));
+
+    /// <summary>
+    /// Identifies the MaxHeight dependency property.
+    /// </summary>
+    public static readonly DependencyProperty MaxHeightProperty =
+        DependencyProperty.Register(nameof(MaxHeight), typeof(double), typeof(RowDefinition),
+            new PropertyMetadata(double.PositiveInfinity));
+
+    /// <summary>
+    /// Gets or sets the height of the row.
+    /// </summary>
+    public GridLength Height
+    {
+        get => (GridLength)(GetValue(HeightProperty) ?? new GridLength(1.0, GridUnitType.Star));
+        set => SetValue(HeightProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the minimum height of the row.
+    /// </summary>
+    public double MinHeight
+    {
+        get => (double)(GetValue(MinHeightProperty) ?? 0.0);
+        set => SetValue(MinHeightProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the maximum height of the row.
+    /// </summary>
+    public double MaxHeight
+    {
+        get => (double)(GetValue(MaxHeightProperty) ?? double.PositiveInfinity);
+        set => SetValue(MaxHeightProperty, value);
+    }
+
+    /// <summary>
+    /// Gets the actual height of the row after layout.
+    /// </summary>
+    public double ActualHeight { get; internal set; }
+
+    /// <summary>
+    /// Gets the offset of the row from the top of the grid.
+    /// </summary>
+    public double Offset { get; internal set; }
+}
+
+/// <summary>
+/// Defines column-specific properties that apply to Grid elements.
+/// </summary>
+public class ColumnDefinition : DependencyObject
+{
+    /// <summary>
+    /// Identifies the Width dependency property.
+    /// </summary>
+    public static readonly DependencyProperty WidthProperty =
+        DependencyProperty.Register(nameof(Width), typeof(GridLength), typeof(ColumnDefinition),
+            new PropertyMetadata(new GridLength(1.0, GridUnitType.Star)));
+
+    /// <summary>
+    /// Identifies the MinWidth dependency property.
+    /// </summary>
+    public static readonly DependencyProperty MinWidthProperty =
+        DependencyProperty.Register(nameof(MinWidth), typeof(double), typeof(ColumnDefinition),
+            new PropertyMetadata(0.0));
+
+    /// <summary>
+    /// Identifies the MaxWidth dependency property.
+    /// </summary>
+    public static readonly DependencyProperty MaxWidthProperty =
+        DependencyProperty.Register(nameof(MaxWidth), typeof(double), typeof(ColumnDefinition),
+            new PropertyMetadata(double.PositiveInfinity));
+
+    /// <summary>
+    /// Gets or sets the width of the column.
+    /// </summary>
+    public GridLength Width
+    {
+        get => (GridLength)(GetValue(WidthProperty) ?? new GridLength(1.0, GridUnitType.Star));
+        set => SetValue(WidthProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the minimum width of the column.
+    /// </summary>
+    public double MinWidth
+    {
+        get => (double)(GetValue(MinWidthProperty) ?? 0.0);
+        set => SetValue(MinWidthProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the maximum width of the column.
+    /// </summary>
+    public double MaxWidth
+    {
+        get => (double)(GetValue(MaxWidthProperty) ?? double.PositiveInfinity);
+        set => SetValue(MaxWidthProperty, value);
+    }
+
+    /// <summary>
+    /// Gets the actual width of the column after layout.
+    /// </summary>
+    public double ActualWidth { get; internal set; }
+
+    /// <summary>
+    /// Gets the offset of the column from the left of the grid.
+    /// </summary>
+    public double Offset { get; internal set; }
+}
+
+/// <summary>
+/// A collection of <see cref="RowDefinition"/> objects.
+/// </summary>
+public class RowDefinitionCollection : List<RowDefinition>
+{
+}
+
+/// <summary>
+/// A collection of <see cref="ColumnDefinition"/> objects.
+/// </summary>
+public class ColumnDefinitionCollection : List<ColumnDefinition>
+{
+}

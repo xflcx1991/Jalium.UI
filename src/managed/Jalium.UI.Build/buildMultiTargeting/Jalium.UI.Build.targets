@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- 多目标框架支持 - 转发到内部目标 -->
+  <Import Project="..\build\Jalium.UI.Build.targets" />
+</Project>

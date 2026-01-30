@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Jalium.UI.Input</RootNamespace>
+    <AssemblyName>Jalium.UI.Input</AssemblyName>
+    <Description>Input handling for Jalium.UI framework including Mouse, Keyboard, and Touch.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Jalium.UI.Core\Jalium.UI.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <!-- 定义 JALXAML 文件项类型 -->
+  <ItemGroup>
+    <AvailableItemName Include="JalxamlPage" />
+    <AvailableItemName Include="JalxamlApplicationDefinition" />
+  </ItemGroup>
+
+  <!-- 默认属性 -->
+  <PropertyGroup>
+    <!-- MSBuild 任务 DLL 路径 -->
+    <_JalxamlTasksPath>$(MSBuildThisFileDirectory)..\tasks\net10.0\Jalium.UI.Build.dll</_JalxamlTasksPath>
+    <!-- jalxamlc 编译器路径 -->
+    <JalxamlCompilerPath Condition="'$(JalxamlCompilerPath)' == ''">$(MSBuildThisFileDirectory)..\tools\jalxamlc.exe</JalxamlCompilerPath>
+    <EnableJalxamlOptimization Condition="'$(EnableJalxamlOptimization)' == ''">true</EnableJalxamlOptimization>
+    <JalxamlDebugInfo Condition="'$(JalxamlDebugInfo)' == ''">false</JalxamlDebugInfo>
+    <JalxamlIntermediateOutputPath Condition="'$(JalxamlIntermediateOutputPath)' == ''">$(IntermediateOutputPath)Jalxaml\</JalxamlIntermediateOutputPath>
+    <!-- 是否生成代码隐藏文件（如果使用 Source Generator 则设置为 false） -->
+    <EnableJalxamlCodeGeneration Condition="'$(EnableJalxamlCodeGeneration)' == ''">true</EnableJalxamlCodeGeneration>
+  </PropertyGroup>
+
+  <!-- 自动发现 .jalxaml 文件 -->
+  <ItemGroup Condition="'$(EnableDefaultJalxamlItems)' != 'false'">
+    <JalxamlPage Include="**\*.jalxaml" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
+  </ItemGroup>
+
+  <!-- 文件嵌套配置 - .jalxaml.cs 嵌套在 .jalxaml 下 -->
+  <ItemGroup>
+    <Compile Update="**\*.jalxaml.cs" DependentUpon="%(Filename)" />
+  </ItemGroup>
+
+  <!-- 导入 MSBuild 任务 -->
+  <UsingTask TaskName="Jalium.UI.Build.CompileJalxamlTask" AssemblyFile="$(_JalxamlTasksPath)" />
+  <UsingTask TaskName="Jalium.UI.Build.GenerateJalxamlCodeBehindTask" AssemblyFile="$(_JalxamlTasksPath)" />
+
+  <!--
+    编译前目标：生成代码隐藏文件
+    在 CoreCompile 之前运行
+    注意：如果使用 Source Generator，请设置 EnableJalxamlCodeGeneration=false
+  -->
+  <Target Name="GenerateJalxamlCodeBehind"
+          BeforeTargets="CoreCompile"
+          DependsOnTargets="PrepareForBuild"
+          Inputs="@(JalxamlPage);@(JalxamlApplicationDefinition)"
+          Outputs="$(JalxamlIntermediateOutputPath)%(Filename).g.cs"
+          Condition="'$(EnableJalxamlCodeGeneration)' == 'true' And ('@(JalxamlPage)' != '' Or '@(JalxamlApplicationDefinition)' != '')">
+
+    <MakeDir Directories="$(JalxamlIntermediateOutputPath)" />
+
+    <GenerateJalxamlCodeBehindTask
+        SourceFiles="@(JalxamlPage);@(JalxamlApplicationDefinition)"
+        OutputDirectory="$(JalxamlIntermediateOutputPath)"
+        RootNamespace="$(RootNamespace)"
+        CompilerPath="$(JalxamlCompilerPath)"
+        ProjectDirectory="$(MSBuildProjectDirectory)">
+      <Output TaskParameter="GeneratedFiles" ItemName="_JalxamlGeneratedFiles" />
+    </GenerateJalxamlCodeBehindTask>
+
+    <!-- 将生成的文件添加到编译 -->
+    <ItemGroup>
+      <Compile Include="@(_JalxamlGeneratedFiles)" />
+      <FileWrites Include="@(_JalxamlGeneratedFiles)" />
+    </ItemGroup>
+
+    <Message Text="已生成 JALXAML 代码隐藏: @(_JalxamlGeneratedFiles)" Importance="normal" />
+  </Target>
+
+  <!--
+    编译目标：将 JALXAML 编译为 .juib 包
+    在 CoreCompile 之前运行，以便嵌入到程序集中
+  -->
+  <Target Name="CompileJalxaml"
+          BeforeTargets="CoreCompile"
+          DependsOnTargets="PrepareForBuild"
+          Inputs="@(JalxamlPage);@(JalxamlApplicationDefinition)"
+          Outputs="$(JalxamlIntermediateOutputPath)%(Filename).juib"
+          Condition="'@(JalxamlPage)' != '' Or '@(JalxamlApplicationDefinition)' != ''">
+
+    <CompileJalxamlTask
+        SourceFiles="@(JalxamlPage);@(JalxamlApplicationDefinition)"
+        OutputDirectory="$(JalxamlIntermediateOutputPath)"
+        ProjectDirectory="$(MSBuildProjectDirectory)"
+        IntermediateOutputPath="$(JalxamlIntermediateOutputPath)"
+        EnableOptimization="$(EnableJalxamlOptimization)"
+        GenerateDebugInfo="$(JalxamlDebugInfo)"
+        CompilerPath="$(JalxamlCompilerPath)">
+      <Output TaskParameter="CompiledFiles" ItemName="_CompiledJalxamlFiles" />
+    </CompileJalxamlTask>
+
+    <!-- 将编译后的 .juib 文件作为嵌入资源（用于 GPU 运行时） -->
+    <ItemGroup>
+      <EmbeddedResource Include="@(_CompiledJalxamlFiles)">
+        <LogicalName>$(RootNamespace).%(Filename).juib</LogicalName>
+      </EmbeddedResource>
+      <FileWrites Include="@(_CompiledJalxamlFiles)" />
+    </ItemGroup>
+
+    <Message Text="已编译 JALXAML (嵌入资源): @(_CompiledJalxamlFiles)" Importance="normal" />
+  </Target>
+
+  <!--
+    嵌入原始 JALXAML 文件
+    用于 XamlReader.LoadComponent 的 XML 解析方式
+    注意：这与 .juib 二进制格式并存，支持两种加载方式
+    LogicalName 格式：RootNamespace.RelativePath.Filename.jalxaml
+    例如：Jalium.UI.Gallery.Views.BorderPage.jalxaml
+
+    重要：必须在 AssignTargetPaths 之前运行，否则 EmbeddedResource 不会被包含
+  -->
+  <Target Name="EmbedJalxamlSources"
+          BeforeTargets="AssignTargetPaths;CoreCompile"
+          Condition="'@(JalxamlPage)' != '' Or '@(JalxamlApplicationDefinition)' != ''">
+
+    <ItemGroup>
+      <!--
+        %(RecursiveDir) 包含相对于 glob 根的目录路径（如 Views\）
+        %(Filename) 是文件名不含扩展名
+        将路径分隔符替换为点，形成完整的资源名称
+      -->
+      <EmbeddedResource Include="@(JalxamlPage);@(JalxamlApplicationDefinition)">
+        <LogicalName>$(RootNamespace).$([System.String]::Copy('%(RecursiveDir)%(Filename)').Replace('\','.').Replace('/','.').TrimStart('.')).jalxaml</LogicalName>
+      </EmbeddedResource>
+    </ItemGroup>
+
+    <Message Text="已嵌入 JALXAML 源文件: @(JalxamlPage);@(JalxamlApplicationDefinition)" Importance="normal" />
+  </Target>
+
+  <!-- 清理目标 -->
+  <Target Name="CleanJalxaml" AfterTargets="Clean">
+    <Delete Files="$(JalxamlIntermediateOutputPath)**\*.g.cs" />
+    <Delete Files="$(JalxamlIntermediateOutputPath)**\*.juib" />
+    <RemoveDir Directories="$(JalxamlIntermediateOutputPath)" />
+  </Target>
+
+</Project>

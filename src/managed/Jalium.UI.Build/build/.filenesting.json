@@ -1,0 +1,32 @@
+{
+  "help": "https://go.microsoft.com/fwlink/?linkid=866610",
+  "root": true,
+  "dependentFileProviders": {
+    "add": {
+      "extensionToExtension": {
+        "add": {
+          ".jalxaml.cs": ".jalxaml",
+          ".g.cs": ".jalxaml",
+          ".juib": ".jalxaml"
+        }
+      },
+      "fileSuffixToExtension": {
+        "add": {
+          ".jalxaml.cs": ".jalxaml"
+        }
+      },
+      "addedExtension": {
+        "add": {
+          ".cs": ".jalxaml"
+        }
+      },
+      "pathSegment": {
+        "add": {
+          "*.jalxaml.cs": "*.jalxaml",
+          "*.g.cs": "*.jalxaml",
+          "*.juib": "*.jalxaml"
+        }
+      }
+    }
+  }
+}

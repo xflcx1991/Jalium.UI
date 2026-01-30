@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <!--
+    Jalium.UI.Build 属性配置
+    此文件在项目属性定义之前导入
+  -->
+
+  <PropertyGroup>
+    <!-- 启用 JALXAML 默认项发现 -->
+    <EnableDefaultJalxamlItems Condition="'$(EnableDefaultJalxamlItems)' == ''">true</EnableDefaultJalxamlItems>
+
+    <!-- 默认启用优化 -->
+    <EnableJalxamlOptimization Condition="'$(EnableJalxamlOptimization)' == ''">true</EnableJalxamlOptimization>
+
+    <!-- Debug 配置下生成调试信息 -->
+    <JalxamlDebugInfo Condition="'$(JalxamlDebugInfo)' == '' And '$(Configuration)' == 'Debug'">true</JalxamlDebugInfo>
+    <JalxamlDebugInfo Condition="'$(JalxamlDebugInfo)' == ''">false</JalxamlDebugInfo>
+  </PropertyGroup>
+
+  <!-- 定义 JALXAML 文件类型的 Visual Studio 显示属性 -->
+  <ItemDefinitionGroup>
+    <JalxamlPage>
+      <Generator>MSBuild:CompileJalxaml</Generator>
+      <SubType>Designer</SubType>
+    </JalxamlPage>
+    <JalxamlApplicationDefinition>
+      <Generator>MSBuild:CompileJalxaml</Generator>
+      <SubType>Designer</SubType>
+    </JalxamlApplicationDefinition>
+  </ItemDefinitionGroup>
+
+</Project>

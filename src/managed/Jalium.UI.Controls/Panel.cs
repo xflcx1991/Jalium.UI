@@ -1,0 +1,164 @@
+namespace Jalium.UI.Controls;
+
+/// <summary>
+/// Base class for panel controls that host child elements.
+/// </summary>
+public abstract class Panel : FrameworkElement
+{
+    /// <summary>
+    /// Gets the collection of child elements.
+    /// </summary>
+    public UIElementCollection Children { get; }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="Panel"/> class.
+    /// </summary>
+    protected Panel()
+    {
+        Children = new UIElementCollection(this);
+    }
+
+    /// <summary>
+    /// Adds a child to the visual tree. Called by UIElementCollection.
+    /// </summary>
+    internal void AddVisualChildInternal(UIElement child)
+    {
+        AddVisualChild(child);
+    }
+
+    /// <summary>
+    /// Removes a child from the visual tree. Called by UIElementCollection.
+    /// </summary>
+    internal void RemoveVisualChildInternal(UIElement child)
+    {
+        RemoveVisualChild(child);
+    }
+}
+
+/// <summary>
+/// Collection of UI elements for a panel.
+/// </summary>
+public class UIElementCollection : IList<UIElement>
+{
+    private readonly List<UIElement> _items = new();
+    private readonly Panel _parent;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="UIElementCollection"/> class.
+    /// </summary>
+    public UIElementCollection(Panel parent)
+    {
+        _parent = parent;
+    }
+
+    /// <summary>
+    /// Gets the number of elements in the collection.
+    /// </summary>
+    public int Count => _items.Count;
+
+    /// <summary>
+    /// Gets a value indicating whether the collection is read-only.
+    /// </summary>
+    public bool IsReadOnly => false;
+
+    /// <summary>
+    /// Gets or sets the element at the specified index.
+    /// </summary>
+    public UIElement this[int index]
+    {
+        get => _items[index];
+        set
+        {
+            var oldItem = _items[index];
+            if (oldItem != value)
+            {
+                _parent.RemoveVisualChildInternal(oldItem);
+                _items[index] = value;
+                _parent.AddVisualChildInternal(value);
+                _parent.InvalidateMeasure();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Adds an element to the collection.
+    /// </summary>
+    public void Add(UIElement item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        _items.Add(item);
+        _parent.AddVisualChildInternal(item);
+        _parent.InvalidateMeasure();
+    }
+
+    /// <summary>
+    /// Clears all elements from the collection.
+    /// </summary>
+    public void Clear()
+    {
+        foreach (var item in _items)
+        {
+            _parent.RemoveVisualChildInternal(item);
+        }
+        _items.Clear();
+        _parent.InvalidateMeasure();
+    }
+
+    /// <summary>
+    /// Determines whether the collection contains a specific element.
+    /// </summary>
+    public bool Contains(UIElement item) => _items.Contains(item);
+
+    /// <summary>
+    /// Copies the elements to an array.
+    /// </summary>
+    public void CopyTo(UIElement[] array, int arrayIndex) => _items.CopyTo(array, arrayIndex);
+
+    /// <summary>
+    /// Returns an enumerator that iterates through the collection.
+    /// </summary>
+    public IEnumerator<UIElement> GetEnumerator() => _items.GetEnumerator();
+
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+    /// <summary>
+    /// Returns the index of a specific element.
+    /// </summary>
+    public int IndexOf(UIElement item) => _items.IndexOf(item);
+
+    /// <summary>
+    /// Inserts an element at the specified index.
+    /// </summary>
+    public void Insert(int index, UIElement item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        _items.Insert(index, item);
+        _parent.AddVisualChildInternal(item);
+        _parent.InvalidateMeasure();
+    }
+
+    /// <summary>
+    /// Removes a specific element from the collection.
+    /// </summary>
+    public bool Remove(UIElement item)
+    {
+        if (_items.Remove(item))
+        {
+            _parent.RemoveVisualChildInternal(item);
+            _parent.InvalidateMeasure();
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Removes the element at the specified index.
+    /// </summary>
+    public void RemoveAt(int index)
+    {
+        var item = _items[index];
+        _items.RemoveAt(index);
+        _parent.RemoveVisualChildInternal(item);
+        _parent.InvalidateMeasure();
+    }
+}

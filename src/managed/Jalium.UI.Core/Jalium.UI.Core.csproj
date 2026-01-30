@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Jalium.UI</RootNamespace>
+    <AssemblyName>Jalium.UI.Core</AssemblyName>
+    <Description>Core types for Jalium.UI framework including DependencyObject, Visual, UIElement, and layout system.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Jalium.UI.Input" />
+    <InternalsVisibleTo Include="Jalium.UI.Controls" />
+    <InternalsVisibleTo Include="Jalium.UI.Interop" />
+  </ItemGroup>
+
+</Project>

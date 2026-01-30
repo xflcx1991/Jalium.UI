@@ -1,0 +1,437 @@
+using System.Collections;
+using System.Collections.Specialized;
+using Jalium.UI.Media;
+
+namespace Jalium.UI.Controls;
+
+/// <summary>
+/// Represents a control that can be used to present a collection of items.
+/// </summary>
+public class ItemsControl : Control
+{
+    #region Dependency Properties
+
+    /// <summary>
+    /// Identifies the ItemsSource dependency property.
+    /// </summary>
+    public static readonly DependencyProperty ItemsSourceProperty =
+        DependencyProperty.Register(nameof(ItemsSource), typeof(IEnumerable), typeof(ItemsControl),
+            new PropertyMetadata(null, OnItemsSourceChanged));
+
+    /// <summary>
+    /// Identifies the ItemTemplate dependency property.
+    /// </summary>
+    public static readonly DependencyProperty ItemTemplateProperty =
+        DependencyProperty.Register(nameof(ItemTemplate), typeof(DataTemplate), typeof(ItemsControl),
+            new PropertyMetadata(null, OnItemTemplateChanged));
+
+    /// <summary>
+    /// Identifies the ItemsPanel dependency property.
+    /// </summary>
+    public static readonly DependencyProperty ItemsPanelProperty =
+        DependencyProperty.Register(nameof(ItemsPanel), typeof(ItemsPanelTemplate), typeof(ItemsControl),
+            new PropertyMetadata(null, OnItemsPanelChanged));
+
+    #endregion
+
+    #region CLR Properties
+
+    /// <summary>
+    /// Gets or sets a collection used to generate the content of the ItemsControl.
+    /// </summary>
+    public IEnumerable? ItemsSource
+    {
+        get => (IEnumerable?)GetValue(ItemsSourceProperty);
+        set => SetValue(ItemsSourceProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the DataTemplate used to display each item.
+    /// </summary>
+    public DataTemplate? ItemTemplate
+    {
+        get => (DataTemplate?)GetValue(ItemTemplateProperty);
+        set => SetValue(ItemTemplateProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the template that defines the panel that controls the layout of items.
+    /// </summary>
+    public ItemsPanelTemplate? ItemsPanel
+    {
+        get => (ItemsPanelTemplate?)GetValue(ItemsPanelProperty);
+        set => SetValue(ItemsPanelProperty, value);
+    }
+
+    /// <summary>
+    /// Gets the collection used to generate the content of the control.
+    /// </summary>
+    public ItemCollection Items { get; }
+
+    /// <summary>
+    /// Gets the panel that hosts the items.
+    /// </summary>
+    protected Panel? ItemsHost { get; private set; }
+
+    #endregion
+
+    #region Constructor
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ItemsControl"/> class.
+    /// </summary>
+    public ItemsControl()
+    {
+        Items = new ItemCollection(this);
+        Items.CollectionChanged += OnItemsCollectionChanged;
+    }
+
+    #endregion
+
+    #region Item Generation
+
+    /// <summary>
+    /// Creates the panel that will host the items.
+    /// </summary>
+    protected virtual Panel CreateItemsPanel()
+    {
+        return new StackPanel { Orientation = Orientation.Vertical };
+    }
+
+    /// <summary>
+    /// Creates a container for the specified item.
+    /// </summary>
+    protected virtual FrameworkElement GetContainerForItem(object item)
+    {
+        return new ContentPresenter();
+    }
+
+    /// <summary>
+    /// Determines if the specified item is (or is eligible to be) its own container.
+    /// </summary>
+    protected virtual bool IsItemItsOwnContainer(object item)
+    {
+        return item is UIElement;
+    }
+
+    /// <summary>
+    /// Prepares the specified element to display the specified item.
+    /// </summary>
+    protected virtual void PrepareContainerForItem(FrameworkElement element, object item)
+    {
+        if (element is ContentPresenter presenter)
+        {
+            presenter.Content = item;
+            presenter.ContentTemplate = ItemTemplate;
+        }
+        else if (element is ContentControl contentControl)
+        {
+            contentControl.Content = item;
+            contentControl.ContentTemplate = ItemTemplate;
+        }
+    }
+
+    /// <summary>
+    /// Refreshes all items in the control.
+    /// </summary>
+    protected virtual void RefreshItems()
+    {
+        // Create or get the items panel
+        if (ItemsHost == null)
+        {
+            ItemsHost = CreateItemsPanel();
+            AddVisualChild(ItemsHost);
+        }
+
+        // Clear existing items
+        ItemsHost.Children.Clear();
+
+        // Add items from ItemsSource or Items collection
+        var source = ItemsSource ?? Items;
+        if (source != null)
+        {
+            foreach (var item in source)
+            {
+                AddItemToPanel(item);
+            }
+        }
+
+        InvalidateMeasure();
+    }
+
+    private void AddItemToPanel(object item)
+    {
+        if (ItemsHost == null) return;
+
+        FrameworkElement container;
+        if (IsItemItsOwnContainer(item))
+        {
+            container = (FrameworkElement)item;
+        }
+        else
+        {
+            container = GetContainerForItem(item);
+            PrepareContainerForItem(container, item);
+        }
+
+        ItemsHost.Children.Add(container);
+    }
+
+    #endregion
+
+    #region Layout
+
+    /// <inheritdoc />
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        if (ItemsHost == null)
+        {
+            RefreshItems();
+        }
+
+        if (ItemsHost != null)
+        {
+            ItemsHost.Measure(availableSize);
+            return ItemsHost.DesiredSize;
+        }
+
+        return Size.Empty;
+    }
+
+    /// <inheritdoc />
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        if (ItemsHost != null)
+        {
+            ItemsHost.Arrange(new Rect(0, 0, finalSize.Width, finalSize.Height));
+            // Note: Do NOT call SetVisualBounds here - ArrangeCore already handles margin
+        }
+
+        return finalSize;
+    }
+
+    /// <inheritdoc />
+    public override int VisualChildrenCount => ItemsHost != null ? 1 : 0;
+
+    /// <inheritdoc />
+    public override Visual? GetVisualChild(int index)
+    {
+        if (index == 0 && ItemsHost != null)
+            return ItemsHost;
+        throw new ArgumentOutOfRangeException(nameof(index));
+    }
+
+    #endregion
+
+    #region Rendering
+
+    /// <inheritdoc />
+    protected override void OnRender(object drawingContext)
+    {
+        // ItemsControl itself doesn't render anything, the items panel does
+    }
+
+    #endregion
+
+    #region Property Changed Callbacks
+
+    private static void OnItemsSourceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is ItemsControl itemsControl)
+        {
+            // Unsubscribe from old collection
+            if (e.OldValue is INotifyCollectionChanged oldCollection)
+            {
+                oldCollection.CollectionChanged -= itemsControl.OnSourceCollectionChanged;
+            }
+
+            // Subscribe to new collection
+            if (e.NewValue is INotifyCollectionChanged newCollection)
+            {
+                newCollection.CollectionChanged += itemsControl.OnSourceCollectionChanged;
+            }
+
+            itemsControl.RefreshItems();
+        }
+    }
+
+    private static void OnItemTemplateChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is ItemsControl itemsControl)
+        {
+            itemsControl.RefreshItems();
+        }
+    }
+
+    private static void OnItemsPanelChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is ItemsControl itemsControl)
+        {
+            itemsControl.ItemsHost = null;
+            itemsControl.RefreshItems();
+        }
+    }
+
+    private void OnSourceCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        // For simplicity, just refresh all items
+        // A more optimized implementation would handle Add/Remove/Replace/Move individually
+        RefreshItems();
+    }
+
+    private void OnItemsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (ItemsSource == null)
+        {
+            RefreshItems();
+        }
+    }
+
+    #endregion
+}
+
+/// <summary>
+/// Represents a collection of items in an ItemsControl.
+/// </summary>
+public class ItemCollection : IList<object>, INotifyCollectionChanged
+{
+    private readonly List<object> _items = new();
+    private readonly ItemsControl _owner;
+
+    /// <summary>
+    /// Occurs when the collection changes.
+    /// </summary>
+    public event NotifyCollectionChangedEventHandler? CollectionChanged;
+
+    internal ItemCollection(ItemsControl owner)
+    {
+        _owner = owner;
+    }
+
+    /// <summary>
+    /// Gets or sets the item at the specified index.
+    /// </summary>
+    public object this[int index]
+    {
+        get => _items[index];
+        set
+        {
+            var oldItem = _items[index];
+            _items[index] = value;
+            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(
+                NotifyCollectionChangedAction.Replace, value, oldItem, index));
+        }
+    }
+
+    /// <summary>
+    /// Gets the number of items in the collection.
+    /// </summary>
+    public int Count => _items.Count;
+
+    /// <summary>
+    /// Gets a value indicating whether the collection is read-only.
+    /// </summary>
+    public bool IsReadOnly => false;
+
+    /// <summary>
+    /// Adds an item to the collection.
+    /// </summary>
+    public void Add(object item)
+    {
+        _items.Add(item);
+        CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(
+            NotifyCollectionChangedAction.Add, item, _items.Count - 1));
+    }
+
+    /// <summary>
+    /// Clears all items from the collection.
+    /// </summary>
+    public void Clear()
+    {
+        _items.Clear();
+        CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(
+            NotifyCollectionChangedAction.Reset));
+    }
+
+    /// <summary>
+    /// Determines whether the collection contains a specific item.
+    /// </summary>
+    public bool Contains(object item) => _items.Contains(item);
+
+    /// <summary>
+    /// Copies the collection to an array.
+    /// </summary>
+    public void CopyTo(object[] array, int arrayIndex) => _items.CopyTo(array, arrayIndex);
+
+    /// <summary>
+    /// Returns an enumerator that iterates through the collection.
+    /// </summary>
+    public IEnumerator<object> GetEnumerator() => _items.GetEnumerator();
+
+    /// <summary>
+    /// Determines the index of a specific item in the collection.
+    /// </summary>
+    public int IndexOf(object item) => _items.IndexOf(item);
+
+    /// <summary>
+    /// Inserts an item at the specified index.
+    /// </summary>
+    public void Insert(int index, object item)
+    {
+        _items.Insert(index, item);
+        CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(
+            NotifyCollectionChangedAction.Add, item, index));
+    }
+
+    /// <summary>
+    /// Removes the first occurrence of a specific item from the collection.
+    /// </summary>
+    public bool Remove(object item)
+    {
+        var index = _items.IndexOf(item);
+        if (index >= 0)
+        {
+            _items.RemoveAt(index);
+            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(
+                NotifyCollectionChangedAction.Remove, item, index));
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Removes the item at the specified index.
+    /// </summary>
+    public void RemoveAt(int index)
+    {
+        var item = _items[index];
+        _items.RemoveAt(index);
+        CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(
+            NotifyCollectionChangedAction.Remove, item, index));
+    }
+
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+}
+
+/// <summary>
+/// Describes the template used to generate the panel that controls the layout of items.
+/// </summary>
+public class ItemsPanelTemplate
+{
+    /// <summary>
+    /// Gets or sets the type of panel to create.
+    /// </summary>
+    public Type? PanelType { get; set; }
+
+    /// <summary>
+    /// Creates an instance of the panel.
+    /// </summary>
+    public Panel? CreatePanel()
+    {
+        if (PanelType != null && typeof(Panel).IsAssignableFrom(PanelType))
+        {
+            return Activator.CreateInstance(PanelType) as Panel;
+        }
+        return null;
+    }
+}

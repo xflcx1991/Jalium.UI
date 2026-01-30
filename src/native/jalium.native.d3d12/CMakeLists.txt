@@ -1,0 +1,48 @@
+project(jalium.native.d3d12)
+
+set(HEADERS
+    include/d3d12_backend.h
+    include/d3d12_render_target.h
+    include/d3d12_resources.h
+)
+
+set(SOURCES
+    src/d3d12_backend.cpp
+    src/d3d12_render_target.cpp
+    src/d3d12_brush.cpp
+    src/d3d12_bitmap.cpp
+    src/d3d12_text.cpp
+    src/d3d12_init.cpp
+)
+
+add_library(${PROJECT_NAME} SHARED ${HEADERS} ${SOURCES})
+
+target_include_directories(${PROJECT_NAME}
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../jalium.native.core/include
+)
+
+target_compile_definitions(${PROJECT_NAME}
+    PRIVATE
+        JALIUM_D3D12_EXPORTS
+)
+
+# Link against jalium.native.core and Windows libraries
+target_link_libraries(${PROJECT_NAME}
+    PRIVATE
+        jalium.native.core
+        d3d12
+        dxgi
+        d3dcompiler
+        dwrite
+        d2d1
+)
+
+# Set output name
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    OUTPUT_NAME "jalium.native.d3d12"
+    DEBUG_POSTFIX "d"
+)

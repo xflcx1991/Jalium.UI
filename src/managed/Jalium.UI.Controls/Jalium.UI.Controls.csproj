@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Jalium.UI.Controls</RootNamespace>
+    <AssemblyName>Jalium.UI.Controls</AssemblyName>
+    <Description>Control library for Jalium.UI framework including Button, TextBox, Panel, and Window.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Jalium.UI.Core\Jalium.UI.Core.csproj" />
+    <ProjectReference Include="..\Jalium.UI.Media\Jalium.UI.Media.csproj" />
+    <ProjectReference Include="..\Jalium.UI.Input\Jalium.UI.Input.csproj" />
+    <ProjectReference Include="..\Jalium.UI.Interop\Jalium.UI.Interop.csproj" />
+  </ItemGroup>
+
+  <!-- Embed theme files as resources -->
+  <ItemGroup>
+    <EmbeddedResource Include="Themes\**\*.jalxaml">
+      <LogicalName>Jalium.UI.Controls.Themes.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+</Project>

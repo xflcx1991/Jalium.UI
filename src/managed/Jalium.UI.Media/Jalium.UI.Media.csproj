@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Jalium.UI.Media</RootNamespace>
+    <AssemblyName>Jalium.UI.Media</AssemblyName>
+    <Description>Media types for Jalium.UI framework including Brush, Pen, Geometry, and DrawingContext.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Jalium.UI.Core\Jalium.UI.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Jalium.UI.Interop" />
+  </ItemGroup>
+
+</Project>

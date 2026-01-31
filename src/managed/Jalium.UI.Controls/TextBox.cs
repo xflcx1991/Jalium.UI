@@ -891,7 +891,8 @@ public class TextBox : TextBoxBase, IImeSupport
             {
                 var line = _lines[i];
                 var lineEnd = line.StartIndex + line.Length;
-                var y = contentRect.Y + i * lineHeight - _verticalOffset;
+                // Round to pixel boundaries to prevent sub-pixel jittering
+                var y = Math.Round(contentRect.Y + i * lineHeight - _verticalOffset);
 
                 // Skip lines outside visible area
                 if (y + lineHeight < contentRect.Y || y > contentRect.Y + contentRect.Height)
@@ -910,7 +911,7 @@ public class TextBox : TextBoxBase, IImeSupport
                         var textBefore = lineText.Substring(0, startInLine);
                         var errorText = lineText.Substring(startInLine, endInLine - startInLine);
 
-                        var startX = contentRect.X + MeasureTextWidth(textBefore) - _horizontalOffset;
+                        var startX = Math.Round(contentRect.X + MeasureTextWidth(textBefore) - _horizontalOffset);
                         var endX = startX + MeasureTextWidth(errorText);
                         var underlineY = y + lineHeight - 2;
 
@@ -1011,8 +1012,9 @@ public class TextBox : TextBoxBase, IImeSupport
         var lineText = GetLineTextInternal(lineIndex);
         var textBeforeCaret = lineText.Substring(0, Math.Min(columnIndex, lineText.Length));
 
-        var x = contentRect.X + MeasureTextWidth(textBeforeCaret) - _horizontalOffset;
-        var y = contentRect.Y + lineIndex * lineHeight - _verticalOffset;
+        // Round to pixel boundaries to prevent sub-pixel jittering
+        var x = Math.Round(contentRect.X + MeasureTextWidth(textBeforeCaret) - _horizontalOffset);
+        var y = Math.Round(contentRect.Y + lineIndex * lineHeight - _verticalOffset);
 
         // Draw composition background
         var compositionWidth = MeasureTextWidth(_imeCompositionString);

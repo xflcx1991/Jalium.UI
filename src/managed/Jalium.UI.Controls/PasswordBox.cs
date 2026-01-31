@@ -224,7 +224,8 @@ public class PasswordBox : Control
         var fontFamily = FontFamily ?? "Segoe UI";
         var fontSize = FontSize > 0 ? FontSize : 14;
         var fontMetrics = TextMeasurement.GetFontMetrics(fontFamily, fontSize);
-        var lineHeight = fontMetrics.LineHeight;
+        // Round lineHeight to ensure consistent sizing with rendering
+        var lineHeight = Math.Round(fontMetrics.LineHeight);
 
         // Measure the password character to get actual width
         var passwordCharStr = new string(PasswordChar, 1);
@@ -306,13 +307,18 @@ public class PasswordBox : Control
         var fontFamily = FontFamily ?? "Segoe UI";
         var fontSize = FontSize > 0 ? FontSize : 14;
         var fontMetrics = TextMeasurement.GetFontMetrics(fontFamily, fontSize);
-        var lineHeight = fontMetrics.LineHeight;
+        // Round lineHeight to avoid sub-pixel positioning issues
+        var lineHeight = Math.Round(fontMetrics.LineHeight);
 
         // Measure the password character to get actual width
         var passwordCharStr = new string(PasswordChar, 1);
         var passwordCharText = new FormattedText(passwordCharStr, fontFamily, fontSize);
         TextMeasurement.MeasureText(passwordCharText);
         var charWidth = passwordCharText.Width;
+
+        // Round to pixel boundaries to prevent sub-pixel jittering
+        var textX = Math.Round(contentRect.X);
+        var textY = Math.Round(contentRect.Y);
 
         // Draw masked password or placeholder
         if (string.IsNullOrEmpty(_password))
@@ -325,9 +331,9 @@ public class PasswordBox : Control
                 {
                     Foreground = placeholderBrush,
                     MaxTextWidth = contentRect.Width,
-                    MaxTextHeight = contentRect.Height
+                    MaxTextHeight = lineHeight
                 };
-                dc.DrawText(formattedPlaceholder, new Point(contentRect.X, contentRect.Y));
+                dc.DrawText(formattedPlaceholder, new Point(textX, textY));
             }
         }
         else
@@ -338,9 +344,9 @@ public class PasswordBox : Control
             {
                 Foreground = Foreground,
                 MaxTextWidth = contentRect.Width,
-                MaxTextHeight = contentRect.Height
+                MaxTextHeight = lineHeight
             };
-            dc.DrawText(formattedText, new Point(contentRect.X, contentRect.Y));
+            dc.DrawText(formattedText, new Point(textX, textY));
         }
 
         // Draw caret
@@ -362,12 +368,14 @@ public class PasswordBox : Control
         if (CaretBrush == null)
             return;
 
-        var caretX = contentRect.X + _caretIndex * charWidth;
+        // Round to pixel boundaries to prevent sub-pixel jittering
+        var caretX = Math.Round(contentRect.X + _caretIndex * charWidth);
+        var caretY = Math.Round(contentRect.Y);
         var caretPen = new Pen(CaretBrush, 1);
 
         dc.DrawLine(caretPen,
-            new Point(caretX, contentRect.Y),
-            new Point(caretX, contentRect.Y + lineHeight));
+            new Point(caretX, caretY),
+            new Point(caretX, caretY + lineHeight));
     }
 
     #endregion

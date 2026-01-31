@@ -503,4 +503,337 @@
         <Setter Property="Background" Value="Transparent" />
     </Style>
 
+    <!-- ============================================== -->
+    <!-- PRIMITIVES SECTION -->
+    <!-- ============================================== -->
+
+    <!-- ============================================== -->
+    <!-- Thumb Style -->
+    <!-- ============================================== -->
+    <Style TargetType="Thumb">
+        <Setter Property="Background" Value="{StaticResource ScrollBarThumb}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="CornerRadius" Value="4" />
+
+        <Style.Triggers>
+            <PropertyTrigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource ScrollBarThumbHover}" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsDragging" Value="True">
+                <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+            </PropertyTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ============================================== -->
+    <!-- RepeatButton Style -->
+    <!-- ============================================== -->
+    <Style TargetType="RepeatButton">
+        <Setter Property="Background" Value="{StaticResource ControlBackground}" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        <Setter Property="BorderBrush" Value="{StaticResource ControlBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="8,4,8,4" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="FontSize" Value="14" />
+
+        <Style.Triggers>
+            <PropertyTrigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource ControlBackgroundHover}" />
+                <Setter Property="BorderBrush" Value="{StaticResource ControlBorderHover}" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{StaticResource ControlBackgroundPressed}" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsEnabled" Value="False">
+                <Setter Property="Background" Value="{StaticResource ControlBackgroundDisabled}" />
+                <Setter Property="Foreground" Value="{StaticResource TextDisabled}" />
+                <Setter Property="BorderBrush" Value="{StaticResource ControlBorderDisabled}" />
+            </PropertyTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ============================================== -->
+    <!-- Track Style -->
+    <!-- ============================================== -->
+    <Style TargetType="Track">
+        <Setter Property="Background" Value="{StaticResource ScrollBarTrack}" />
+    </Style>
+
+    <!-- ============================================== -->
+    <!-- ScrollBar Style -->
+    <!-- ============================================== -->
+    <Style TargetType="ScrollBar">
+        <Setter Property="Background" Value="{StaticResource ScrollBarTrack}" />
+        <Setter Property="Foreground" Value="{StaticResource ScrollBarThumb}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="MinWidth" Value="12" />
+        <Setter Property="MinHeight" Value="12" />
+
+        <Style.Triggers>
+            <PropertyTrigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{StaticResource ControlBackgroundDisabled}" />
+            </PropertyTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ============================================== -->
+    <!-- TickBar Style -->
+    <!-- ============================================== -->
+    <Style TargetType="TickBar">
+        <Setter Property="Fill" Value="{StaticResource TextSecondary}" />
+    </Style>
+
+    <!-- ============================================== -->
+    <!-- Calendar Primitive Styles -->
+    <!-- ============================================== -->
+
+    <!-- CalendarButton Style (Month/Year buttons) -->
+    <Style TargetType="CalendarButton">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="4" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+
+        <Style.Triggers>
+            <PropertyTrigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource HighlightBackground}" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{StaticResource ControlBackgroundPressed}" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="HasSelectedDays" Value="True">
+                <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+                <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsInactive" Value="True">
+                <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+            </PropertyTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- CalendarDayButton Style -->
+    <Style TargetType="CalendarDayButton">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Width" Value="32" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+
+        <Style.Triggers>
+            <PropertyTrigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource HighlightBackground}" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsToday" Value="True">
+                <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                <Setter Property="BorderThickness" Value="2" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsSelected" Value="True">
+                <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsBlackedOut" Value="True">
+                <Setter Property="Foreground" Value="{StaticResource TextDisabled}" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsInactive" Value="True">
+                <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsHighlighted" Value="True">
+                <Setter Property="Background" Value="{StaticResource HighlightBackground}" />
+            </PropertyTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- CalendarItem Style -->
+    <Style TargetType="CalendarItem">
+        <Setter Property="Background" Value="{StaticResource SurfaceBackground}" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        <Setter Property="BorderBrush" Value="{StaticResource ControlBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="FontSize" Value="14" />
+    </Style>
+
+    <!-- ============================================== -->
+    <!-- DataGrid Primitive Styles -->
+    <!-- ============================================== -->
+
+    <!-- DataGridColumnHeader Style -->
+    <Style TargetType="DataGridColumnHeader">
+        <Setter Property="Background" Value="{StaticResource SurfaceBackground}" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        <Setter Property="BorderBrush" Value="{StaticResource ControlBorder}" />
+        <Setter Property="BorderThickness" Value="0,0,1,1" />
+        <Setter Property="Padding" Value="8,4,8,4" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+
+        <Style.Triggers>
+            <PropertyTrigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource HighlightBackground}" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{StaticResource ControlBackgroundPressed}" />
+            </PropertyTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- DataGridRowHeader Style -->
+    <Style TargetType="DataGridRowHeader">
+        <Setter Property="Background" Value="{StaticResource SurfaceBackground}" />
+        <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+        <Setter Property="BorderBrush" Value="{StaticResource ControlBorder}" />
+        <Setter Property="BorderThickness" Value="0,0,1,1" />
+        <Setter Property="Width" Value="20" />
+
+        <Style.Triggers>
+            <PropertyTrigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource HighlightBackground}" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsRowSelected" Value="True">
+                <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+            </PropertyTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- DataGridCellsPresenter Style -->
+    <Style TargetType="DataGridCellsPresenter">
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <!-- DataGridColumnHeadersPresenter Style -->
+    <Style TargetType="DataGridColumnHeadersPresenter">
+        <Setter Property="Background" Value="{StaticResource SurfaceBackground}" />
+    </Style>
+
+    <!-- DataGridRowsPresenter Style -->
+    <Style TargetType="DataGridRowsPresenter">
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <!-- DataGridDetailsPresenter Style -->
+    <Style TargetType="DataGridDetailsPresenter">
+        <Setter Property="Background" Value="{StaticResource SurfaceBackground}" />
+        <Setter Property="BorderBrush" Value="{StaticResource ControlBorder}" />
+        <Setter Property="BorderThickness" Value="0,1,0,0" />
+        <Setter Property="Padding" Value="8" />
+    </Style>
+
+    <!-- ============================================== -->
+    <!-- Menu Primitive Styles -->
+    <!-- ============================================== -->
+
+    <!-- MenuBase is abstract, styles for Menu/ContextMenu are in main styles -->
+
+    <!-- ============================================== -->
+    <!-- ToolBar Primitive Styles -->
+    <!-- ============================================== -->
+
+    <!-- ToolBarPanel Style -->
+    <Style TargetType="ToolBarPanel">
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <!-- ToolBarOverflowPanel Style -->
+    <Style TargetType="ToolBarOverflowPanel">
+        <Setter Property="Background" Value="{StaticResource SurfaceBackground}" />
+        <Setter Property="WrapWidth" Value="200" />
+    </Style>
+
+    <!-- ============================================== -->
+    <!-- Layout Panel Styles -->
+    <!-- ============================================== -->
+
+    <!-- BulletDecorator Style -->
+    <Style TargetType="BulletDecorator">
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <!-- UniformGrid Style -->
+    <Style TargetType="UniformGrid">
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <!-- TabPanel Style -->
+    <Style TargetType="TabPanel">
+        <Setter Property="Background" Value="{StaticResource TabStripBackground}" />
+    </Style>
+
+    <!-- SelectiveScrollingGrid Style -->
+    <Style TargetType="SelectiveScrollingGrid">
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <!-- ============================================== -->
+    <!-- StatusBar Primitive Styles -->
+    <!-- ============================================== -->
+
+    <!-- StatusBarItem Style -->
+    <Style TargetType="StatusBarItem">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+        <Setter Property="Padding" Value="8,2,8,2" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <!-- ============================================== -->
+    <!-- DatePicker Primitive Styles -->
+    <!-- ============================================== -->
+
+    <!-- DatePickerTextBox Style -->
+    <Style TargetType="DatePickerTextBox">
+        <Setter Property="Background" Value="{StaticResource SurfaceBackground}" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        <Setter Property="BorderBrush" Value="{StaticResource ControlBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="8,6,8,6" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="FontSize" Value="14" />
+
+        <Style.Triggers>
+            <PropertyTrigger Property="IsMouseOver" Value="True">
+                <Setter Property="BorderBrush" Value="{StaticResource ControlBorderHover}" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsFocused" Value="True">
+                <Setter Property="BorderBrush" Value="{StaticResource ControlBorderFocused}" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsEnabled" Value="False">
+                <Setter Property="Background" Value="{StaticResource ControlBackgroundDisabled}" />
+                <Setter Property="Foreground" Value="{StaticResource TextDisabled}" />
+            </PropertyTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ============================================== -->
+    <!-- Document Primitive Styles -->
+    <!-- ============================================== -->
+
+    <!-- DocumentPageView Style -->
+    <Style TargetType="DocumentPageView">
+        <Setter Property="Background" Value="{StaticResource WindowBackground}" />
+        <Setter Property="BorderBrush" Value="{StaticResource ControlBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+
+    <!-- ============================================== -->
+    <!-- ResizeGrip Style -->
+    <!-- ============================================== -->
+    <Style TargetType="ResizeGrip">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+        <Setter Property="Width" Value="12" />
+        <Setter Property="Height" Value="12" />
+    </Style>
+
 </ResourceDictionary>

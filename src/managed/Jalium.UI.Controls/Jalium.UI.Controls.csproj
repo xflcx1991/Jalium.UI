@@ -13,11 +13,9 @@
     <ProjectReference Include="..\Jalium.UI.Interop\Jalium.UI.Interop.csproj" />
   </ItemGroup>
 
-  <!-- Embed theme files as resources -->
+  <!-- Embed theme files as resources (default naming: Jalium.UI.Controls.Themes.{path}.{filename}.jalxaml) -->
   <ItemGroup>
-    <EmbeddedResource Include="Themes\**\*.jalxaml">
-      <LogicalName>Jalium.UI.Controls.Themes.%(Filename)%(Extension)</LogicalName>
-    </EmbeddedResource>
+    <EmbeddedResource Include="Themes\**\*.jalxaml" />
   </ItemGroup>
 
 </Project>

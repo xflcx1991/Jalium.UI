@@ -45,6 +45,34 @@ public static class XamlReader
     }
 
     /// <summary>
+    /// Reads XAML from a stream and creates an object tree with assembly context.
+    /// </summary>
+    /// <param name="stream">The stream containing XAML.</param>
+    /// <param name="resourceName">The embedded resource name (used for resolving relative paths).</param>
+    /// <param name="sourceAssembly">The assembly containing the resource.</param>
+    /// <returns>The root of the created object tree.</returns>
+    public static object Load(Stream stream, string resourceName, Assembly sourceAssembly)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        ArgumentNullException.ThrowIfNull(resourceName);
+        ArgumentNullException.ThrowIfNull(sourceAssembly);
+
+        using var textReader = new StreamReader(stream);
+        var settings = new XmlReaderSettings
+        {
+            IgnoreComments = true,
+            IgnoreWhitespace = true,
+            IgnoreProcessingInstructions = true
+        };
+
+        // Create base URI from resource name (use file-like path for relative resolution)
+        var baseUri = new Uri($"resource:///{sourceAssembly.GetName().Name}/{resourceName}", UriKind.Absolute);
+
+        using var xmlReader = XmlReader.Create(textReader, settings);
+        return LoadInternal(xmlReader, null, baseUri, sourceAssembly);
+    }
+
+    /// <summary>
     /// Reads XAML from a text reader and creates an object tree.
     /// </summary>
     /// <param name="reader">The text reader containing XAML.</param>
@@ -61,7 +89,7 @@ public static class XamlReader
         };
 
         using var xmlReader = XmlReader.Create(reader, settings);
-        return LoadInternal(xmlReader, null);
+        return LoadInternal(xmlReader, null, null, null);
     }
 
     /// <summary>
@@ -94,8 +122,11 @@ public static class XamlReader
                 IgnoreProcessingInstructions = true
             };
 
+            // Create base URI from resource name (use file-like path for relative resolution)
+            var baseUri = new Uri($"resource:///{assembly.GetName().Name}/{resourceName}", UriKind.Absolute);
+
             using var xmlReader = XmlReader.Create(textReader, settings);
-            LoadInternal(xmlReader, component);
+            LoadInternal(xmlReader, component, baseUri, assembly);
         }
     }
 
@@ -118,9 +149,14 @@ public static class XamlReader
         return stream;
     }
 
-    private static object LoadInternal(XmlReader reader, object? existingInstance)
+    private static object LoadInternal(XmlReader reader, object? existingInstance, Uri? baseUri, Assembly? sourceAssembly, ResourceDictionary? parentResourceDictionary = null)
     {
-        var context = new XamlParserContext();
+        var context = new XamlParserContext
+        {
+            BaseUri = baseUri,
+            SourceAssembly = sourceAssembly,
+            ParentResourceDictionary = parentResourceDictionary
+        };
 
         while (reader.Read())
         {
@@ -493,6 +529,166 @@ public static class XamlReader
         }
     }
 
+    /// <summary>
+    /// Handles the Source property on ResourceDictionary by loading the external XAML file.
+    /// </summary>
+    private static void HandleResourceDictionarySource(ResourceDictionary resourceDict, string sourceValue, XamlParserContext context)
+    {
+        // Create URI from source value
+        Uri sourceUri;
+        if (Uri.TryCreate(sourceValue, UriKind.Absolute, out var absoluteUri))
+        {
+            sourceUri = absoluteUri;
+        }
+        else
+        {
+            // Relative URI - resolve against BaseUri
+            if (context.BaseUri != null)
+            {
+                // For pack:// URIs, we need to handle the path resolution differently
+                var baseUriString = context.BaseUri.ToString();
+                var lastSlash = baseUriString.LastIndexOf('/');
+                if (lastSlash >= 0)
+                {
+                    var basePath = baseUriString.Substring(0, lastSlash + 1);
+                    sourceUri = new Uri(basePath + sourceValue, UriKind.Absolute);
+                }
+                else
+                {
+                    sourceUri = new Uri(context.BaseUri, sourceValue);
+                }
+            }
+            else
+            {
+                sourceUri = new Uri(sourceValue, UriKind.Relative);
+            }
+        }
+
+        // Store the Source URI on the ResourceDictionary
+        resourceDict.Source = sourceUri;
+        resourceDict.BaseUri = context.BaseUri;
+        resourceDict.SourceAssembly = context.SourceAssembly;
+
+        // Find the parent ResourceDictionary (the one that will contain this in MergedDictionaries)
+        // The parent is needed so child XAML can reference resources from sibling dictionaries
+        var parentDict = context.FindParentResourceDictionary(resourceDict);
+
+        // Use the SourceLoader callback to load the external XAML
+        if (ResourceDictionary.SourceLoader != null)
+        {
+            var loadedDict = ResourceDictionary.SourceLoader(resourceDict, sourceUri, context.SourceAssembly);
+            if (loadedDict != null)
+            {
+                // Copy the loaded content into the current ResourceDictionary
+                resourceDict.CopyFrom(loadedDict);
+            }
+        }
+        else
+        {
+            // No SourceLoader registered - try to load directly
+            LoadResourceDictionaryFromUri(resourceDict, sourceUri, context, parentDict);
+        }
+    }
+
+    /// <summary>
+    /// Loads a ResourceDictionary from a URI using embedded resources.
+    /// </summary>
+    private static void LoadResourceDictionaryFromUri(ResourceDictionary resourceDict, Uri sourceUri, XamlParserContext context, ResourceDictionary? parentDict = null)
+    {
+        var assembly = context.SourceAssembly;
+
+        // Convert URI to resource name
+        string resourceName;
+        var uriString = sourceUri.ToString();
+
+        // Handle resource:// URIs (our custom scheme)
+        if (uriString.StartsWith("resource:///"))
+        {
+            var path = uriString.Substring("resource:///".Length);
+            // Extract assembly name and resource path (format: AssemblyName/path/to/resource)
+            var firstSlash = path.IndexOf('/');
+            if (firstSlash >= 0)
+            {
+                var assemblyName = path.Substring(0, firstSlash);
+                resourceName = path.Substring(firstSlash + 1);
+
+                // Try to find the assembly
+                var loadedAssembly = AppDomain.CurrentDomain.GetAssemblies()
+                    .FirstOrDefault(a => a.GetName().Name == assemblyName);
+                if (loadedAssembly != null)
+                {
+                    assembly = loadedAssembly;
+                }
+            }
+            else
+            {
+                resourceName = path;
+            }
+        }
+        else if (sourceUri.IsAbsoluteUri)
+        {
+            resourceName = sourceUri.LocalPath.TrimStart('/');
+        }
+        else
+        {
+            resourceName = uriString;
+        }
+
+        // If assembly is still null, try to get it from the ResourceDictionary or find by convention
+        if (assembly == null)
+        {
+            // Try to get from the ResourceDictionary's stored assembly
+            assembly = resourceDict.SourceAssembly;
+        }
+
+        if (assembly == null)
+        {
+            // Try to find Jalium.UI.Controls assembly as fallback for theme resources
+            assembly = AppDomain.CurrentDomain.GetAssemblies()
+                .FirstOrDefault(a => a.GetName().Name == "Jalium.UI.Controls");
+        }
+
+        if (assembly == null)
+        {
+            throw new XamlParseException($"Cannot load ResourceDictionary from '{sourceUri}': no source assembly available.");
+        }
+
+        // Normalize the resource name (replace slashes with dots for embedded resources)
+        var normalizedResourceName = resourceName.Replace('/', '.').Replace('\\', '.');
+
+        // Try to load the embedded resource
+        var stream = GetResourceStream(normalizedResourceName, assembly);
+        if (stream == null)
+        {
+            // Try with the original path format
+            stream = GetResourceStream(resourceName, assembly);
+        }
+
+        if (stream == null)
+        {
+            throw new XamlParseException($"Cannot find embedded resource '{resourceName}' in assembly '{assembly.GetName().Name}'.");
+        }
+
+        using (stream)
+        using (var textReader = new StreamReader(stream))
+        {
+            var settings = new XmlReaderSettings
+            {
+                IgnoreComments = true,
+                IgnoreWhitespace = true,
+                IgnoreProcessingInstructions = true
+            };
+
+            // Create new context with updated BaseUri for the loaded file
+            // Pass the parent dictionary so child XAML can reference resources from sibling dictionaries
+            using var xmlReader = XmlReader.Create(textReader, settings);
+            var loadedDict = (ResourceDictionary)LoadInternal(xmlReader, null, sourceUri, assembly, parentDict);
+
+            // Copy the loaded content into the current ResourceDictionary
+            resourceDict.CopyFrom(loadedDict);
+        }
+    }
+
     [UnconditionalSuppressMessage("AOT", "IL2070:Target method argument",
         Justification = "Types are registered in XamlTypeRegistry with DynamicallyAccessedMembers")]
     private static void SetProperty(object instance, string propertyName, object? value, XamlParserContext context)
@@ -508,6 +704,13 @@ public static class XamlReader
 
         if (!property.CanWrite)
         {
+            return;
+        }
+
+        // Special handling for ResourceDictionary.Source
+        if (instance is ResourceDictionary resourceDict && propertyName == "Source" && value is string sourceValue)
+        {
+            HandleResourceDictionarySource(resourceDict, sourceValue, context);
             return;
         }
 
@@ -779,6 +982,23 @@ internal class XamlParserContext : IAmbientResourceProvider
     private string? _currentResourceKey;
 
     /// <summary>
+    /// Gets or sets the base URI for resolving relative Source paths.
+    /// </summary>
+    public Uri? BaseUri { get; set; }
+
+    /// <summary>
+    /// Gets or sets the assembly used for loading embedded resources.
+    /// </summary>
+    public Assembly? SourceAssembly { get; set; }
+
+    /// <summary>
+    /// Gets or sets the parent ResourceDictionary for ambient resource lookup.
+    /// This is used when loading child ResourceDictionaries (via Source) to allow
+    /// them to reference resources from already-loaded sibling dictionaries.
+    /// </summary>
+    public ResourceDictionary? ParentResourceDictionary { get; set; }
+
+    /// <summary>
     /// Sets the current resource key (from x:Key attribute).
     /// </summary>
     public void SetCurrentResourceKey(string key) => _currentResourceKey = key;
@@ -794,7 +1014,7 @@ internal class XamlParserContext : IAmbientResourceProvider
     public void ClearCurrentResourceKey() => _currentResourceKey = null;
 
     /// <summary>
-    /// Tries to find a resource by key in the ambient resource dictionaries (parent stack).
+    /// Tries to find a resource by key in the ambient resource dictionaries (parent stack and parent dictionary).
     /// </summary>
     public bool TryGetResource(object key, out object? value)
     {
@@ -805,6 +1025,14 @@ internal class XamlParserContext : IAmbientResourceProvider
             {
                 return true;
             }
+        }
+
+        // Search through the parent ResourceDictionary's MergedDictionaries
+        // This allows child XAML files to reference resources from sibling dictionaries
+        // that were loaded earlier (e.g., Button.jalxaml can reference Colors.jalxaml resources)
+        if (ParentResourceDictionary != null && ParentResourceDictionary.TryGetValue(key, out value))
+        {
+            return true;
         }
 
         value = null;
@@ -832,6 +1060,29 @@ internal class XamlParserContext : IAmbientResourceProvider
                 return typed;
         }
         return null;
+    }
+
+    /// <summary>
+    /// Finds the parent ResourceDictionary that will contain the specified child dictionary.
+    /// This skips the child itself in the parent stack.
+    /// </summary>
+    public ResourceDictionary? FindParentResourceDictionary(ResourceDictionary child)
+    {
+        bool foundChild = false;
+        foreach (var parent in _parentStack)
+        {
+            if (parent == child)
+            {
+                foundChild = true;
+                continue;
+            }
+            if (foundChild && parent is ResourceDictionary rd)
+            {
+                return rd;
+            }
+        }
+        // If the child wasn't found, just return the first ResourceDictionary
+        return FindParent<ResourceDictionary>();
     }
 
     /// <summary>

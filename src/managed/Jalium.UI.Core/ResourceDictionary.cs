@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
 
 namespace Jalium.UI;
 
@@ -11,11 +12,63 @@ public class ResourceDictionary : IDictionary<object, object?>, IDictionary
 {
     private readonly Dictionary<object, object?> _innerDictionary = new();
     private readonly List<ResourceDictionary> _mergedDictionaries = new();
+    private Uri? _source;
 
     /// <summary>
     /// Gets a collection of merged dictionaries.
     /// </summary>
     public IList<ResourceDictionary> MergedDictionaries => _mergedDictionaries;
+
+    /// <summary>
+    /// Gets or sets the uniform resource identifier (URI) to load resources from.
+    /// When set, the dictionary loads resources from the specified location.
+    /// </summary>
+    /// <remarks>
+    /// The Source property is used to load resources from an external XAML file.
+    /// Relative paths are resolved against the BaseUri of the parent dictionary.
+    /// The actual loading is performed by the XAML parser during parsing.
+    /// </remarks>
+    public Uri? Source
+    {
+        get => _source;
+        set => _source = value;
+    }
+
+    /// <summary>
+    /// Gets or sets the base URI for resolving relative Source paths.
+    /// This is typically set by the XAML parser during loading.
+    /// </summary>
+    internal Uri? BaseUri { get; set; }
+
+    /// <summary>
+    /// Gets or sets the assembly used for loading embedded resources.
+    /// This is typically set by the XAML parser during loading.
+    /// </summary>
+    internal Assembly? SourceAssembly { get; set; }
+
+    /// <summary>
+    /// Gets or sets a callback used by the XAML parser to load ResourceDictionary from Source.
+    /// This allows the Core assembly to remain independent of the Xaml assembly.
+    /// </summary>
+    public static Func<ResourceDictionary, Uri, Assembly?, ResourceDictionary?>? SourceLoader { get; set; }
+
+    /// <summary>
+    /// Copies all resources from another dictionary into this one.
+    /// </summary>
+    /// <param name="source">The source dictionary to copy from.</param>
+    internal void CopyFrom(ResourceDictionary source)
+    {
+        foreach (var kvp in source._innerDictionary)
+        {
+            _innerDictionary[kvp.Key] = kvp.Value;
+        }
+
+        // Also copy merged dictionaries
+        foreach (var merged in source._mergedDictionaries)
+        {
+            _mergedDictionaries.Add(merged);
+        }
+    }
 
     /// <summary>
     /// Gets the number of items in this dictionary (not including merged dictionaries).

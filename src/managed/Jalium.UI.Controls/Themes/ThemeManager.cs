@@ -71,24 +71,40 @@ public static class ThemeManager
                 return null;
             }
 
-            // Get the Load(Stream) method
-            var loadMethod = xamlReaderType.GetMethod("Load", [typeof(Stream)]);
+            // Get the Load(Stream, string, Assembly) method for proper context
+            var loadMethod = xamlReaderType.GetMethod("Load", [typeof(Stream), typeof(string), typeof(Assembly)]);
             if (loadMethod == null)
             {
-                System.Diagnostics.Debug.WriteLine("Warning: XamlReader.Load(Stream) method not found.");
-                return null;
+                // Fallback to Load(Stream) if new overload not available
+                loadMethod = xamlReaderType.GetMethod("Load", [typeof(Stream)]);
+                if (loadMethod == null)
+                {
+                    System.Diagnostics.Debug.WriteLine("Warning: XamlReader.Load method not found.");
+                    return null;
+                }
+
+                // Get the theme stream
+                using var stream = GetGenericThemeStream();
+                if (stream == null)
+                {
+                    return null;
+                }
+
+                // Invoke XamlReader.Load(stream)
+                var result = loadMethod.Invoke(null, [stream]);
+                return result as ResourceDictionary;
             }
 
             // Get the theme stream
-            using var stream = GetGenericThemeStream();
-            if (stream == null)
+            using var themeStream = GetGenericThemeStream();
+            if (themeStream == null)
             {
                 return null;
             }
 
-            // Invoke XamlReader.Load(stream)
-            var result = loadMethod.Invoke(null, [stream]);
-            return result as ResourceDictionary;
+            // Invoke XamlReader.Load(stream, resourceName, assembly) with proper context
+            var themeResult = loadMethod.Invoke(null, [themeStream, "Themes/Generic.jalxaml", ControlsAssembly]);
+            return themeResult as ResourceDictionary;
         }
         catch (Exception ex)
         {

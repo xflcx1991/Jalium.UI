@@ -3,6 +3,8 @@ using System.Reflection;
 using System.Xml;
 using Jalium.UI;
 using Jalium.UI.Controls;
+using Jalium.UI.Controls.Primitives;
+using Jalium.UI.Controls.Shapes;
 using Jalium.UI.Media;
 
 namespace Jalium.UI.Markup;
@@ -244,8 +246,18 @@ public static class XamlReader
                 ParseAttributes(reader, instance, context);
             }
 
-            // Parse child content
-            if (!reader.IsEmptyElement)
+            // Special handling for ControlTemplate - capture inner XML for deferred parsing
+            if (instance is ControlTemplate controlTemplate && !reader.IsEmptyElement)
+            {
+                ParseControlTemplateContent(reader, controlTemplate, context);
+            }
+            // Special handling for DataTemplate - capture inner XML for deferred parsing
+            else if (instance is DataTemplate dataTemplate && !reader.IsEmptyElement)
+            {
+                ParseDataTemplateContent(reader, dataTemplate, context);
+            }
+            // Parse child content normally
+            else if (!reader.IsEmptyElement)
             {
                 ParseContent(reader, instance, context);
             }
@@ -527,6 +539,205 @@ public static class XamlReader
             var addMethod = collection.GetType().GetMethod("Add");
             addMethod?.Invoke(collection, [item]);
         }
+    }
+
+    /// <summary>
+    /// Parses ControlTemplate content, capturing the visual tree XAML for deferred parsing.
+    /// </summary>
+    private static void ParseControlTemplateContent(XmlReader reader, ControlTemplate template, XamlParserContext context)
+    {
+        int depth = reader.Depth;
+        var visualTreeXaml = new System.Text.StringBuilder();
+        bool hasVisualTree = false;
+        bool skipRead = false; // Flag to skip Read() after ReadOuterXml()
+
+        while (skipRead || reader.Read())
+        {
+            skipRead = false;
+
+            // Check for end of ControlTemplate
+            if (reader.NodeType == XmlNodeType.EndElement && reader.Depth == depth)
+            {
+                break;
+            }
+
+            // Skip whitespace and other non-element content
+            if (reader.NodeType != XmlNodeType.Element)
+            {
+                continue;
+            }
+
+            // Check if this is a property element (e.g., ControlTemplate.Triggers)
+            if (reader.LocalName.Contains('.'))
+            {
+                var parts = reader.LocalName.Split('.');
+                if (parts.Length == 2 && parts[1] == "Triggers")
+                {
+                    // Parse triggers normally
+                    ParseControlTemplateTriggers(reader, template, context);
+                }
+                else
+                {
+                    // Skip unknown property elements
+                    SkipElement(reader);
+                }
+            }
+            else if (!hasVisualTree)
+            {
+                // First non-property child is the visual tree root
+                // Capture it as XML for deferred parsing
+                visualTreeXaml.Append(reader.ReadOuterXml());
+                hasVisualTree = true;
+
+                // ReadOuterXml advances the reader past this element to the next node
+                // We need to process the current node without calling Read() again
+                skipRead = true;
+            }
+            else
+            {
+                // Only one visual tree root is allowed
+                throw new XamlParseException("ControlTemplate can only have one visual tree root element.");
+            }
+        }
+
+        // Store the captured XAML for deferred parsing
+        if (hasVisualTree)
+        {
+            template.VisualTreeXaml = visualTreeXaml.ToString();
+            template.SourceAssembly = context.SourceAssembly;
+
+            // Register the XAML parser callback if not already set
+            if (ControlTemplate.XamlParser == null)
+            {
+                ControlTemplate.XamlParser = ParseTemplateXaml;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Parses the Triggers property element of a ControlTemplate.
+    /// </summary>
+    private static void ParseControlTemplateTriggers(XmlReader reader, ControlTemplate template, XamlParserContext context)
+    {
+        int depth = reader.Depth;
+        var isEmpty = reader.IsEmptyElement;
+
+        if (isEmpty) return;
+
+        while (reader.Read())
+        {
+            if (reader.NodeType == XmlNodeType.EndElement && reader.Depth == depth)
+            {
+                break;
+            }
+
+            if (reader.NodeType == XmlNodeType.Element)
+            {
+                var trigger = ParseElement(reader, context);
+                if (trigger is Trigger t)
+                {
+                    template.Triggers.Add(t);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Parses DataTemplate content, capturing the visual tree XAML for deferred parsing.
+    /// </summary>
+    private static void ParseDataTemplateContent(XmlReader reader, DataTemplate template, XamlParserContext context)
+    {
+        int depth = reader.Depth;
+        var visualTreeXaml = new System.Text.StringBuilder();
+        bool hasVisualTree = false;
+
+        while (reader.Read())
+        {
+            if (reader.NodeType == XmlNodeType.EndElement && reader.Depth == depth)
+            {
+                break;
+            }
+
+            switch (reader.NodeType)
+            {
+                case XmlNodeType.Element:
+                    if (!hasVisualTree)
+                    {
+                        // Capture the visual tree as XML
+                        visualTreeXaml.Append(reader.ReadOuterXml());
+                        hasVisualTree = true;
+                    }
+                    else
+                    {
+                        throw new XamlParseException("DataTemplate can only have one visual tree root element.");
+                    }
+                    break;
+            }
+        }
+
+        // Store the captured XAML for deferred parsing
+        if (hasVisualTree)
+        {
+            template.VisualTreeXaml = visualTreeXaml.ToString();
+            template.SourceAssembly = context.SourceAssembly;
+
+            // Register the XAML parser callback if not already set
+            if (DataTemplate.XamlParser == null)
+            {
+                DataTemplate.XamlParser = ParseTemplateXaml;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Skips the current element and all its content.
+    /// </summary>
+    private static void SkipElement(XmlReader reader)
+    {
+        if (reader.IsEmptyElement) return;
+
+        int depth = reader.Depth;
+        while (reader.Read())
+        {
+            if (reader.NodeType == XmlNodeType.EndElement && reader.Depth == depth)
+            {
+                break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Parses template XAML content and returns the root element.
+    /// </summary>
+    private static FrameworkElement? ParseTemplateXaml(string xaml, Assembly? sourceAssembly)
+    {
+        if (string.IsNullOrEmpty(xaml))
+            return null;
+
+        using var stringReader = new StringReader(xaml);
+        var settings = new XmlReaderSettings
+        {
+            IgnoreComments = true,
+            IgnoreWhitespace = true,
+            IgnoreProcessingInstructions = true
+        };
+
+        using var xmlReader = XmlReader.Create(stringReader, settings);
+        var context = new XamlParserContext
+        {
+            SourceAssembly = sourceAssembly
+        };
+
+        while (xmlReader.Read())
+        {
+            if (xmlReader.NodeType == XmlNodeType.Element)
+            {
+                var result = ParseElement(xmlReader, context);
+                return result as FrameworkElement;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -1224,6 +1435,7 @@ public static class XamlTypeRegistry
         RegisterCoreTypes(types);
         RegisterControlTypes(types);
         RegisterMediaTypes(types);
+        RegisterShapeTypes(types);
 
         return types;
     }
@@ -1242,6 +1454,8 @@ public static class XamlTypeRegistry
         Register<PropertyTrigger>(types);
         Register<DataTrigger>(types);
         Register<EventTrigger>(types);
+        Register<ControlTemplate>(types);
+        Register<DataTemplate>(types);
         Register<ResourceDictionary>(types);
         Register<Binding>(types);
         Register<BindingBase>(types);
@@ -1295,6 +1509,14 @@ public static class XamlTypeRegistry
         Register<TitleBarButton>(types);
         Register<RowDefinition>(types);
         Register<ColumnDefinition>(types);
+        Register<RepeatButton>(types);
+        Register<ToggleSwitch>(types);
+        Register<AutoCompleteBox>(types);
+        Register<HyperlinkButton>(types);
+        Register<Label>(types);
+
+        // Jalium.UI.Controls.Primitives namespace
+        Register<BulletDecorator>(types);
     }
 
     private static void RegisterMediaTypes(Dictionary<string, Type> types)
@@ -1315,6 +1537,15 @@ public static class XamlTypeRegistry
         Register<RectangleGeometry>(types);
         Register<EllipseGeometry>(types);
         Register<PathGeometry>(types);
+    }
+
+    private static void RegisterShapeTypes(Dictionary<string, Type> types)
+    {
+        // Jalium.UI.Controls.Shapes namespace
+        Register<Shape>(types);
+        Register<Ellipse>(types);
+        Register<Rectangle>(types);
+        Register<Jalium.UI.Controls.Shapes.Path>(types);
     }
 
     private static void Register<[DynamicallyAccessedMembers(

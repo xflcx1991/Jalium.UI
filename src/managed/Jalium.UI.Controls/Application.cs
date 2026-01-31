@@ -67,9 +67,12 @@ public partial class Application
 
     private static object? LookupApplicationResource(object resourceKey)
     {
-        if (_current?._resources != null && _current._resources.TryGetValue(resourceKey, out var value))
+        if (_current?._resources != null)
         {
-            return value;
+            if (_current._resources.TryGetValue(resourceKey, out var value))
+            {
+                return value;
+            }
         }
         return null;
     }

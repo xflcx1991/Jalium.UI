@@ -156,12 +156,12 @@ public class ContentPresenter : FrameworkElement
     #region Template Binding
 
     /// <inheritdoc />
-    protected override void OnVisualParentChanged(Visual? oldParent)
+    protected override void OnTemplatedParentChanged(FrameworkElement? oldParent, FrameworkElement? newParent)
     {
-        base.OnVisualParentChanged(oldParent);
+        base.OnTemplatedParentChanged(oldParent, newParent);
 
-        // When added to the visual tree, try to set up template bindings
-        if (!_templateBindingsApplied && TemplatedParent != null)
+        // When TemplatedParent is set, apply template bindings
+        if (!_templateBindingsApplied && newParent != null)
         {
             ApplyTemplateBindings();
         }
@@ -182,7 +182,7 @@ public class ContentPresenter : FrameworkElement
         // Find the property on the templated parent
         var parentType = TemplatedParent.GetType();
 
-        // Try to find Content property
+        // Try to find Content property and bind it
         var contentPropInfo = parentType.GetProperty(contentSource);
         if (contentPropInfo != null)
         {
@@ -205,6 +205,22 @@ public class ContentPresenter : FrameworkElement
             {
                 this.SetTemplateBinding(ContentTemplateProperty, templateDp);
             }
+        }
+
+        // Bind HorizontalContentAlignment -> HorizontalAlignment
+        var hcaDpField = parentType.GetField("HorizontalContentAlignmentProperty",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.FlattenHierarchy);
+        if (hcaDpField?.GetValue(null) is DependencyProperty hcaDp)
+        {
+            this.SetTemplateBinding(HorizontalAlignmentProperty, hcaDp);
+        }
+
+        // Bind VerticalContentAlignment -> VerticalAlignment
+        var vcaDpField = parentType.GetField("VerticalContentAlignmentProperty",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.FlattenHierarchy);
+        if (vcaDpField?.GetValue(null) is DependencyProperty vcaDp)
+        {
+            this.SetTemplateBinding(VerticalAlignmentProperty, vcaDp);
         }
     }
 
@@ -268,6 +284,23 @@ public class DataTemplate
     public bool IsSealed => _isSealed;
 
     /// <summary>
+    /// Gets or sets the raw XAML content for this template.
+    /// This is set by the XAML parser and used by LoadContent() to create the visual tree.
+    /// </summary>
+    internal string? VisualTreeXaml { get; set; }
+
+    /// <summary>
+    /// Gets or sets the assembly context for parsing the XAML content.
+    /// </summary>
+    internal System.Reflection.Assembly? SourceAssembly { get; set; }
+
+    /// <summary>
+    /// Gets or sets a callback used by LoadContent to parse XAML.
+    /// This allows the Controls assembly to remain independent of the Xaml assembly.
+    /// </summary>
+    public static Func<string, System.Reflection.Assembly?, FrameworkElement?>? XamlParser { get; set; }
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="DataTemplate"/> class.
     /// </summary>
     public DataTemplate()
@@ -309,6 +342,18 @@ public class DataTemplate
     /// <returns>The root element of the visual tree.</returns>
     public FrameworkElement? LoadContent()
     {
-        return _visualTree?.Invoke();
+        // If we have a factory function, use it
+        if (_visualTree != null)
+        {
+            return _visualTree.Invoke();
+        }
+
+        // If we have stored XAML content, parse it
+        if (!string.IsNullOrEmpty(VisualTreeXaml) && XamlParser != null)
+        {
+            return XamlParser(VisualTreeXaml, SourceAssembly);
+        }
+
+        return null;
     }
 }

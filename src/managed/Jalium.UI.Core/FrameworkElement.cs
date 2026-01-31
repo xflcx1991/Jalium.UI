@@ -144,7 +144,30 @@ public class FrameworkElement : UIElement
     /// </summary>
     internal void SetTemplatedParent(FrameworkElement? parent)
     {
+        var oldParent = _templatedParent;
         _templatedParent = parent;
+
+        // Notify derived classes that TemplatedParent has changed
+        if (oldParent != parent)
+        {
+            OnTemplatedParentChanged(oldParent, parent);
+        }
+
+        // Reactivate bindings now that TemplatedParent is set.
+        // This allows deferred template bindings (TemplateBinding) to resolve.
+        if (parent != null)
+        {
+            ReactivateBindings();
+        }
+    }
+
+    /// <summary>
+    /// Called when the TemplatedParent property changes.
+    /// </summary>
+    /// <param name="oldParent">The old templated parent.</param>
+    /// <param name="newParent">The new templated parent.</param>
+    protected virtual void OnTemplatedParentChanged(FrameworkElement? oldParent, FrameworkElement? newParent)
+    {
     }
 
     /// <summary>
@@ -525,9 +548,24 @@ public class FrameworkElement : UIElement
         var marginHeight = margin.Top + margin.Bottom;
 
         // Calculate available size for content
-        var arrangeSize = new Size(
-            Math.Max(0, finalRect.Width - marginWidth),
-            Math.Max(0, finalRect.Height - marginHeight));
+        var availableWidth = Math.Max(0, finalRect.Width - marginWidth);
+        var availableHeight = Math.Max(0, finalRect.Height - marginHeight);
+
+        // Get the desired size (set during Measure)
+        var desiredWidth = DesiredSize.Width - marginWidth;
+        var desiredHeight = DesiredSize.Height - marginHeight;
+
+        // Determine arrange size based on alignment
+        // When alignment is Stretch, use available size; otherwise use desired size (clamped to available)
+        var arrangeWidth = HorizontalAlignment == HorizontalAlignment.Stretch
+            ? availableWidth
+            : Math.Min(desiredWidth, availableWidth);
+
+        var arrangeHeight = VerticalAlignment == VerticalAlignment.Stretch
+            ? availableHeight
+            : Math.Min(desiredHeight, availableHeight);
+
+        var arrangeSize = new Size(arrangeWidth, arrangeHeight);
 
         // Apply explicit size constraints
         if (!double.IsNaN(Width))
@@ -552,7 +590,7 @@ public class FrameworkElement : UIElement
         var y = finalRect.Y + margin.Top;
 
         // Horizontal alignment
-        var extraWidth = finalRect.Width - marginWidth - renderSize.Width;
+        var extraWidth = availableWidth - renderSize.Width;
         if (extraWidth > 0)
         {
             switch (HorizontalAlignment)
@@ -567,7 +605,7 @@ public class FrameworkElement : UIElement
         }
 
         // Vertical alignment
-        var extraHeight = finalRect.Height - marginHeight - renderSize.Height;
+        var extraHeight = availableHeight - renderSize.Height;
         if (extraHeight > 0)
         {
             switch (VerticalAlignment)

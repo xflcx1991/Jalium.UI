@@ -1,3 +1,5 @@
+using System.Reflection;
+
 namespace Jalium.UI;
 
 /// <summary>
@@ -22,6 +24,23 @@ public class ControlTemplate
     /// Gets a value that indicates whether the template is read-only.
     /// </summary>
     public bool IsSealed => _isSealed;
+
+    /// <summary>
+    /// Gets or sets the raw XAML content for this template.
+    /// This is set by the XAML parser and used by LoadContent() to create the visual tree.
+    /// </summary>
+    internal string? VisualTreeXaml { get; set; }
+
+    /// <summary>
+    /// Gets or sets the assembly context for parsing the XAML content.
+    /// </summary>
+    internal Assembly? SourceAssembly { get; set; }
+
+    /// <summary>
+    /// Gets or sets a callback used by LoadContent to parse XAML.
+    /// This allows the Core assembly to remain independent of the Xaml assembly.
+    /// </summary>
+    public static Func<string, Assembly?, FrameworkElement?>? XamlParser { get; set; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ControlTemplate"/> class.
@@ -65,7 +84,19 @@ public class ControlTemplate
     /// <returns>The root element of the visual tree, or null if no visual tree is defined.</returns>
     public FrameworkElement? LoadContent()
     {
-        return _visualTree?.Invoke();
+        // If we have a factory function, use it
+        if (_visualTree != null)
+        {
+            return _visualTree.Invoke();
+        }
+
+        // If we have stored XAML content, parse it
+        if (!string.IsNullOrEmpty(VisualTreeXaml) && XamlParser != null)
+        {
+            return XamlParser(VisualTreeXaml, SourceAssembly);
+        }
+
+        return null;
     }
 
     /// <summary>

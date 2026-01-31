@@ -118,6 +118,7 @@ public class Style
 /// <summary>
 /// Represents a setter that sets a property value.
 /// </summary>
+[ContentProperty("Value")]
 public class Setter
 {
     /// <summary>
@@ -158,7 +159,8 @@ public class Setter
     /// </summary>
     internal void Apply(FrameworkElement element)
     {
-        if (Property == null) return;
+        if (Property == null)
+            return;
 
         var target = GetTarget(element);
         if (target != null)

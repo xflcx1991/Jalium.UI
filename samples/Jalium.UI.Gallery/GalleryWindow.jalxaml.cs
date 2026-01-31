@@ -81,6 +81,7 @@ public partial class GalleryWindow : Window
 
         // Navigate to home page
         NavigateToPage("home");
+        SystemBackdrop = WindowBackdropType.Mica;
     }
 
     private void AddNavigationItems()

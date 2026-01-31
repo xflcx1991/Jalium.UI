@@ -2,10 +2,13 @@ namespace Jalium.UI.Controls;
 
 /// <summary>
 /// Base class for content controls.
+/// Uses direct content management by default. Controls with ControlTemplate (like Button)
+/// rely on the template's ContentPresenter to display content instead.
 /// </summary>
 public class ContentControl : Control
 {
     private UIElement? _contentElement;
+    private bool _usesDirectContent = true; // Default to direct content management
 
     /// <summary>
     /// Identifies the Content dependency property.
@@ -39,6 +42,26 @@ public class ContentControl : Control
         set => SetValue(ContentTemplateProperty, value);
     }
 
+    /// <summary>
+    /// Gets the content element for direct content management.
+    /// </summary>
+    protected UIElement? ContentElement => _contentElement;
+
+    /// <summary>
+    /// Disables direct content management. Call this in the constructor of controls
+    /// that use ControlTemplate with ContentPresenter (e.g., Button).
+    /// </summary>
+    protected void UseTemplateContentManagement()
+    {
+        _usesDirectContent = false;
+    }
+
+    /// <summary>
+    /// Gets whether this control uses direct content management.
+    /// Returns true for most controls; false for controls using ControlTemplate.
+    /// </summary>
+    protected bool UsesDirectContent => _usesDirectContent;
+
     private static void OnContentChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is ContentControl control)
@@ -61,78 +84,108 @@ public class ContentControl : Control
     /// </summary>
     protected virtual void OnContentChanged(object? oldContent, object? newContent)
     {
-        // Remove old content from visual tree
-        if (_contentElement != null)
+        if (_usesDirectContent)
         {
-            RemoveVisualChild(_contentElement);
-            _contentElement = null;
-        }
+            // Direct content management
+            if (_contentElement != null)
+            {
+                RemoveVisualChild(_contentElement);
+                _contentElement = null;
+            }
 
-        // Add new content to visual tree if it's a UIElement
-        if (newContent is UIElement newElement)
-        {
-            _contentElement = newElement;
-            AddVisualChild(newElement);
+            if (newContent is UIElement newElement)
+            {
+                _contentElement = newElement;
+                AddVisualChild(newElement);
+            }
         }
 
         InvalidateMeasure();
     }
 
-    /// <summary>
-    /// Gets the content element if it's a UIElement.
-    /// </summary>
-    protected UIElement? ContentElement => _contentElement;
+    #region Visual Children
 
     /// <inheritdoc />
-    public override int VisualChildrenCount => _contentElement != null ? 1 : 0;
+    public override int VisualChildrenCount
+    {
+        get
+        {
+            if (_usesDirectContent)
+            {
+                return _contentElement != null ? 1 : 0;
+            }
+            // Template-based: use Control's implementation
+            return base.VisualChildrenCount;
+        }
+    }
 
     /// <inheritdoc />
     public override Visual? GetVisualChild(int index)
     {
-        if (index == 0 && _contentElement != null)
-            return _contentElement;
-        throw new ArgumentOutOfRangeException(nameof(index));
+        if (_usesDirectContent)
+        {
+            if (index == 0 && _contentElement != null)
+            {
+                return _contentElement;
+            }
+            throw new ArgumentOutOfRangeException(nameof(index));
+        }
+        // Template-based: use Control's implementation
+        return base.GetVisualChild(index);
     }
+
+    #endregion
+
+    #region Layout
 
     /// <inheritdoc />
     protected override Size MeasureOverride(Size availableSize)
     {
-        if (_contentElement != null)
+        if (_usesDirectContent)
         {
-            var padding = Padding;
-            var border = BorderThickness;
-            var contentAvailable = new Size(
-                Math.Max(0, availableSize.Width - padding.TotalWidth - border.TotalWidth),
-                Math.Max(0, availableSize.Height - padding.TotalHeight - border.TotalHeight));
+            if (_contentElement != null)
+            {
+                var padding = Padding;
+                var border = BorderThickness;
+                var contentAvailable = new Size(
+                    Math.Max(0, availableSize.Width - padding.TotalWidth - border.TotalWidth),
+                    Math.Max(0, availableSize.Height - padding.TotalHeight - border.TotalHeight));
 
-            _contentElement.Measure(contentAvailable);
+                _contentElement.Measure(contentAvailable);
 
-            return new Size(
-                _contentElement.DesiredSize.Width + padding.TotalWidth + border.TotalWidth,
-                _contentElement.DesiredSize.Height + padding.TotalHeight + border.TotalHeight);
+                return new Size(
+                    _contentElement.DesiredSize.Width + padding.TotalWidth + border.TotalWidth,
+                    _contentElement.DesiredSize.Height + padding.TotalHeight + border.TotalHeight);
+            }
+            return Size.Empty;
         }
-
+        // Template-based: use Control's implementation
         return base.MeasureOverride(availableSize);
     }
 
     /// <inheritdoc />
     protected override Size ArrangeOverride(Size finalSize)
     {
-        if (_contentElement is FrameworkElement fe)
+        if (_usesDirectContent)
         {
-            var padding = Padding;
-            var border = BorderThickness;
+            if (_contentElement is FrameworkElement fe)
+            {
+                var padding = Padding;
+                var border = BorderThickness;
 
-            var contentRect = new Rect(
-                padding.Left + border.Left,
-                padding.Top + border.Top,
-                Math.Max(0, finalSize.Width - padding.TotalWidth - border.TotalWidth),
-                Math.Max(0, finalSize.Height - padding.TotalHeight - border.TotalHeight));
+                var contentRect = new Rect(
+                    padding.Left + border.Left,
+                    padding.Top + border.Top,
+                    Math.Max(0, finalSize.Width - padding.TotalWidth - border.TotalWidth),
+                    Math.Max(0, finalSize.Height - padding.TotalHeight - border.TotalHeight));
 
-            fe.Arrange(contentRect);
-            // Note: Do NOT call SetVisualBounds here - ArrangeCore already handles margin
+                fe.Arrange(contentRect);
+            }
+            return finalSize;
         }
-
-        return finalSize;
+        // Template-based: use Control's implementation
+        return base.ArrangeOverride(finalSize);
     }
+
+    #endregion
 }

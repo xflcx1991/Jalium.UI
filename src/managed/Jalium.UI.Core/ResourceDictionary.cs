@@ -284,7 +284,12 @@ public static class ResourceLookup
         }
 
         // Check application resources via callback
-        return ApplicationResourceLookup?.Invoke(resourceKey);
+        if (ApplicationResourceLookup != null)
+        {
+            return ApplicationResourceLookup.Invoke(resourceKey);
+        }
+
+        return null;
     }
 
     /// <summary>

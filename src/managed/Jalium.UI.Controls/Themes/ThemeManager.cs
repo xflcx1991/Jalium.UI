@@ -26,12 +26,34 @@ public static class ThemeManager
 
         ArgumentNullException.ThrowIfNull(app);
 
+        System.Diagnostics.Debug.WriteLine("[ThemeManager.Initialize] Loading Generic theme...");
+        Console.WriteLine("[ThemeManager.Initialize] Loading Generic theme...");
+
         // Try to load the Generic theme using XamlReader via reflection
         // This avoids circular dependency between Controls and Xaml projects
         var theme = LoadGenericThemeViaReflection();
         if (theme != null)
         {
             app.Resources.MergedDictionaries.Add(theme);
+            System.Diagnostics.Debug.WriteLine($"[ThemeManager.Initialize] Theme loaded. Resources: {theme.Count}, MergedDicts: {theme.MergedDictionaries.Count}");
+            Console.WriteLine($"[ThemeManager.Initialize] Theme loaded. Resources: {theme.Count}, MergedDicts: {theme.MergedDictionaries.Count}");
+
+            // Debug: Check for Button style specifically
+            if (theme.TryGetValue(typeof(Button), out var buttonStyle))
+            {
+                System.Diagnostics.Debug.WriteLine($"[ThemeManager.Initialize] Found Button style: {buttonStyle?.GetType().Name}");
+                Console.WriteLine($"[ThemeManager.Initialize] Found Button style: {buttonStyle?.GetType().Name}");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("[ThemeManager.Initialize] WARNING: Button style NOT found in theme!");
+                Console.WriteLine("[ThemeManager.Initialize] WARNING: Button style NOT found in theme!");
+            }
+        }
+        else
+        {
+            System.Diagnostics.Debug.WriteLine("[ThemeManager.Initialize] WARNING: Theme loading returned null!");
+            Console.WriteLine("[ThemeManager.Initialize] WARNING: Theme loading returned null!");
         }
 
         _initialized = true;

@@ -76,6 +76,8 @@ public abstract class ButtonBase : ContentControl
     /// </summary>
     protected ButtonBase()
     {
+        // Use ControlTemplate for visual appearance instead of direct content
+        UseTemplateContentManagement();
         Focusable = true;
 
         // Register mouse event handlers

@@ -318,6 +318,198 @@ public class TypeExtension : MarkupExtension
 }
 
 /// <summary>
+/// XAML markup extension for TemplateBinding.
+/// Binds a property in a control template to a property on the templated parent.
+/// </summary>
+public class TemplateBindingExtension : MarkupExtension
+{
+    /// <summary>
+    /// Gets or sets the name of the property on the templated parent to bind to.
+    /// </summary>
+    public string? Property { get; set; }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="TemplateBindingExtension"/> class.
+    /// </summary>
+    public TemplateBindingExtension()
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="TemplateBindingExtension"/> class with the specified property name.
+    /// </summary>
+    /// <param name="property">The name of the property to bind to.</param>
+    public TemplateBindingExtension(string property)
+    {
+        Property = property;
+    }
+
+    /// <inheritdoc />
+    public override object? ProvideValue(IServiceProvider serviceProvider)
+    {
+        if (string.IsNullOrEmpty(Property))
+            return null;
+
+        var provideValueTarget = serviceProvider?.GetService(typeof(IProvideValueTarget)) as IProvideValueTarget;
+        var targetObject = provideValueTarget?.TargetObject;
+        var targetProperty = provideValueTarget?.TargetProperty as DependencyProperty;
+
+        if (targetObject is not DependencyObject depObj || targetProperty == null)
+            return null;
+
+        // Create a deferred template binding that will be resolved when TemplatedParent is set
+        // The binding stores the property name and resolves it against the TemplatedParent type
+        var binding = new DeferredTemplateBinding(Property);
+        depObj.SetBinding(targetProperty, binding);
+
+        // Return the binding expression (though SetBinding already applied it)
+        return null;
+    }
+}
+
+/// <summary>
+/// A deferred template binding that resolves the property name when the TemplatedParent is available.
+/// </summary>
+public class DeferredTemplateBinding : BindingBase
+{
+    /// <summary>
+    /// Gets the property name to bind to on the templated parent.
+    /// </summary>
+    public string PropertyName { get; }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DeferredTemplateBinding"/> class.
+    /// </summary>
+    /// <param name="propertyName">The property name to bind to.</param>
+    public DeferredTemplateBinding(string propertyName)
+    {
+        PropertyName = propertyName;
+    }
+
+    /// <inheritdoc />
+    internal override BindingExpressionBase CreateBindingExpression(DependencyObject target, DependencyProperty targetProperty)
+    {
+        return new DeferredTemplateBindingExpression(this, target, targetProperty);
+    }
+}
+
+/// <summary>
+/// Binding expression for a deferred template binding.
+/// Resolves the property name against the TemplatedParent's type when activated.
+/// </summary>
+internal class DeferredTemplateBindingExpression : BindingExpressionBase
+{
+    private readonly DeferredTemplateBinding _binding;
+    private FrameworkElement? _templatedParent;
+    private DependencyProperty? _sourceProperty;
+
+    public DeferredTemplateBindingExpression(DeferredTemplateBinding binding, DependencyObject target, DependencyProperty targetProperty)
+        : base(target, targetProperty)
+    {
+        _binding = binding;
+    }
+
+    internal override void Activate()
+    {
+        if (IsActive)
+            return;
+
+        // Find the templated parent
+        _templatedParent = FindTemplatedParent(Target);
+        if (_templatedParent == null)
+        {
+            // TemplatedParent not set yet - leave IsActive=false so we can retry later
+            return;
+        }
+
+        // Resolve the property name against the templated parent's type
+        _sourceProperty = ResolveDependencyProperty(_templatedParent.GetType(), _binding.PropertyName);
+        if (_sourceProperty == null)
+        {
+            return;
+        }
+
+        // Only set IsActive=true after successfully resolving everything
+        IsActive = true;
+
+        // Subscribe to property changes on the templated parent
+        _templatedParent.PropertyChangedInternal += OnTemplatedParentPropertyChanged;
+
+        // Initial value transfer
+        TransferValue();
+    }
+
+    internal override void Deactivate()
+    {
+        if (!IsActive)
+            return;
+
+        IsActive = false;
+
+        if (_templatedParent != null)
+        {
+            _templatedParent.PropertyChangedInternal -= OnTemplatedParentPropertyChanged;
+            _templatedParent = null;
+        }
+    }
+
+    public override void UpdateSource()
+    {
+        // TemplateBinding is OneWay, so UpdateSource does nothing
+    }
+
+    public override void UpdateTarget()
+    {
+        TransferValue();
+    }
+
+    private void OnTemplatedParentPropertyChanged(DependencyProperty dp, object? oldValue, object? newValue)
+    {
+        if (dp == _sourceProperty)
+        {
+            TransferValue();
+        }
+    }
+
+    private void TransferValue()
+    {
+        if (_templatedParent == null || _sourceProperty == null)
+            return;
+
+        var value = _templatedParent.GetValue(_sourceProperty);
+        Target.SetValue(TargetProperty, value);
+    }
+
+    private static FrameworkElement? FindTemplatedParent(DependencyObject target)
+    {
+        if (target is FrameworkElement fe)
+        {
+            return fe.TemplatedParent;
+        }
+        return null;
+    }
+
+    private static DependencyProperty? ResolveDependencyProperty(Type type, string propertyName)
+    {
+        // Search for the DependencyProperty field
+        var dpFieldName = propertyName + "Property";
+        var currentType = type;
+
+        while (currentType != null)
+        {
+            var field = currentType.GetField(dpFieldName, BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy);
+            if (field != null)
+            {
+                return field.GetValue(null) as DependencyProperty;
+            }
+            currentType = currentType.BaseType;
+        }
+
+        return null;
+    }
+}
+
+/// <summary>
 /// Parser for markup extension syntax (e.g., "{Binding Path=Name}").
 /// </summary>
 internal static class MarkupExtensionParser
@@ -398,6 +590,7 @@ internal static class MarkupExtensionParser
         {
             "binding" => CreateBindingExtension(parameters),
             "staticresource" => CreateStaticResourceExtension(parameters),
+            "templatebinding" => CreateTemplateBindingExtension(parameters),
             "null" => new NullExtension(),
             "type" => CreateTypeExtension(parameters),
             _ => null
@@ -476,6 +669,12 @@ internal static class MarkupExtensionParser
     {
         var typeName = parameters.Trim();
         return new TypeExtension(typeName);
+    }
+
+    private static TemplateBindingExtension CreateTemplateBindingExtension(string parameters)
+    {
+        var propertyName = parameters.Trim();
+        return new TemplateBindingExtension(propertyName);
     }
 
     private static List<string> SplitParameters(string parameters)

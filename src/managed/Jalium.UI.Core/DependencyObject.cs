@@ -154,6 +154,27 @@ public class DependencyObject : DispatcherObject
     }
 
     /// <summary>
+    /// Reactivates all bindings on this object.
+    /// This is called when the TemplatedParent is set to allow deferred template bindings to resolve.
+    /// </summary>
+    internal void ReactivateBindings()
+    {
+        foreach (var expression in _bindings.Values)
+        {
+            // Only reactivate if not already active (deferred bindings that couldn't activate earlier)
+            if (!expression.IsActive)
+            {
+                expression.Activate();
+            }
+            else
+            {
+                // For already active bindings, update the target to get latest value
+                expression.UpdateTarget();
+            }
+        }
+    }
+
+    /// <summary>
     /// Clears the local value of a dependency property.
     /// </summary>
     /// <param name="dp">The dependency property to clear.</param>

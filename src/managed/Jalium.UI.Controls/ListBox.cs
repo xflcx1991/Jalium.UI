@@ -1,6 +1,4 @@
 using Jalium.UI.Input;
-using Jalium.UI.Interop;
-using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
 
@@ -214,9 +212,6 @@ public class ListBoxItem : ContentControl
     /// </summary>
     internal ListBox? ParentListBox { get; set; }
 
-    private bool _isPressed;
-    private bool _isMouseOver;
-
     #endregion
 
     #region Constructor
@@ -232,9 +227,7 @@ public class ListBoxItem : ContentControl
 
         // Register input event handlers
         AddHandler(MouseDownEvent, new RoutedEventHandler(OnMouseDownHandler));
-        AddHandler(MouseUpEvent, new RoutedEventHandler(OnMouseUpHandler));
         AddHandler(MouseEnterEvent, new RoutedEventHandler(OnMouseEnterHandler));
-        AddHandler(MouseLeaveEvent, new RoutedEventHandler(OnMouseLeaveHandler));
     }
 
     #endregion
@@ -247,83 +240,19 @@ public class ListBoxItem : ContentControl
 
         if (e is MouseButtonEventArgs mouseArgs && mouseArgs.ChangedButton == MouseButton.Left)
         {
-            _isPressed = true;
             Focus();
             // Select immediately on mouse down (standard ListBox behavior)
             ParentListBox?.SelectItem(this);
-            InvalidateVisual();
-            e.Handled = true;
-        }
-    }
-
-    private void OnMouseUpHandler(object sender, RoutedEventArgs e)
-    {
-        if (!IsEnabled) return;
-
-        if (e is MouseButtonEventArgs mouseArgs && mouseArgs.ChangedButton == MouseButton.Left)
-        {
-            _isPressed = false;
-            InvalidateVisual();
             e.Handled = true;
         }
     }
 
     private void OnMouseEnterHandler(object sender, RoutedEventArgs e)
     {
-        _isMouseOver = true;
         // If left mouse button is down while entering, select this item (drag selection)
         if (e is MouseEventArgs mouseArgs && mouseArgs.LeftButton == MouseButtonState.Pressed)
         {
             ParentListBox?.SelectItem(this);
-        }
-        InvalidateVisual();
-    }
-
-    private void OnMouseLeaveHandler(object sender, RoutedEventArgs e)
-    {
-        _isMouseOver = false;
-        InvalidateVisual();
-    }
-
-    #endregion
-
-    #region Rendering
-
-    /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
-    {
-        if (drawingContext is not DrawingContext dc)
-            return;
-
-        var bounds = new Rect(0, 0, RenderSize.Width, RenderSize.Height);
-
-        // Use property values - styles and triggers handle state changes
-        var bgBrush = Background;
-        var fgBrush = Foreground;
-
-        // Draw background
-        if (bgBrush != null)
-        {
-            dc.DrawRectangle(bgBrush, null, bounds);
-        }
-
-        // Draw content text
-        var contentText = Content?.ToString() ?? "";
-        if (!string.IsNullOrEmpty(contentText) && fgBrush != null)
-        {
-            var fontFamily = FontFamily ?? "Segoe UI";
-            var fontSize = FontSize > 0 ? FontSize : 14;
-            var fontMetrics = TextMeasurement.GetFontMetrics(fontFamily, fontSize);
-
-            var formattedText = new FormattedText(contentText, fontFamily, fontSize)
-            {
-                Foreground = fgBrush,
-                MaxTextWidth = Math.Max(0, bounds.Width - Padding.Left - Padding.Right),
-                MaxTextHeight = Math.Max(0, bounds.Height - Padding.Top - Padding.Bottom)
-            };
-
-            var textY = (bounds.Height - fontMetrics.LineHeight) / 2;
-            dc.DrawText(formattedText, new Point(Padding.Left, textY));
         }
     }
 
@@ -333,10 +262,7 @@ public class ListBoxItem : ContentControl
 
     private static void OnIsSelectedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        if (d is ListBoxItem item)
-        {
-            item.InvalidateVisual();
-        }
+        // Triggers handle visual changes now
     }
 
     #endregion

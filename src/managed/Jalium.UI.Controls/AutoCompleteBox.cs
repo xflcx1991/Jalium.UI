@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.ObjectModel;
+using System.Timers;
 using Jalium.UI.Input;
 using Jalium.UI.Interop;
 using Jalium.UI.Media;
@@ -9,7 +10,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Represents a text box control that provides auto-completion suggestions.
 /// </summary>
-public class AutoCompleteBox : Control
+public class AutoCompleteBox : Control, IImeSupport
 {
     #region Dependency Properties
 
@@ -281,6 +282,26 @@ public class AutoCompleteBox : Control
     private int _caretPosition;
     private bool _isUpdatingText;
 
+    // Caret animation
+    private double _caretOpacity = 1.0;
+    private DateTime _lastCaretBlink;
+    private const int CaretBlinkInterval = 530;
+    private const int CaretFadeDuration = 150;
+    private const int CaretTimerInterval = 16;
+    private System.Timers.Timer? _caretTimer;
+
+    // Scrolling
+    private double _horizontalOffset;
+
+    // IME composition state
+    private bool _isImeComposing;
+    private string _imeCompositionString = string.Empty;
+    private int _imeCursorPosition;
+
+    // Text width cache
+    private readonly Dictionary<string, double> _textWidthCache = new();
+    private const int MaxCacheSize = 128;
+
     #endregion
 
     #region Constructor
@@ -292,16 +313,55 @@ public class AutoCompleteBox : Control
     {
         Focusable = true;
         Height = DefaultHeight;
-        Background = new SolidColorBrush(Color.FromRgb(45, 45, 45));
+        Background = new SolidColorBrush(Color.FromRgb(32, 32, 32));
         Foreground = new SolidColorBrush(Color.White);
-        BorderBrush = new SolidColorBrush(Color.FromRgb(100, 100, 100));
+        BorderBrush = new SolidColorBrush(Color.FromRgb(70, 70, 70));
         BorderThickness = new Thickness(1);
         Padding = new Thickness(8, 4, 8, 4);
         CornerRadius = new CornerRadius(4);
+        FontSize = 14;
+
+        // Set IBeam cursor for text input
+        Cursor = Jalium.UI.Cursors.IBeam;
+
+        _lastCaretBlink = DateTime.Now;
 
         AddHandler(MouseDownEvent, new RoutedEventHandler(OnMouseDownHandler));
         AddHandler(KeyDownEvent, new RoutedEventHandler(OnKeyDownHandler));
         AddHandler(TextInputEvent, new RoutedEventHandler(OnTextInputHandler));
+
+        // Subscribe to IME events
+        InputMethod.CompositionStarted += OnImeCompositionStarted;
+        InputMethod.CompositionUpdated += OnImeCompositionUpdated;
+        InputMethod.CompositionEnded += OnImeCompositionEnded;
+
+        // Subscribe to focus events for IME target management
+        AddHandler(GotKeyboardFocusEvent, new RoutedEventHandler(OnGotFocusHandler));
+        AddHandler(LostKeyboardFocusEvent, new RoutedEventHandler(OnLostFocusHandler));
+    }
+
+    private void OnGotFocusHandler(object sender, RoutedEventArgs e)
+    {
+        InputMethod.SetTarget(this);
+        StartCaretTimer();
+        ResetCaretBlink();
+    }
+
+    private void OnLostFocusHandler(object sender, RoutedEventArgs e)
+    {
+        if (InputMethod.Current == this)
+        {
+            InputMethod.SetTarget(null);
+        }
+        StopCaretTimer();
+        IsDropDownOpen = false;
+
+        // End any active IME composition
+        if (_isImeComposing)
+        {
+            _isImeComposing = false;
+            _imeCompositionString = string.Empty;
+        }
     }
 
     #endregion
@@ -317,10 +377,10 @@ public class AutoCompleteBox : Control
             Focus();
             var position = mouseArgs.GetPosition(this);
 
-            // Check if clicked on a suggestion
+            // Check if clicked on a suggestion in dropdown
             if (IsDropDownOpen)
             {
-                var dropDownTop = RenderSize.Height;
+                var dropDownTop = DefaultHeight;
                 if (position.Y > dropDownTop)
                 {
                     var suggestionIndex = (int)((position.Y - dropDownTop) / ItemHeight);
@@ -333,8 +393,14 @@ public class AutoCompleteBox : Control
                 }
             }
 
-            // Position caret based on click
-            _caretPosition = Text.Length;
+            // Position caret based on click in text area
+            if (position.Y <= DefaultHeight)
+            {
+                _caretPosition = GetCaretIndexFromPosition(position);
+                ResetCaretBlink();
+                EnsureCaretVisible();
+            }
+
             InvalidateVisual();
             e.Handled = true;
         }
@@ -394,44 +460,132 @@ public class AutoCompleteBox : Control
                     break;
 
                 case Key.Back:
-                    if (Text.Length > 0 && _caretPosition > 0)
+                    if (keyArgs.IsControlDown)
+                    {
+                        // Delete all text before caret
+                        if (_caretPosition > 0)
+                        {
+                            Text = Text.Substring(_caretPosition);
+                            _caretPosition = 0;
+                        }
+                    }
+                    else if (_caretPosition > 0)
                     {
                         Text = Text.Remove(_caretPosition - 1, 1);
                         _caretPosition--;
                     }
+                    ResetCaretBlink();
+                    EnsureCaretVisible();
                     e.Handled = true;
                     break;
 
                 case Key.Delete:
-                    if (_caretPosition < Text.Length)
+                    if (keyArgs.IsControlDown)
+                    {
+                        // Delete all text after caret
+                        if (_caretPosition < Text.Length)
+                        {
+                            Text = Text.Substring(0, _caretPosition);
+                        }
+                    }
+                    else if (_caretPosition < Text.Length)
                     {
                         Text = Text.Remove(_caretPosition, 1);
                     }
+                    ResetCaretBlink();
                     e.Handled = true;
                     break;
 
                 case Key.Left:
-                    _caretPosition = Math.Max(0, _caretPosition - 1);
+                    if (keyArgs.IsControlDown)
+                    {
+                        // Move to beginning
+                        _caretPosition = 0;
+                    }
+                    else
+                    {
+                        _caretPosition = Math.Max(0, _caretPosition - 1);
+                    }
+                    ResetCaretBlink();
+                    EnsureCaretVisible();
                     InvalidateVisual();
                     e.Handled = true;
                     break;
 
                 case Key.Right:
-                    _caretPosition = Math.Min(Text.Length, _caretPosition + 1);
+                    if (keyArgs.IsControlDown)
+                    {
+                        // Move to end
+                        _caretPosition = Text.Length;
+                    }
+                    else
+                    {
+                        _caretPosition = Math.Min(Text.Length, _caretPosition + 1);
+                    }
+                    ResetCaretBlink();
+                    EnsureCaretVisible();
                     InvalidateVisual();
                     e.Handled = true;
                     break;
 
                 case Key.Home:
                     _caretPosition = 0;
+                    ResetCaretBlink();
+                    EnsureCaretVisible();
                     InvalidateVisual();
                     e.Handled = true;
                     break;
 
                 case Key.End:
                     _caretPosition = Text.Length;
+                    ResetCaretBlink();
+                    EnsureCaretVisible();
                     InvalidateVisual();
                     e.Handled = true;
+                    break;
+
+                case Key.A:
+                    if (keyArgs.IsControlDown)
+                    {
+                        // Select all - move caret to end
+                        _caretPosition = Text.Length;
+                        InvalidateVisual();
+                        e.Handled = true;
+                    }
+                    break;
+
+                case Key.C:
+                    if (keyArgs.IsControlDown)
+                    {
+                        // Copy all text
+                        if (!string.IsNullOrEmpty(Text))
+                        {
+                            Clipboard.SetText(Text);
+                        }
+                        e.Handled = true;
+                    }
+                    break;
+
+                case Key.X:
+                    if (keyArgs.IsControlDown)
+                    {
+                        // Cut all text
+                        if (!string.IsNullOrEmpty(Text))
+                        {
+                            Clipboard.SetText(Text);
+                            Text = string.Empty;
+                            _caretPosition = 0;
+                        }
+                        e.Handled = true;
+                    }
+                    break;
+
+                case Key.V:
+                    if (keyArgs.IsControlDown)
+                    {
+                        Paste();
+                        e.Handled = true;
+                    }
                     break;
             }
         }
@@ -443,11 +597,259 @@ public class AutoCompleteBox : Control
 
         if (e is TextCompositionEventArgs textArgs && !string.IsNullOrEmpty(textArgs.Text))
         {
-            var newText = Text.Insert(_caretPosition, textArgs.Text);
-            Text = newText;
-            _caretPosition += textArgs.Text.Length;
+            var text = textArgs.Text;
+
+            // Filter out control characters
+            if (text.Length == 1 && char.IsControl(text[0]))
+                return;
+
+            InsertText(text);
             e.Handled = true;
         }
+    }
+
+    /// <summary>
+    /// Pastes text from the clipboard.
+    /// </summary>
+    public void Paste()
+    {
+        var clipboardText = Clipboard.GetText();
+        if (!string.IsNullOrEmpty(clipboardText))
+        {
+            // Remove newlines for single-line control
+            clipboardText = clipboardText.Replace("\r\n", " ").Replace("\n", " ").Replace("\r", " ");
+            InsertText(clipboardText);
+        }
+    }
+
+    private void InsertText(string text)
+    {
+        var newText = Text.Insert(_caretPosition, text);
+        Text = newText;
+        _caretPosition += text.Length;
+        ResetCaretBlink();
+        EnsureCaretVisible();
+    }
+
+    private int GetCaretIndexFromPosition(Point position)
+    {
+        var padding = Padding;
+        var fontFamily = FontFamily ?? "Segoe UI";
+        var fontSize = FontSize > 0 ? FontSize : 14;
+
+        var relativeX = position.X - padding.Left + _horizontalOffset;
+
+        if (relativeX <= 0 || string.IsNullOrEmpty(Text))
+            return 0;
+
+        // Binary search for caret position
+        var text = Text;
+        for (int i = 0; i <= text.Length; i++)
+        {
+            var width = MeasureTextWidth(text.Substring(0, i));
+            if (width >= relativeX)
+            {
+                // Check if closer to previous or current character
+                if (i > 0)
+                {
+                    var prevWidth = MeasureTextWidth(text.Substring(0, i - 1));
+                    if (relativeX - prevWidth < width - relativeX)
+                        return i - 1;
+                }
+                return i;
+            }
+        }
+
+        return text.Length;
+    }
+
+    private void EnsureCaretVisible()
+    {
+        var padding = Padding;
+        var border = BorderThickness;
+        var contentWidth = Math.Round(RenderSize.Width - border.Left - border.Right - padding.Left - padding.Right);
+
+        if (contentWidth <= 0)
+            return;
+
+        var caretX = Math.Round(MeasureTextWidth(Text.Substring(0, _caretPosition)));
+
+        // Horizontal scrolling
+        if (caretX < _horizontalOffset)
+        {
+            _horizontalOffset = caretX;
+        }
+        else if (caretX > _horizontalOffset + contentWidth - 2)
+        {
+            _horizontalOffset = caretX - contentWidth + 2;
+        }
+
+        _horizontalOffset = Math.Round(Math.Max(0, _horizontalOffset));
+    }
+
+    private double MeasureTextWidth(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return 0;
+
+        if (_textWidthCache.TryGetValue(text, out var cachedWidth))
+            return cachedWidth;
+
+        var fontFamily = FontFamily ?? "Segoe UI";
+        var fontSize = FontSize > 0 ? FontSize : 14;
+
+        var formattedText = new FormattedText(text, fontFamily, fontSize);
+        TextMeasurement.MeasureText(formattedText);
+        var width = formattedText.Width;
+
+        // Cache management
+        if (_textWidthCache.Count >= MaxCacheSize)
+        {
+            var keysToRemove = _textWidthCache.Keys.Take(MaxCacheSize / 2).ToList();
+            foreach (var key in keysToRemove)
+            {
+                _textWidthCache.Remove(key);
+            }
+        }
+
+        _textWidthCache[text] = width;
+        return width;
+    }
+
+    #endregion
+
+    #region IME Support
+
+    private void OnImeCompositionStarted(object? sender, EventArgs e)
+    {
+        if (InputMethod.Current == this)
+        {
+            OnImeCompositionStart();
+        }
+    }
+
+    private void OnImeCompositionUpdated(object? sender, CompositionEventArgs e)
+    {
+        if (InputMethod.Current == this)
+        {
+            OnImeCompositionUpdate(e.Text, e.CursorPosition);
+        }
+    }
+
+    private void OnImeCompositionEnded(object? sender, CompositionResultEventArgs e)
+    {
+        if (InputMethod.Current == this)
+        {
+            OnImeCompositionEnd(e.Result);
+        }
+    }
+
+    /// <inheritdoc />
+    public Point GetImeCaretPosition()
+    {
+        var padding = Padding;
+        var fontFamily = FontFamily ?? "Segoe UI";
+        var fontSize = FontSize > 0 ? FontSize : 14;
+        var fontMetrics = TextMeasurement.GetFontMetrics(fontFamily, fontSize);
+        var lineHeight = Math.Round(fontMetrics.LineHeight);
+
+        var caretX = padding.Left + MeasureTextWidth(Text.Substring(0, _caretPosition)) - _horizontalOffset;
+        var caretY = (DefaultHeight + lineHeight) / 2;
+
+        return new Point(caretX, caretY);
+    }
+
+    /// <inheritdoc />
+    public void OnImeCompositionStart()
+    {
+        _isImeComposing = true;
+        _imeCompositionString = string.Empty;
+        _imeCursorPosition = 0;
+        InvalidateVisual();
+    }
+
+    /// <inheritdoc />
+    public void OnImeCompositionUpdate(string compositionString, int cursorPosition)
+    {
+        _imeCompositionString = compositionString;
+        _imeCursorPosition = cursorPosition;
+        InvalidateVisual();
+    }
+
+    /// <inheritdoc />
+    public void OnImeCompositionEnd(string? resultString)
+    {
+        _isImeComposing = false;
+        _imeCompositionString = string.Empty;
+        // Result string is inserted via TextInput event
+        InvalidateVisual();
+    }
+
+    /// <summary>
+    /// Gets whether IME composition is active.
+    /// </summary>
+    public bool IsComposing => _isImeComposing;
+
+    #endregion
+
+    #region Caret Animation
+
+    private void StartCaretTimer()
+    {
+        if (_caretTimer == null)
+        {
+            _caretTimer = new System.Timers.Timer(CaretTimerInterval);
+            _caretTimer.Elapsed += OnCaretTimerElapsed;
+            _caretTimer.AutoReset = true;
+        }
+        _caretTimer.Start();
+    }
+
+    private void StopCaretTimer()
+    {
+        _caretTimer?.Stop();
+    }
+
+    private void OnCaretTimerElapsed(object? sender, ElapsedEventArgs e)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            InvalidateVisual();
+        });
+    }
+
+    private void ResetCaretBlink()
+    {
+        _caretOpacity = 1.0;
+        _lastCaretBlink = DateTime.Now;
+    }
+
+    private double UpdateCaretAnimation()
+    {
+        var now = DateTime.Now;
+        var timeSinceReset = (now - _lastCaretBlink).TotalMilliseconds;
+        var cycleTime = timeSinceReset % (CaretBlinkInterval * 2);
+
+        if (cycleTime < CaretBlinkInterval - CaretFadeDuration)
+        {
+            _caretOpacity = 1.0;
+        }
+        else if (cycleTime < CaretBlinkInterval)
+        {
+            var fadeProgress = (cycleTime - (CaretBlinkInterval - CaretFadeDuration)) / CaretFadeDuration;
+            _caretOpacity = 1.0 - fadeProgress;
+        }
+        else if (cycleTime < CaretBlinkInterval * 2 - CaretFadeDuration)
+        {
+            _caretOpacity = 0.0;
+        }
+        else
+        {
+            var fadeProgress = (cycleTime - (CaretBlinkInterval * 2 - CaretFadeDuration)) / CaretFadeDuration;
+            _caretOpacity = fadeProgress;
+        }
+
+        return _caretOpacity;
     }
 
     #endregion
@@ -589,6 +991,8 @@ public class AutoCompleteBox : Control
         var inputRect = new Rect(0, 0, RenderSize.Width, DefaultHeight);
         var cornerRadius = CornerRadius;
         var hasCornerRadius = cornerRadius.TopLeft > 0;
+        var padding = Padding;
+        var border = BorderThickness;
 
         // Draw background
         if (Background != null)
@@ -605,9 +1009,9 @@ public class AutoCompleteBox : Control
 
         // Draw border
         var borderBrush = IsFocused ? new SolidColorBrush(Color.FromRgb(0, 120, 212)) : BorderBrush;
-        if (borderBrush != null && BorderThickness.TotalWidth > 0)
+        if (borderBrush != null && border.Left > 0)
         {
-            var pen = new Pen(borderBrush, BorderThickness.Left);
+            var pen = new Pen(borderBrush, border.Left);
             if (hasCornerRadius)
             {
                 dc.DrawRoundedRectangle(null, pen, inputRect, cornerRadius.TopLeft, cornerRadius.TopLeft);
@@ -618,47 +1022,119 @@ public class AutoCompleteBox : Control
             }
         }
 
-        // Draw text or watermark
-        var padding = Padding;
-        var textX = padding.Left;
-        var textY = padding.Top;
+        // Content area with clipping for horizontal scroll
+        var contentRect = new Rect(
+            Math.Round(border.Left + padding.Left),
+            Math.Round(border.Top + padding.Top),
+            Math.Max(0, Math.Round(inputRect.Width - border.Left - border.Right - padding.Left - padding.Right)),
+            Math.Max(0, Math.Round(DefaultHeight - border.Top - border.Bottom - padding.Top - padding.Bottom)));
 
-        if (string.IsNullOrEmpty(Text) && !string.IsNullOrEmpty(Watermark))
+        dc.PushClip(new RectangleGeometry(contentRect));
+
+        var fontFamily = FontFamily ?? "Segoe UI";
+        var fontSize = FontSize > 0 ? FontSize : 14;
+        var fontMetrics = TextMeasurement.GetFontMetrics(fontFamily, fontSize);
+        var lineHeight = Math.Round(fontMetrics.LineHeight);
+        var roundedHorizontalOffset = Math.Round(_horizontalOffset);
+
+        var textX = Math.Round(contentRect.X - roundedHorizontalOffset);
+        var textY = Math.Round((DefaultHeight - lineHeight) / 2);
+
+        // Draw text or watermark
+        if (string.IsNullOrEmpty(Text) && !_isImeComposing && !string.IsNullOrEmpty(Watermark))
         {
-            var watermarkText = new FormattedText(Watermark, FontFamily ?? "Segoe UI", FontSize > 0 ? FontSize : 14)
+            var watermarkText = new FormattedText(Watermark, fontFamily, fontSize)
             {
                 Foreground = new SolidColorBrush(Color.FromRgb(128, 128, 128))
             };
             TextMeasurement.MeasureText(watermarkText);
-            dc.DrawText(watermarkText, new Point(textX, (DefaultHeight - watermarkText.Height) / 2));
+            dc.DrawText(watermarkText, new Point(contentRect.X, textY));
         }
-        else
+        else if (!string.IsNullOrEmpty(Text))
         {
-            var formattedText = new FormattedText(Text, FontFamily ?? "Segoe UI", FontSize > 0 ? FontSize : 14)
+            var formattedText = new FormattedText(Text, fontFamily, fontSize)
             {
                 Foreground = Foreground ?? new SolidColorBrush(Color.White)
             };
             TextMeasurement.MeasureText(formattedText);
-            var textYPos = (DefaultHeight - formattedText.Height) / 2;
-            dc.DrawText(formattedText, new Point(textX, textYPos));
-
-            // Draw caret
-            if (IsFocused)
-            {
-                var caretText = Text.Substring(0, _caretPosition);
-                var caretFormattedText = new FormattedText(caretText, FontFamily ?? "Segoe UI", FontSize > 0 ? FontSize : 14);
-                TextMeasurement.MeasureText(caretFormattedText);
-                var caretX = textX + caretFormattedText.Width;
-                var caretPen = new Pen(Foreground ?? new SolidColorBrush(Color.White), 1);
-                dc.DrawLine(caretPen, new Point(caretX, textYPos), new Point(caretX, textYPos + formattedText.Height));
-            }
+            dc.DrawText(formattedText, new Point(textX, textY));
         }
+
+        // Draw IME composition
+        if (_isImeComposing && !string.IsNullOrEmpty(_imeCompositionString))
+        {
+            DrawImeComposition(dc, contentRect, lineHeight);
+        }
+
+        // Draw caret
+        if (IsFocused)
+        {
+            DrawCaret(dc, contentRect, lineHeight);
+        }
+
+        dc.Pop();
 
         // Draw drop-down
         if (IsDropDownOpen && FilteredItems.Count > 0)
         {
             DrawDropDown(dc);
         }
+    }
+
+    private void DrawImeComposition(DrawingContext dc, Rect contentRect, double lineHeight)
+    {
+        var fontFamily = FontFamily ?? "Segoe UI";
+        var fontSize = FontSize > 0 ? FontSize : 14;
+        var roundedHorizontalOffset = Math.Round(_horizontalOffset);
+
+        var x = Math.Round(contentRect.X + MeasureTextWidth(Text.Substring(0, _caretPosition)) - roundedHorizontalOffset);
+        var y = Math.Round((DefaultHeight - lineHeight) / 2);
+
+        // Draw composition background
+        var compositionText = new FormattedText(_imeCompositionString, fontFamily, fontSize);
+        TextMeasurement.MeasureText(compositionText);
+        var compositionWidth = compositionText.Width;
+
+        var compositionBgBrush = new SolidColorBrush(Color.FromRgb(60, 60, 80));
+        dc.DrawRectangle(compositionBgBrush, null, new Rect(x, y, compositionWidth, lineHeight));
+
+        // Draw composition text
+        compositionText.Foreground = new SolidColorBrush(Color.FromRgb(255, 255, 150));
+        dc.DrawText(compositionText, new Point(x, y));
+
+        // Draw underline
+        var underlinePen = new Pen(new SolidColorBrush(Color.FromRgb(255, 255, 150)), 1);
+        dc.DrawLine(underlinePen, new Point(x, y + lineHeight - 1), new Point(x + compositionWidth, y + lineHeight - 1));
+    }
+
+    private void DrawCaret(DrawingContext dc, Rect contentRect, double lineHeight)
+    {
+        var caretOpacity = UpdateCaretAnimation();
+
+        if (caretOpacity <= 0)
+            return;
+
+        var roundedHorizontalOffset = Math.Round(_horizontalOffset);
+        var caretX = Math.Round(contentRect.X + MeasureTextWidth(Text.Substring(0, _caretPosition)) - roundedHorizontalOffset);
+        var caretY = Math.Round((DefaultHeight - lineHeight) / 2);
+
+        // If IME composing, position caret after composition
+        if (_isImeComposing)
+        {
+            caretX += MeasureTextWidth(_imeCompositionString.Substring(0, _imeCursorPosition));
+        }
+
+        // Create caret brush with opacity
+        var caretColor = Color.White;
+        if (Foreground is SolidColorBrush solidBrush)
+        {
+            caretColor = solidBrush.Color;
+        }
+        var alpha = (byte)(caretColor.A * caretOpacity);
+        var caretBrush = new SolidColorBrush(Color.FromArgb(alpha, caretColor.R, caretColor.G, caretColor.B));
+
+        var caretPen = new Pen(caretBrush, 1);
+        dc.DrawLine(caretPen, new Point(caretX, caretY), new Point(caretX, caretY + lineHeight));
     }
 
     private void DrawDropDown(DrawingContext dc)

@@ -1,3 +1,4 @@
+using System.Timers;
 using Jalium.UI.Input;
 using Jalium.UI.Interop;
 using Jalium.UI.Media;
@@ -7,14 +8,25 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// A control for entering passwords with masked display.
 /// </summary>
-public class PasswordBox : Control
+public class PasswordBox : Control, IImeSupport
 {
     #region Fields
 
     private int _caretIndex;
-    private bool _caretVisible = true;
+    private double _caretOpacity = 1.0;
+    private DateTime _caretAnimationStart;
     private DateTime _lastCaretBlink;
-    private const int CaretBlinkInterval = 500;
+    private const int CaretBlinkInterval = 530;
+    private const int CaretFadeDuration = 150;
+    private const int CaretTimerInterval = 16; // ~60fps for smooth animation
+
+    private System.Timers.Timer? _caretTimer;
+    private double _horizontalOffset;
+
+    // IME composition state
+    private bool _isImeComposing;
+    private string _imeCompositionString = string.Empty;
+    private int _imeCursorPosition;
 
     #endregion
 
@@ -167,13 +179,46 @@ public class PasswordBox : Control
     {
         Focusable = true;
 
-        // Default appearance
-        Background = new SolidColorBrush(Color.White);
-        BorderBrush = new SolidColorBrush(Color.FromRgb(171, 173, 179));
+        // Dark theme appearance (matching TextBox)
+        Background = new SolidColorBrush(Color.FromRgb(32, 32, 32));
+        BorderBrush = new SolidColorBrush(Color.FromRgb(70, 70, 70));
+        Foreground = new SolidColorBrush(Color.White);
+        CaretBrush = new SolidColorBrush(Color.White);
         BorderThickness = new Thickness(1);
-        Padding = new Thickness(4, 2, 4, 2);
+        Padding = new Thickness(6, 4, 6, 4);
+        FontSize = 14;
+
+        // Set IBeam cursor for text input
+        Cursor = Jalium.UI.Cursors.IBeam;
 
         _lastCaretBlink = DateTime.Now;
+
+        // Register input event handlers
+        AddHandler(MouseDownEvent, new RoutedEventHandler(OnMouseDownHandler));
+        AddHandler(KeyDownEvent, new RoutedEventHandler(OnKeyDownHandler));
+        AddHandler(TextInputEvent, new RoutedEventHandler(OnTextInputHandler));
+
+        // Subscribe to IME events
+        InputMethod.CompositionStarted += OnImeCompositionStarted;
+        InputMethod.CompositionUpdated += OnImeCompositionUpdated;
+        InputMethod.CompositionEnded += OnImeCompositionEnded;
+
+        // Subscribe to focus events for IME target management
+        AddHandler(GotKeyboardFocusEvent, new RoutedEventHandler(OnGotFocusHandler));
+        AddHandler(LostKeyboardFocusEvent, new RoutedEventHandler(OnLostFocusHandler));
+    }
+
+    private void OnGotFocusHandler(object sender, RoutedEventArgs e)
+    {
+        InputMethod.SetTarget(this);
+    }
+
+    private void OnLostFocusHandler(object sender, RoutedEventArgs e)
+    {
+        if (InputMethod.Current == this)
+        {
+            InputMethod.SetTarget(null);
+        }
     }
 
     #endregion
@@ -268,8 +313,7 @@ public class PasswordBox : Control
         if (Background != null)
         {
             var cornerRadius = CornerRadius;
-            if (cornerRadius.TopLeft > 0 || cornerRadius.TopRight > 0 ||
-                cornerRadius.BottomLeft > 0 || cornerRadius.BottomRight > 0)
+            if (cornerRadius.TopLeft > 0)
             {
                 dc.DrawRoundedRectangle(Background, null, bounds,
                     cornerRadius.TopLeft, cornerRadius.TopLeft);
@@ -281,33 +325,34 @@ public class PasswordBox : Control
         }
 
         // Draw border
-        if (BorderBrush != null && (border.Left > 0 || border.Top > 0 || border.Right > 0 || border.Bottom > 0))
+        if (BorderBrush != null && border.Left > 0)
         {
-            var pen = new Pen(BorderBrush, Math.Max(border.Left, Math.Max(border.Top, Math.Max(border.Right, border.Bottom))));
+            var borderPen = new Pen(BorderBrush, border.Left);
             var cornerRadius = CornerRadius;
-            if (cornerRadius.TopLeft > 0 || cornerRadius.TopRight > 0 ||
-                cornerRadius.BottomLeft > 0 || cornerRadius.BottomRight > 0)
+            if (cornerRadius.TopLeft > 0)
             {
-                dc.DrawRoundedRectangle(null, pen, bounds,
+                dc.DrawRoundedRectangle(null, borderPen, bounds,
                     cornerRadius.TopLeft, cornerRadius.TopLeft);
             }
             else
             {
-                dc.DrawRectangle(null, pen, bounds);
+                dc.DrawRectangle(null, borderPen, bounds);
             }
         }
 
-        // Content area
+        // Content area - round to pixel boundaries
         var contentRect = new Rect(
-            border.Left + padding.Left,
-            border.Top + padding.Top,
-            Math.Max(0, bounds.Width - border.Left - border.Right - padding.Left - padding.Right),
-            Math.Max(0, bounds.Height - border.Top - border.Bottom - padding.Top - padding.Bottom));
+            Math.Round(border.Left + padding.Left),
+            Math.Round(border.Top + padding.Top),
+            Math.Max(0, Math.Round(bounds.Width - border.Left - border.Right - padding.Left - padding.Right)),
+            Math.Max(0, Math.Round(bounds.Height - border.Top - border.Bottom - padding.Top - padding.Bottom)));
+
+        // Clip to content area
+        dc.PushClip(new RectangleGeometry(contentRect));
 
         var fontFamily = FontFamily ?? "Segoe UI";
         var fontSize = FontSize > 0 ? FontSize : 14;
         var fontMetrics = TextMeasurement.GetFontMetrics(fontFamily, fontSize);
-        // Round lineHeight to avoid sub-pixel positioning issues
         var lineHeight = Math.Round(fontMetrics.LineHeight);
 
         // Measure the password character to get actual width
@@ -316,21 +361,23 @@ public class PasswordBox : Control
         TextMeasurement.MeasureText(passwordCharText);
         var charWidth = passwordCharText.Width;
 
-        // Round to pixel boundaries to prevent sub-pixel jittering
-        var textX = Math.Round(contentRect.X);
+        var roundedHorizontalOffset = Math.Round(_horizontalOffset);
+
+        // Round text position to pixel boundaries
+        var textX = Math.Round(contentRect.X - roundedHorizontalOffset);
         var textY = Math.Round(contentRect.Y);
 
         // Draw masked password or placeholder
-        if (string.IsNullOrEmpty(_password))
+        if (string.IsNullOrEmpty(_password) && !_isImeComposing)
         {
             // Draw placeholder
             if (!string.IsNullOrEmpty(Placeholder))
             {
-                var placeholderBrush = new SolidColorBrush(Color.FromRgb(160, 160, 160));
-                var formattedPlaceholder = new FormattedText(Placeholder, FontFamily, FontSize)
+                var placeholderBrush = new SolidColorBrush(Color.FromRgb(128, 128, 128));
+                var formattedPlaceholder = new FormattedText(Placeholder, fontFamily, fontSize)
                 {
                     Foreground = placeholderBrush,
-                    MaxTextWidth = contentRect.Width,
+                    MaxTextWidth = contentRect.Width + roundedHorizontalOffset,
                     MaxTextHeight = lineHeight
                 };
                 dc.DrawText(formattedPlaceholder, new Point(textX, textY));
@@ -340,20 +387,28 @@ public class PasswordBox : Control
         {
             // Draw masked password
             var maskedText = new string(PasswordChar, _password.Length);
-            var formattedText = new FormattedText(maskedText, FontFamily, FontSize)
+            var formattedText = new FormattedText(maskedText, fontFamily, fontSize)
             {
                 Foreground = Foreground,
-                MaxTextWidth = contentRect.Width,
+                MaxTextWidth = contentRect.Width + roundedHorizontalOffset,
                 MaxTextHeight = lineHeight
             };
             dc.DrawText(formattedText, new Point(textX, textY));
         }
 
+        // Draw IME composition (show actual characters during composition)
+        if (_isImeComposing && !string.IsNullOrEmpty(_imeCompositionString))
+        {
+            DrawImeComposition(dc, contentRect, charWidth, lineHeight);
+        }
+
         // Draw caret
-        if (IsKeyboardFocused && _caretVisible)
+        if (IsKeyboardFocused)
         {
             DrawCaret(dc, contentRect, charWidth, lineHeight);
         }
+
+        dc.Pop();
 
         // Draw focus indicator
         if (IsKeyboardFocused)
@@ -363,16 +418,66 @@ public class PasswordBox : Control
         }
     }
 
+    private void DrawImeComposition(DrawingContext dc, Rect contentRect, double charWidth, double lineHeight)
+    {
+        var fontFamily = FontFamily ?? "Segoe UI";
+        var fontSize = FontSize > 0 ? FontSize : 14;
+
+        var roundedHorizontalOffset = Math.Round(_horizontalOffset);
+        var x = Math.Round(contentRect.X + _caretIndex * charWidth - roundedHorizontalOffset);
+        var y = Math.Round(contentRect.Y);
+
+        // Draw composition background
+        var compositionText = new FormattedText(_imeCompositionString, fontFamily, fontSize);
+        TextMeasurement.MeasureText(compositionText);
+        var compositionWidth = compositionText.Width;
+
+        var compositionBgBrush = new SolidColorBrush(Color.FromRgb(60, 60, 80));
+        dc.DrawRectangle(compositionBgBrush, null, new Rect(x, y, compositionWidth, lineHeight));
+
+        // Draw composition text (show actual characters, not masked)
+        compositionText.Foreground = new SolidColorBrush(Color.FromRgb(255, 255, 150));
+        dc.DrawText(compositionText, new Point(x, y));
+
+        // Draw underline
+        var underlinePen = new Pen(new SolidColorBrush(Color.FromRgb(255, 255, 150)), 1);
+        dc.DrawLine(underlinePen, new Point(x, y + lineHeight - 1), new Point(x + compositionWidth, y + lineHeight - 1));
+    }
+
     private void DrawCaret(DrawingContext dc, Rect contentRect, double charWidth, double lineHeight)
     {
-        if (CaretBrush == null)
+        // Update and get the current caret opacity
+        var caretOpacity = UpdateCaretAnimation();
+
+        if (CaretBrush == null || caretOpacity <= 0)
             return;
 
-        // Round to pixel boundaries to prevent sub-pixel jittering
-        var caretX = Math.Round(contentRect.X + _caretIndex * charWidth);
-        var caretY = Math.Round(contentRect.Y);
-        var caretPen = new Pen(CaretBrush, 1);
+        // During IME composition, position caret within composition string
+        var caretCharIndex = _caretIndex;
+        if (_isImeComposing)
+        {
+            // Position caret at the IME cursor position within composition
+            caretCharIndex = _caretIndex + _imeCursorPosition;
+        }
 
+        var roundedHorizontalOffset = Math.Round(_horizontalOffset);
+        var caretX = Math.Round(contentRect.X + caretCharIndex * charWidth - roundedHorizontalOffset);
+        var caretY = Math.Round(contentRect.Y);
+
+        // Create a brush with the animated opacity
+        Brush caretBrushWithOpacity;
+        if (CaretBrush is SolidColorBrush solidBrush)
+        {
+            var color = solidBrush.Color;
+            var alpha = (byte)(color.A * caretOpacity);
+            caretBrushWithOpacity = new SolidColorBrush(Color.FromArgb(alpha, color.R, color.G, color.B));
+        }
+        else
+        {
+            caretBrushWithOpacity = CaretBrush;
+        }
+
+        var caretPen = new Pen(caretBrushWithOpacity, 1);
         dc.DrawLine(caretPen,
             new Point(caretX, caretY),
             new Point(caretX, caretY + lineHeight));
@@ -389,10 +494,56 @@ public class PasswordBox : Control
 
         if (isFocused)
         {
+            StartCaretTimer();
             ResetCaretBlink();
+        }
+        else
+        {
+            StopCaretTimer();
+            // End any active IME composition
+            if (_isImeComposing)
+            {
+                _isImeComposing = false;
+                _imeCompositionString = string.Empty;
+            }
         }
 
         InvalidateVisual();
+    }
+
+    private void OnMouseDownHandler(object sender, RoutedEventArgs e)
+    {
+        if (!IsEnabled) return;
+
+        if (e is MouseButtonEventArgs mouseArgs && mouseArgs.ChangedButton == MouseButton.Left)
+        {
+            Focus();
+
+            var position = mouseArgs.GetPosition(this);
+            var newCaretIndex = GetCaretIndexFromPosition(position);
+
+            _caretIndex = newCaretIndex;
+            ResetCaretBlink();
+            EnsureCaretVisible();
+            InvalidateVisual();
+            e.Handled = true;
+        }
+    }
+
+    private void OnKeyDownHandler(object sender, RoutedEventArgs e)
+    {
+        if (e is KeyEventArgs keyArgs)
+        {
+            OnKeyDown(keyArgs);
+        }
+    }
+
+    private void OnTextInputHandler(object sender, RoutedEventArgs e)
+    {
+        if (e is TextCompositionEventArgs textArgs)
+        {
+            OnTextInput(textArgs);
+        }
     }
 
     /// <summary>
@@ -406,15 +557,33 @@ public class PasswordBox : Control
         switch (e.Key)
         {
             case Key.Left:
-                _caretIndex = Math.Max(0, _caretIndex - 1);
+                if (e.IsControlDown)
+                {
+                    // Move to beginning (passwords don't have word boundaries)
+                    _caretIndex = 0;
+                }
+                else
+                {
+                    _caretIndex = Math.Max(0, _caretIndex - 1);
+                }
                 ResetCaretBlink();
+                EnsureCaretVisible();
                 InvalidateVisual();
                 e.Handled = true;
                 break;
 
             case Key.Right:
-                _caretIndex = Math.Min(_password.Length, _caretIndex + 1);
+                if (e.IsControlDown)
+                {
+                    // Move to end (passwords don't have word boundaries)
+                    _caretIndex = _password.Length;
+                }
+                else
+                {
+                    _caretIndex = Math.Min(_password.Length, _caretIndex + 1);
+                }
                 ResetCaretBlink();
+                EnsureCaretVisible();
                 InvalidateVisual();
                 e.Handled = true;
                 break;
@@ -422,6 +591,7 @@ public class PasswordBox : Control
             case Key.Home:
                 _caretIndex = 0;
                 ResetCaretBlink();
+                EnsureCaretVisible();
                 InvalidateVisual();
                 e.Handled = true;
                 break;
@@ -429,17 +599,18 @@ public class PasswordBox : Control
             case Key.End:
                 _caretIndex = _password.Length;
                 ResetCaretBlink();
+                EnsureCaretVisible();
                 InvalidateVisual();
                 e.Handled = true;
                 break;
 
             case Key.Back:
-                HandleBackspace();
+                HandleBackspace(e.IsControlDown);
                 e.Handled = true;
                 break;
 
             case Key.Delete:
-                HandleDelete();
+                HandleDelete(e.IsControlDown);
                 e.Handled = true;
                 break;
 
@@ -469,34 +640,153 @@ public class PasswordBox : Control
         if (e.Handled)
             return;
 
-        if (!string.IsNullOrEmpty(e.Text))
+        var text = e.Text;
+
+        // Filter out control characters
+        if (text.Length == 1 && char.IsControl(text[0]))
+            return;
+
+        if (!string.IsNullOrEmpty(text))
         {
-            InsertPassword(e.Text);
+            InsertPassword(text);
             e.Handled = true;
         }
     }
 
     #endregion
 
+    #region IME Support
+
+    private void OnImeCompositionStarted(object? sender, EventArgs e)
+    {
+        if (InputMethod.Current == this)
+        {
+            OnImeCompositionStart();
+        }
+    }
+
+    private void OnImeCompositionUpdated(object? sender, CompositionEventArgs e)
+    {
+        if (InputMethod.Current == this)
+        {
+            OnImeCompositionUpdate(e.Text, e.CursorPosition);
+        }
+    }
+
+    private void OnImeCompositionEnded(object? sender, CompositionResultEventArgs e)
+    {
+        if (InputMethod.Current == this)
+        {
+            OnImeCompositionEnd(e.Result);
+        }
+    }
+
+    /// <inheritdoc />
+    public Point GetImeCaretPosition()
+    {
+        var caretRect = GetCaretRect();
+        // Return position in element-local coordinates
+        // The Window will convert to screen coordinates when positioning IME
+        return new Point(caretRect.X, caretRect.Y + caretRect.Height);
+    }
+
+    /// <inheritdoc />
+    public void OnImeCompositionStart()
+    {
+        _isImeComposing = true;
+        _imeCompositionString = string.Empty;
+        _imeCursorPosition = 0;
+        InvalidateVisual();
+    }
+
+    /// <inheritdoc />
+    public void OnImeCompositionUpdate(string compositionString, int cursorPosition)
+    {
+        _imeCompositionString = compositionString;
+        _imeCursorPosition = cursorPosition;
+        InvalidateVisual();
+    }
+
+    /// <inheritdoc />
+    public void OnImeCompositionEnd(string? resultString)
+    {
+        _isImeComposing = false;
+        _imeCompositionString = string.Empty;
+        // Result string is inserted via TextInput event
+        InvalidateVisual();
+    }
+
+    /// <summary>
+    /// Gets the caret rectangle for IME positioning.
+    /// </summary>
+    public Rect GetCaretRect()
+    {
+        var border = BorderThickness;
+        var padding = Padding;
+        var fontFamily = FontFamily ?? "Segoe UI";
+        var fontSize = FontSize > 0 ? FontSize : 14;
+        var fontMetrics = TextMeasurement.GetFontMetrics(fontFamily, fontSize);
+        var lineHeight = Math.Round(fontMetrics.LineHeight);
+
+        // Measure password char width
+        var passwordCharStr = new string(PasswordChar, 1);
+        var passwordCharText = new FormattedText(passwordCharStr, fontFamily, fontSize);
+        TextMeasurement.MeasureText(passwordCharText);
+        var charWidth = passwordCharText.Width;
+
+        var contentX = border.Left + padding.Left;
+        var contentY = border.Top + padding.Top;
+
+        var caretX = contentX + _caretIndex * charWidth - _horizontalOffset;
+        var caretY = contentY;
+
+        return new Rect(caretX, caretY, 1, lineHeight);
+    }
+
+    /// <summary>
+    /// Gets whether IME composition is active.
+    /// </summary>
+    public bool IsComposing => _isImeComposing;
+
+    #endregion
+
     #region Private Methods
 
-    private void HandleBackspace()
+    private void HandleBackspace(bool deleteAll = false)
     {
         if (_caretIndex > 0)
         {
-            _password = _password.Remove(_caretIndex - 1, 1);
-            _caretIndex--;
+            if (deleteAll)
+            {
+                // Delete all characters before caret
+                _password = _password.Substring(_caretIndex);
+                _caretIndex = 0;
+            }
+            else
+            {
+                _password = _password.Remove(_caretIndex - 1, 1);
+                _caretIndex--;
+            }
             ResetCaretBlink();
+            EnsureCaretVisible();
             InvalidateMeasure();
             RaisePasswordChanged();
         }
     }
 
-    private void HandleDelete()
+    private void HandleDelete(bool deleteAll = false)
     {
         if (_caretIndex < _password.Length)
         {
-            _password = _password.Remove(_caretIndex, 1);
+            if (deleteAll)
+            {
+                // Delete all characters after caret
+                _password = _password.Substring(0, _caretIndex);
+            }
+            else
+            {
+                _password = _password.Remove(_caretIndex, 1);
+            }
             ResetCaretBlink();
             InvalidateMeasure();
             RaisePasswordChanged();
@@ -525,20 +815,140 @@ public class PasswordBox : Control
         _caretIndex += text.Length;
 
         ResetCaretBlink();
+        EnsureCaretVisible();
         InvalidateMeasure();
         RaisePasswordChanged();
     }
 
     private void ResetCaretBlink()
     {
-        _caretVisible = true;
+        _caretOpacity = 1.0;
         _lastCaretBlink = DateTime.Now;
+        _caretAnimationStart = DateTime.Now;
     }
 
     private void RaisePasswordChanged()
     {
         var e = new RoutedEventArgs(PasswordChangedEvent, this);
         RaiseEvent(e);
+    }
+
+    private int GetCaretIndexFromPosition(Point position)
+    {
+        var border = BorderThickness;
+        var padding = Padding;
+        var fontFamily = FontFamily ?? "Segoe UI";
+        var fontSize = FontSize > 0 ? FontSize : 14;
+
+        // Measure password char width
+        var passwordCharStr = new string(PasswordChar, 1);
+        var passwordCharText = new FormattedText(passwordCharStr, fontFamily, fontSize);
+        TextMeasurement.MeasureText(passwordCharText);
+        var charWidth = passwordCharText.Width;
+
+        var contentX = border.Left + padding.Left;
+        var relativeX = position.X - contentX + _horizontalOffset;
+
+        if (relativeX <= 0)
+            return 0;
+
+        // Calculate character index based on position
+        var charIndex = (int)Math.Round(relativeX / charWidth);
+        return Math.Max(0, Math.Min(charIndex, _password.Length));
+    }
+
+    private void EnsureCaretVisible()
+    {
+        var border = BorderThickness;
+        var padding = Padding;
+        var contentWidth = Math.Round(RenderSize.Width - border.Left - border.Right - padding.Left - padding.Right);
+
+        if (contentWidth <= 0)
+            return;
+
+        var fontFamily = FontFamily ?? "Segoe UI";
+        var fontSize = FontSize > 0 ? FontSize : 14;
+
+        // Measure password char width
+        var passwordCharStr = new string(PasswordChar, 1);
+        var passwordCharText = new FormattedText(passwordCharStr, fontFamily, fontSize);
+        TextMeasurement.MeasureText(passwordCharText);
+        var charWidth = passwordCharText.Width;
+
+        var caretX = Math.Round(_caretIndex * charWidth);
+
+        // Horizontal scrolling
+        if (caretX < _horizontalOffset)
+        {
+            _horizontalOffset = caretX;
+        }
+        else if (caretX > _horizontalOffset + contentWidth - 2)
+        {
+            _horizontalOffset = caretX - contentWidth + 2;
+        }
+
+        _horizontalOffset = Math.Round(Math.Max(0, _horizontalOffset));
+    }
+
+    #endregion
+
+    #region Caret Animation
+
+    private void StartCaretTimer()
+    {
+        if (_caretTimer == null)
+        {
+            _caretTimer = new System.Timers.Timer(CaretTimerInterval);
+            _caretTimer.Elapsed += OnCaretTimerElapsed;
+            _caretTimer.AutoReset = true;
+        }
+        _caretTimer.Start();
+    }
+
+    private void StopCaretTimer()
+    {
+        _caretTimer?.Stop();
+    }
+
+    private void OnCaretTimerElapsed(object? sender, ElapsedEventArgs e)
+    {
+        // Use Dispatcher to update UI from timer thread
+        Dispatcher.Invoke(() =>
+        {
+            InvalidateVisual();
+        });
+    }
+
+    private double UpdateCaretAnimation()
+    {
+        var now = DateTime.Now;
+        var timeSinceReset = (now - _lastCaretBlink).TotalMilliseconds;
+        var cycleTime = timeSinceReset % (CaretBlinkInterval * 2);
+
+        if (cycleTime < CaretBlinkInterval - CaretFadeDuration)
+        {
+            // Fully visible
+            _caretOpacity = 1.0;
+        }
+        else if (cycleTime < CaretBlinkInterval)
+        {
+            // Fading out
+            var fadeProgress = (cycleTime - (CaretBlinkInterval - CaretFadeDuration)) / CaretFadeDuration;
+            _caretOpacity = 1.0 - fadeProgress;
+        }
+        else if (cycleTime < CaretBlinkInterval * 2 - CaretFadeDuration)
+        {
+            // Fully hidden
+            _caretOpacity = 0.0;
+        }
+        else
+        {
+            // Fading in
+            var fadeProgress = (cycleTime - (CaretBlinkInterval * 2 - CaretFadeDuration)) / CaretFadeDuration;
+            _caretOpacity = fadeProgress;
+        }
+
+        return _caretOpacity;
     }
 
     #endregion

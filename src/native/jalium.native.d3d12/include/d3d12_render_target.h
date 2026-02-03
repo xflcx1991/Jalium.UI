@@ -30,6 +30,8 @@ public:
     void FillEllipse(float cx, float cy, float rx, float ry, Brush* brush) override;
     void DrawEllipse(float cx, float cy, float rx, float ry, Brush* brush, float strokeWidth) override;
     void DrawLine(float x1, float y1, float x2, float y2, Brush* brush, float strokeWidth) override;
+    void FillPolygon(const float* points, uint32_t pointCount, Brush* brush, int32_t fillRule) override;
+    void DrawPolygon(const float* points, uint32_t pointCount, Brush* brush, float strokeWidth, bool closed) override;
     void RenderText(
         const wchar_t* text, uint32_t textLength,
         TextFormat* format,
@@ -53,6 +55,34 @@ public:
         float blurRadius,
         float cornerRadiusTL, float cornerRadiusTR,
         float cornerRadiusBR, float cornerRadiusBL) override;
+
+    void DrawGlowingBorderHighlight(
+        float x, float y, float w, float h,
+        float animationPhase,
+        float glowColorR, float glowColorG, float glowColorB,
+        float strokeWidth,
+        float trailLength,
+        float dimOpacity,
+        float screenWidth, float screenHeight) override;
+
+    void DrawGlowingBorderTransition(
+        float fromX, float fromY, float fromW, float fromH,
+        float toX, float toY, float toW, float toH,
+        float headProgress, float tailProgress,
+        float animationPhase,
+        float glowColorR, float glowColorG, float glowColorB,
+        float strokeWidth,
+        float trailLength,
+        float dimOpacity,
+        float screenWidth, float screenHeight) override;
+
+    void DrawRippleEffect(
+        float x, float y, float w, float h,
+        float rippleProgress,
+        float glowColorR, float glowColorG, float glowColorB,
+        float strokeWidth,
+        float dimOpacity,
+        float screenWidth, float screenHeight) override;
 
 private:
     static constexpr uint32_t FrameCount = 2;
@@ -100,6 +130,10 @@ private:
 
     bool isDrawing_ = false;
     bool tearingSupported_ = false;
+
+    // DPI settings - initialized from window
+    float dpiX_ = 96.0f;
+    float dpiY_ = 96.0f;
 
     // Backdrop blur resources - per-frame snapshot textures
     ComPtr<ID3D11Texture2D> snapshotTextures_[FrameCount];

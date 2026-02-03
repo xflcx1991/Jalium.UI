@@ -56,6 +56,12 @@ public class HyperlinkButton : ButtonBase
 
     #endregion
 
+    #region Template Parts
+
+    private Border? _underlineBorder;
+
+    #endregion
+
     #region Constructor
 
     /// <summary>
@@ -69,6 +75,17 @@ public class HyperlinkButton : ButtonBase
         Padding = new Thickness(0);
         BorderThickness = new Thickness(0);
         // Note: Cursor support will be added when the base class supports it
+    }
+
+    #endregion
+
+    #region Template
+
+    /// <inheritdoc />
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+        _underlineBorder = GetTemplateChild("UnderlineBorder") as Border;
     }
 
     #endregion
@@ -154,6 +171,12 @@ public class HyperlinkButton : ButtonBase
     /// <inheritdoc />
     protected override void OnRender(object drawingContext)
     {
+        // If using template, let the template handle rendering
+        if (_underlineBorder != null)
+        {
+            return;
+        }
+
         if (drawingContext is not DrawingContext dc)
             return;
 

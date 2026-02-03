@@ -11,6 +11,20 @@ public sealed class DependencyProperty
     private static int _globalIndex;
 
     /// <summary>
+    /// Represents an unset value for a dependency property.
+    /// This is used to indicate that a property has no value set, or has mixed values in a selection.
+    /// </summary>
+    public static readonly object UnsetValue = new UnsetValueType();
+
+    /// <summary>
+    /// Internal type representing an unset value.
+    /// </summary>
+    private sealed class UnsetValueType
+    {
+        public override string ToString() => "{DependencyProperty.UnsetValue}";
+    }
+
+    /// <summary>
     /// Gets the property name.
     /// </summary>
     public string Name { get; }

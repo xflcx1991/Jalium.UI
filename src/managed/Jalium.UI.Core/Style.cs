@@ -649,6 +649,22 @@ public class Condition
 }
 
 /// <summary>
+/// Represents a condition based on a data binding for a MultiDataTrigger.
+/// </summary>
+public class BindingCondition
+{
+    /// <summary>
+    /// Gets or sets the binding to evaluate.
+    /// </summary>
+    public Binding? Binding { get; set; }
+
+    /// <summary>
+    /// Gets or sets the value that the binding must equal for the condition to be true.
+    /// </summary>
+    public object? Value { get; set; }
+}
+
+/// <summary>
 /// Represents a trigger that applies property values when multiple conditions are all true.
 /// </summary>
 [ContentProperty("Setters")]
@@ -946,6 +962,155 @@ public class EventTrigger : Trigger
         foreach (var action in Actions)
         {
             action.Invoke(_attachedElement);
+        }
+    }
+}
+
+/// <summary>
+/// Represents a trigger that applies property values when multiple data binding conditions are all true.
+/// </summary>
+[ContentProperty("Setters")]
+public class MultiDataTrigger : Trigger
+{
+    /// <summary>
+    /// Tracks per-element state since a single trigger can be attached to multiple elements (shared styles).
+    /// </summary>
+    private class ElementState
+    {
+        public bool IsActive;
+        public Action<DependencyProperty, object?, object?>? Handler;
+        public List<BindingExpressionBase> BindingExpressions = new();
+        public List<DependencyProperty> ShadowProperties = new();
+    }
+
+    private readonly Dictionary<FrameworkElement, ElementState> _elementStates = new();
+
+    // Counter for generating unique shadow property names
+    private static int _propertyCounter;
+
+    /// <summary>
+    /// Gets the collection of binding conditions that must all be true for the trigger to activate.
+    /// </summary>
+    public IList<BindingCondition> Conditions { get; } = new List<BindingCondition>();
+
+    /// <inheritdoc />
+    internal override void Attach(FrameworkElement element)
+    {
+        // Create per-element state
+        var state = new ElementState();
+        _elementStates[element] = state;
+
+        // Create shadow properties for each condition
+        foreach (var condition in Conditions)
+        {
+            var propId = Interlocked.Increment(ref _propertyCounter);
+            var shadowProp = DependencyProperty.RegisterAttached(
+                $"_MultiDataTriggerValue{propId}",
+                typeof(object),
+                typeof(MultiDataTrigger),
+                new PropertyMetadata(null));
+            state.ShadowProperties.Add(shadowProp);
+        }
+
+        // Create a closure that captures this specific element
+        state.Handler = (dp, oldValue, newValue) =>
+        {
+            // Check if this property is one of our shadow properties
+            if (state.ShadowProperties.Contains(dp))
+            {
+                EvaluateTriggerForElement(element);
+            }
+        };
+
+        // Subscribe to property changes
+        element.PropertyChangedInternal += state.Handler;
+
+        // Set up bindings to shadow properties
+        for (int i = 0; i < Conditions.Count; i++)
+        {
+            var condition = Conditions[i];
+            if (condition.Binding != null)
+            {
+                var bindingExpr = BindingOperations.SetBinding(element, state.ShadowProperties[i], condition.Binding);
+                state.BindingExpressions.Add(bindingExpr);
+            }
+        }
+
+        // Check initial state
+        EvaluateTriggerForElement(element);
+    }
+
+    /// <inheritdoc />
+    internal override void Detach(FrameworkElement element)
+    {
+        if (_elementStates.TryGetValue(element, out var state))
+        {
+            // Unsubscribe from property changes
+            if (state.Handler != null)
+            {
+                element.PropertyChangedInternal -= state.Handler;
+            }
+
+            // Clear all bindings
+            foreach (var shadowProp in state.ShadowProperties)
+            {
+                BindingOperations.ClearBinding(element, shadowProp);
+            }
+
+            if (state.IsActive)
+            {
+                RemoveTriggerSetters(element);
+            }
+
+            _elementStates.Remove(element);
+        }
+
+        // Clear any stored pre-trigger values
+        ClearPreTriggerValues(element);
+    }
+
+    /// <inheritdoc />
+    internal override bool IsActiveForElement(FrameworkElement element)
+    {
+        return _elementStates.TryGetValue(element, out var state) && state.IsActive;
+    }
+
+    private void EvaluateTriggerForElement(FrameworkElement element)
+    {
+        if (!_elementStates.TryGetValue(element, out var state)) return;
+
+        // All conditions must be true
+        var shouldBeActive = true;
+
+        for (int i = 0; i < Conditions.Count; i++)
+        {
+            var condition = Conditions[i];
+            if (i >= state.ShadowProperties.Count)
+            {
+                shouldBeActive = false;
+                break;
+            }
+
+            var currentValue = element.GetValue(state.ShadowProperties[i]);
+            if (!Equals(currentValue, condition.Value))
+            {
+                shouldBeActive = false;
+                break;
+            }
+        }
+
+        if (shouldBeActive != state.IsActive)
+        {
+            state.IsActive = shouldBeActive;
+
+            if (state.IsActive)
+            {
+                ApplyTriggerSetters(element);
+            }
+            else
+            {
+                RemoveTriggerSetters(element);
+            }
         }
     }
 }

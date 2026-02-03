@@ -1,21 +1,30 @@
 using System.ComponentModel;
 using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 
 namespace Jalium.UI;
 
 /// <summary>
 /// Provides services for managing the queue of work items for a thread.
 /// </summary>
-public sealed class Dispatcher
+public sealed partial class Dispatcher : IDisposable
 {
     private static readonly ThreadLocal<Dispatcher?> _currentDispatcher = new();
     private static Dispatcher? _mainDispatcher;
     private static readonly object _lock = new();
 
     private readonly Thread _thread;
+    private readonly uint _threadId;
     private readonly ConcurrentQueue<Action> _queue = new();
     private readonly ManualResetEventSlim _workAvailable = new(false);
     private volatile bool _isShutdown;
+    private bool _disposed;
+
+    // Message window for receiving dispatch notifications
+    private nint _messageWindow;
+    private WndProcDelegate? _wndProcDelegate;
+    private const string MessageWindowClassName = "JaliumDispatcherMessageWindow";
+    private const uint WM_DISPATCHER_INVOKE = 0x0400 + 1; // WM_USER + 1
 
     /// <summary>
     /// Gets the <see cref="Dispatcher"/> for the thread currently executing.
@@ -48,6 +57,10 @@ public sealed class Dispatcher
     private Dispatcher()
     {
         _thread = Thread.CurrentThread;
+        _threadId = GetCurrentThreadId();
+
+        // Create message window for dispatch notifications
+        CreateMessageWindow();
     }
 
     /// <summary>
@@ -140,7 +153,7 @@ public sealed class Dispatcher
             }
         });
 
-        _workAvailable.Set();
+        NotifyDispatcherThread();
         completed.Wait();
 
         if (exception != null)
@@ -184,7 +197,7 @@ public sealed class Dispatcher
             }
         });
 
-        _workAvailable.Set();
+        NotifyDispatcherThread();
         completed.Wait();
 
         if (exception != null)
@@ -204,7 +217,7 @@ public sealed class Dispatcher
         ArgumentNullException.ThrowIfNull(callback);
 
         _queue.Enqueue(callback);
-        _workAvailable.Set();
+        NotifyDispatcherThread();
     }
 
     /// <summary>
@@ -237,7 +250,7 @@ public sealed class Dispatcher
             }
         });
 
-        _workAvailable.Set();
+        NotifyDispatcherThread();
         return tcs.Task;
     }
 
@@ -270,7 +283,7 @@ public sealed class Dispatcher
             }
         });
 
-        _workAvailable.Set();
+        NotifyDispatcherThread();
         return tcs.Task;
     }
 
@@ -304,7 +317,7 @@ public sealed class Dispatcher
     public void BeginInvokeShutdown()
     {
         _isShutdown = true;
-        _workAvailable.Set();
+        NotifyDispatcherThread();
     }
 
     /// <summary>
@@ -316,6 +329,148 @@ public sealed class Dispatcher
     /// Occurs when the dispatcher finishes shutting down.
     /// </summary>
     public event EventHandler? ShutdownFinished;
+
+    #region Message Window
+
+    private void CreateMessageWindow()
+    {
+        // Keep delegate alive
+        _wndProcDelegate = MessageWindowProc;
+
+        var wndClass = new WNDCLASSEXW
+        {
+            cbSize = (uint)Marshal.SizeOf<WNDCLASSEXW>(),
+            lpfnWndProc = Marshal.GetFunctionPointerForDelegate(_wndProcDelegate),
+            hInstance = GetModuleHandle(null),
+            lpszClassName = MessageWindowClassName + _threadId
+        };
+
+        var atom = RegisterClassExW(ref wndClass);
+        if (atom == 0)
+        {
+            // Class might already exist, try to create window anyway
+        }
+
+        _messageWindow = CreateWindowExW(
+            0,
+            MessageWindowClassName + _threadId,
+            string.Empty,
+            0,
+            0, 0, 0, 0,
+            HWND_MESSAGE,
+            nint.Zero,
+            GetModuleHandle(null),
+            nint.Zero);
+    }
+
+    private void DestroyMessageWindow()
+    {
+        if (_messageWindow != nint.Zero)
+        {
+            DestroyWindow(_messageWindow);
+            _messageWindow = nint.Zero;
+        }
+
+        UnregisterClassW(MessageWindowClassName + _threadId, GetModuleHandle(null));
+    }
+
+    private nint MessageWindowProc(nint hwnd, uint msg, nint wParam, nint lParam)
+    {
+        if (msg == WM_DISPATCHER_INVOKE)
+        {
+            ProcessQueue();
+            return nint.Zero;
+        }
+
+        return DefWindowProcW(hwnd, msg, wParam, lParam);
+    }
+
+    private void NotifyDispatcherThread()
+    {
+        _workAvailable.Set();
+
+        // Post message to wake up the message loop
+        if (_messageWindow != nint.Zero)
+        {
+            PostMessageW(_messageWindow, WM_DISPATCHER_INVOKE, nint.Zero, nint.Zero);
+        }
+    }
+
+    #endregion
+
+    #region IDisposable
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        DestroyMessageWindow();
+        _workAvailable.Dispose();
+    }
+
+    #endregion
+
+    #region Win32 Interop
+
+    private delegate nint WndProcDelegate(nint hwnd, uint msg, nint wParam, nint lParam);
+
+    private static readonly nint HWND_MESSAGE = new(-3);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct WNDCLASSEXW
+    {
+        public uint cbSize;
+        public uint style;
+        public nint lpfnWndProc;
+        public int cbClsExtra;
+        public int cbWndExtra;
+        public nint hInstance;
+        public nint hIcon;
+        public nint hCursor;
+        public nint hbrBackground;
+        public string? lpszMenuName;
+        public string lpszClassName;
+        public nint hIconSm;
+    }
+
+    [LibraryImport("kernel32.dll")]
+    private static partial uint GetCurrentThreadId();
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetModuleHandleW", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial nint GetModuleHandle(string? lpModuleName);
+
+    [DllImport("user32.dll", EntryPoint = "RegisterClassExW", CharSet = CharSet.Unicode)]
+    private static extern ushort RegisterClassExW(ref WNDCLASSEXW lpwcx);
+
+    [LibraryImport("user32.dll", EntryPoint = "UnregisterClassW", StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool UnregisterClassW(string lpClassName, nint hInstance);
+
+    [LibraryImport("user32.dll", EntryPoint = "CreateWindowExW", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial nint CreateWindowExW(
+        uint dwExStyle,
+        string lpClassName,
+        string lpWindowName,
+        uint dwStyle,
+        int x, int y, int nWidth, int nHeight,
+        nint hWndParent,
+        nint hMenu,
+        nint hInstance,
+        nint lpParam);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool DestroyWindow(nint hWnd);
+
+    [LibraryImport("user32.dll", EntryPoint = "PostMessageW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool PostMessageW(nint hWnd, uint Msg, nint wParam, nint lParam);
+
+    [LibraryImport("user32.dll", EntryPoint = "DefWindowProcW")]
+    private static partial nint DefWindowProcW(nint hWnd, uint Msg, nint wParam, nint lParam);
+
+    #endregion
 }
 
 /// <summary>

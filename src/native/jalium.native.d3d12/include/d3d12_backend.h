@@ -46,6 +46,7 @@ public:
     IDWriteFactory5* GetDWriteFactory() const { return dwriteFactory_.Get(); }
     ID3D11On12Device* GetD3D11On12Device() const { return d3d11On12Device_.Get(); }
     ID3D11DeviceContext* GetD3D11Context() const { return d3d11Context_.Get(); }
+    IDXGIFactory6* GetDXGIFactory() const { return dxgiFactory_.Get(); }
 
     IWICImagingFactory* GetWICFactory() const { return wicFactory_.Get(); }
 

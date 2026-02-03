@@ -27,7 +27,7 @@ public partial class ImagePage : Page
             var image = new Image
             {
                 Source = bitmapImage,
-                Stretch = Stretch.Uniform,
+                Stretch = Controls.Stretch.Uniform,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
             };

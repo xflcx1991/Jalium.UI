@@ -10,9 +10,8 @@ namespace Jalium.UI.Controls;
 public class ComboBox : Selector
 {
     private Popup? _popup;
-    private Border? _dropdownBorder;
+    private ToggleButton? _toggleButton;
     private StackPanel? _itemsPanel;
-    private TextBlock? _selectedTextBlock;
     private bool _isDropDownOpen;
 
     #region Dependency Properties
@@ -37,6 +36,22 @@ public class ComboBox : Selector
     public static readonly DependencyProperty PlaceholderTextProperty =
         DependencyProperty.Register(nameof(PlaceholderText), typeof(string), typeof(ComboBox),
             new PropertyMetadata("Select an item..."));
+
+    /// <summary>
+    /// Identifies the SelectionBoxItem dependency property.
+    /// </summary>
+    public static readonly DependencyProperty SelectionBoxItemProperty =
+        DependencyProperty.Register(nameof(SelectionBoxItem), typeof(object), typeof(ComboBox),
+            new PropertyMetadata(null, OnSelectionBoxItemChanged));
+
+    private static void OnSelectionBoxItemChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is ComboBox comboBox)
+        {
+            // Trigger UI update when selection box item changes
+            comboBox.InvalidateVisual();
+        }
+    }
 
     #endregion
 
@@ -69,6 +84,15 @@ public class ComboBox : Selector
         set => SetValue(PlaceholderTextProperty, value);
     }
 
+    /// <summary>
+    /// Gets the item displayed in the selection box.
+    /// </summary>
+    public object? SelectionBoxItem
+    {
+        get => GetValue(SelectionBoxItemProperty);
+        private set => SetValue(SelectionBoxItemProperty, value);
+    }
+
     #endregion
 
     #region Events
@@ -87,28 +111,69 @@ public class ComboBox : Selector
 
     public ComboBox()
     {
-        // Use dark theme colors
-        Background = new SolidColorBrush(Color.FromRgb(45, 45, 45));
-        BorderBrush = new SolidColorBrush(Color.FromRgb(70, 70, 70));
-        Foreground = new SolidColorBrush(Color.White);
-        BorderThickness = new Thickness(1);
+        // Default values - will be overridden by style
         MinHeight = 32;
         MinWidth = 120;
-        Padding = new Thickness(8, 4, 8, 4);
 
-        // Create the selected text display
-        _selectedTextBlock = new TextBlock
-        {
-            Text = PlaceholderText,
-            Foreground = new SolidColorBrush(Color.FromRgb(128, 128, 128)),
-            VerticalAlignment = VerticalAlignment.Center
-        };
+        // Initialize SelectionBoxItem with placeholder
+        SelectionBoxItem = PlaceholderText;
 
-        // Set up mouse handling
+        // Set up mouse handling for toggle
         AddHandler(MouseDownEvent, new RoutedEventHandler(OnMouseDownHandler));
+    }
 
-        // Create the dropdown popup
-        CreateDropdownPopup();
+    /// <inheritdoc />
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+
+        // Unhook old events
+        if (_toggleButton != null)
+        {
+            _toggleButton.Checked -= OnToggleButtonChecked;
+            _toggleButton.Unchecked -= OnToggleButtonUnchecked;
+        }
+
+        if (_popup != null)
+        {
+            _popup.Closed -= OnPopupClosed;
+        }
+
+        // Get template parts
+        _toggleButton = GetTemplateChild("PART_ToggleButton") as ToggleButton;
+        _popup = GetTemplateChild("PART_Popup") as Popup;
+
+        // Wire up toggle button
+        if (_toggleButton != null)
+        {
+            _toggleButton.Checked += OnToggleButtonChecked;
+            _toggleButton.Unchecked += OnToggleButtonUnchecked;
+        }
+
+        // Wire up popup
+        if (_popup != null)
+        {
+            _popup.Closed += OnPopupClosed;
+        }
+
+        // Update selection box
+        UpdateSelectionBoxItem();
+    }
+
+    private void OnToggleButtonChecked(object? sender, RoutedEventArgs e)
+    {
+        IsDropDownOpen = true;
+    }
+
+    private void OnToggleButtonUnchecked(object? sender, RoutedEventArgs e)
+    {
+        IsDropDownOpen = false;
+    }
+
+    private void OnPopupClosed(object? sender, EventArgs e)
+    {
+        _isDropDownOpen = false;
+        SetValue(IsDropDownOpenProperty, false);
     }
 
     private void OnMouseDownHandler(object sender, RoutedEventArgs e)
@@ -116,34 +181,6 @@ public class ComboBox : Selector
         // Toggle dropdown
         IsDropDownOpen = !IsDropDownOpen;
         e.Handled = true;
-    }
-
-    private void CreateDropdownPopup()
-    {
-        _itemsPanel = new StackPanel();
-
-        _dropdownBorder = new Border
-        {
-            Background = new SolidColorBrush(Color.FromRgb(45, 45, 45)),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(70, 70, 70)),
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(0, 4, 0, 4),
-            Child = _itemsPanel
-        };
-
-        _popup = new Popup
-        {
-            Child = _dropdownBorder,
-            PlacementTarget = this,
-            Placement = PlacementMode.Bottom,
-            StaysOpen = false
-        };
-
-        _popup.Closed += (s, e) =>
-        {
-            _isDropDownOpen = false;
-            SetValue(IsDropDownOpenProperty, false);
-        };
     }
 
     private static void OnIsDropDownOpenChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -165,56 +202,88 @@ public class ComboBox : Selector
     /// <inheritdoc />
     protected override void UpdateContainerSelection()
     {
-        UpdateSelectedText();
+        UpdateSelectionBoxItem();
+    }
+
+    private void UpdateSelectionBoxItem()
+    {
+        var selectedItem = SelectedItem;
+        if (selectedItem != null)
+        {
+            SelectionBoxItem = GetItemText(selectedItem);
+        }
+        else
+        {
+            SelectionBoxItem = PlaceholderText;
+        }
     }
 
     private void OpenDropDown()
     {
-        if (_popup == null || _isDropDownOpen) return;
+        if (_isDropDownOpen) return;
 
-        // Populate dropdown items
+        // Populate dropdown items if we have an items panel
         PopulateDropdownItems();
 
-        // Set dropdown size
-        if (_dropdownBorder != null)
+        if (_popup != null)
         {
-            var dropdownWidth = ActualWidth > 0 ? ActualWidth : (MinWidth > 0 ? MinWidth : 120);
-            _dropdownBorder.MinWidth = dropdownWidth;
-            _dropdownBorder.Width = dropdownWidth;
-
-            // Calculate height based on items
-            var itemCount = Items.Count;
-            var itemHeight = 32.0; // Default item height
-            var padding = 8.0; // Top + bottom padding
-            var calculatedHeight = itemCount * itemHeight + padding;
-
-            // Apply MaxDropDownHeight constraint
-            var maxHeight = MaxDropDownHeight > 0 ? MaxDropDownHeight : 200;
-            var finalHeight = Math.Min(calculatedHeight, maxHeight);
-
-            // Ensure minimum height
-            finalHeight = Math.Max(finalHeight, itemHeight + padding);
-
-            _dropdownBorder.Height = finalHeight;
+            _popup.IsOpen = true;
         }
 
-        _popup.IsOpen = true;
         _isDropDownOpen = true;
+
+        if (_toggleButton != null)
+        {
+            _toggleButton.IsChecked = true;
+        }
+
         DropDownOpened?.Invoke(this, EventArgs.Empty);
     }
 
     private void CloseDropDown()
     {
-        if (_popup == null || !_isDropDownOpen) return;
+        if (!_isDropDownOpen) return;
 
-        _popup.IsOpen = false;
+        if (_popup != null)
+        {
+            _popup.IsOpen = false;
+        }
+
         _isDropDownOpen = false;
+
+        if (_toggleButton != null)
+        {
+            _toggleButton.IsChecked = false;
+        }
+
         DropDownClosed?.Invoke(this, EventArgs.Empty);
     }
 
     private void PopulateDropdownItems()
     {
-        if (_itemsPanel == null) return;
+        // Find the items panel in the popup
+        if (_popup?.Child is Border border)
+        {
+            // Look for ScrollViewer containing ItemsPresenter or StackPanel
+            if (border.Child is ScrollViewer scrollViewer)
+            {
+                if (scrollViewer.Content is StackPanel panel)
+                {
+                    _itemsPanel = panel;
+                }
+            }
+        }
+
+        if (_itemsPanel == null)
+        {
+            // Create items panel if not found in template
+            _itemsPanel = new StackPanel();
+
+            if (_popup?.Child is Border b && b.Child is ScrollViewer sv)
+            {
+                sv.Content = _itemsPanel;
+            }
+        }
 
         _itemsPanel.Children.Clear();
 
@@ -254,107 +323,44 @@ public class ComboBox : Selector
         return item.ToString() ?? string.Empty;
     }
 
-    private void UpdateSelectedText()
+    /// <inheritdoc />
+    protected override Size MeasureOverride(Size availableSize)
     {
-        if (_selectedTextBlock == null) return;
+        // ComboBox needs to respect MinHeight for proper sizing
+        var baseSize = base.MeasureOverride(availableSize);
 
-        var selectedItem = SelectedItem;
-        if (selectedItem != null)
+        // If base returned infinite height (template has no height constraint),
+        // use MinHeight instead. ComboBox is a fixed-height control.
+        var height = baseSize.Height;
+        if (double.IsInfinity(height) || double.IsNaN(height))
         {
-            _selectedTextBlock.Text = GetItemText(selectedItem);
-            _selectedTextBlock.Foreground = Foreground ?? new SolidColorBrush(Color.White);
+            height = MinHeight;
         }
         else
         {
-            _selectedTextBlock.Text = PlaceholderText;
-            _selectedTextBlock.Foreground = new SolidColorBrush(Color.FromRgb(128, 128, 128));
+            height = Math.Max(height, MinHeight);
         }
 
-        InvalidateVisual();
+        return new Size(baseSize.Width, height);
     }
 
-    protected override Size MeasureOverride(Size availableSize)
-    {
-        // Measure text
-        var textWidth = Math.Max(MinWidth, 120);
-        var textHeight = Math.Max(MinHeight, 32);
-
-        return new Size(
-            Math.Min(textWidth + Padding.Left + Padding.Right + 20, availableSize.Width), // +20 for arrow
-            Math.Min(textHeight, availableSize.Height));
-    }
-
+    /// <inheritdoc />
     protected override Size ArrangeOverride(Size finalSize)
     {
-        return finalSize;
-    }
+        // Ensure MinHeight is respected in arrange
+        var arrangedSize = base.ArrangeOverride(finalSize);
 
-    // Override to prevent ItemsControl from rendering its ItemsHost as a visual child
-    // ComboBox displays selected item text directly, not through the items panel
-    // The items are only shown in the popup dropdown
-    public override int VisualChildrenCount => 0;
-
-    public override Visual? GetVisualChild(int index)
-    {
-        throw new ArgumentOutOfRangeException(nameof(index));
-    }
-
-    protected override void OnRender(object drawingContextObj)
-    {
-        if (drawingContextObj is not DrawingContext dc)
+        var height = arrangedSize.Height;
+        if (double.IsInfinity(height) || double.IsNaN(height))
         {
-            base.OnRender(drawingContextObj);
-            return;
+            height = MinHeight;
+        }
+        else
+        {
+            height = Math.Max(height, MinHeight);
         }
 
-        var bounds = new Rect(0, 0, ActualWidth, ActualHeight);
-
-        // Draw background
-        if (Background != null)
-        {
-            dc.DrawRectangle(Background, null, bounds);
-        }
-
-        // Draw border
-        if (BorderBrush != null && BorderThickness.Left > 0)
-        {
-            var pen = new Pen(BorderBrush, BorderThickness.Left);
-            dc.DrawRectangle(null, pen, bounds);
-        }
-
-        // Draw selected text
-        if (_selectedTextBlock != null)
-        {
-            var fontFamily = _selectedTextBlock.FontFamily ?? "Segoe UI";
-            var fontSize = _selectedTextBlock.FontSize > 0 ? _selectedTextBlock.FontSize : 14;
-            var fontMetrics = TextMeasurement.GetFontMetrics(fontFamily, fontSize);
-
-            var text = new FormattedText(
-                _selectedTextBlock.Text,
-                fontFamily,
-                fontSize)
-            {
-                Foreground = _selectedTextBlock.Foreground ?? new SolidColorBrush(Color.Black),
-                MaxTextWidth = ActualWidth - Padding.Left - Padding.Right - 20,
-                MaxTextHeight = ActualHeight - Padding.Top - Padding.Bottom
-            };
-
-            var textY = (ActualHeight - fontMetrics.LineHeight) / 2;
-            dc.DrawText(text, new Point(Padding.Left, textY));
-        }
-
-        // Draw dropdown arrow
-        var arrowFontMetrics = TextMeasurement.GetFontMetrics("Segoe UI", 10);
-        var arrowText = new FormattedText("\u25BC", "Segoe UI", 10)
-        {
-            Foreground = new SolidColorBrush(Color.FromRgb(180, 180, 180))
-        };
-
-        var arrowX = ActualWidth - Padding.Right - 12;
-        var arrowY = (ActualHeight - arrowFontMetrics.LineHeight) / 2;
-        dc.DrawText(arrowText, new Point(arrowX, arrowY));
-
-        // Note: Do not call base.OnRender - ComboBox handles all rendering directly
+        return new Size(arrangedSize.Width, height);
     }
 }
 
@@ -375,6 +381,17 @@ public class ComboBoxItem : ContentControl
     /// Occurs when the item is clicked.
     /// </summary>
     public event EventHandler? ItemClicked;
+
+    /// <summary>
+    /// Directly invokes the click action - used by Popup for reliable click handling.
+    /// </summary>
+    internal void InvokeClick()
+    {
+        if (IsEnabled)
+        {
+            ItemClicked?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
     public ComboBoxItem()
     {
@@ -410,7 +427,6 @@ public class ComboBoxItem : ContentControl
 
         if (e is MouseButtonEventArgs mouseArgs && mouseArgs.ChangedButton == MouseButton.Left)
         {
-            CaptureMouse();
             _isPressed = true;
             e.Handled = true;
         }
@@ -422,13 +438,12 @@ public class ComboBoxItem : ContentControl
 
         if (e is MouseButtonEventArgs mouseArgs && mouseArgs.ChangedButton == MouseButton.Left)
         {
-            var wasPressed = _isPressed;
-            _isPressed = false;
-            ReleaseMouseCapture();
-
-            // Only fire click if mouse is still over the item
-            if (wasPressed && _isMouseOver)
+            // Fire click if mouse was pressed on this item and is still over it
+            // In popup context, we simplify by just checking wasPressed since
+            // the user clicking on the same item they pressed is the expected behavior
+            if (_isPressed)
             {
+                _isPressed = false;
                 ItemClicked?.Invoke(this, EventArgs.Empty);
             }
             e.Handled = true;

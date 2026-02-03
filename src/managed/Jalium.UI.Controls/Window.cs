@@ -95,6 +95,18 @@ public partial class Window : ContentControl, IWindowHost
     /// </summary>
     public RenderTarget? RenderTarget { get; private set; }
 
+    /// <summary>
+    /// Gets or sets a value indicating whether hit testing is suspended.
+    /// When true, mouse events will target the window itself instead of child elements.
+    /// Used by Popup to implement light dismiss behavior.
+    /// </summary>
+    internal bool IsHitTestSuspended { get; set; }
+
+    /// <summary>
+    /// Gets or sets the TaskbarItemInfo object that provides taskbar integration features.
+    /// </summary>
+    public TaskbarItemInfo? TaskbarItemInfo { get; set; }
+
     #endregion
 
     #region Events
@@ -127,6 +139,9 @@ public partial class Window : ContentControl, IWindowHost
     /// </summary>
     public TitleBar? TitleBar { get; private set; }
 
+    private readonly HashSet<Popup> _lightDismissPopups = [];
+    private MouseButton? _suppressMouseUpButton;
+
     public Window()
     {
         Background = new SolidColorBrush(Color.White);
@@ -135,6 +150,22 @@ public partial class Window : ContentControl, IWindowHost
 
         // Create custom title bar by default
         CreateTitleBar();
+    }
+
+    internal void RegisterLightDismissPopup(Popup popup)
+    {
+        if (_lightDismissPopups.Add(popup))
+        {
+            IsHitTestSuspended = true;
+        }
+    }
+
+    internal void UnregisterLightDismissPopup(Popup popup)
+    {
+        if (_lightDismissPopups.Remove(popup) && _lightDismissPopups.Count == 0)
+        {
+            IsHitTestSuspended = false;
+        }
     }
 
     private void CreateTitleBar()
@@ -1848,6 +1879,11 @@ public partial class Window : ContentControl, IWindowHost
 
     private void OnMouseButtonDown(MouseButton button, nint wParam, nint lParam)
     {
+        if (TryHandleLightDismiss(button))
+        {
+            return;
+        }
+
         var position = GetMousePosition(lParam);
         var (left, middle, right, xButton1, xButton2) = GetMouseButtonStates(wParam);
         var modifiers = GetModifierKeys();
@@ -1868,8 +1904,20 @@ public partial class Window : ContentControl, IWindowHost
 
         // If an element has captured the mouse, it receives all mouse events
         // Otherwise, find the target element via hit testing
+        // When IsHitTestSuspended is true (e.g., light-dismiss popups are open), skip hit testing
+        // as a safety net to avoid targeting controls during dismiss.
         var captured = UIElement.MouseCapturedElement;
-        var target = captured ?? HitTest(position)?.VisualHit as UIElement ?? this;
+        UIElement target;
+        if (IsHitTestSuspended)
+        {
+            // When hit test is suspended, target the window itself
+            // This prevents other controls from receiving clicks during light dismiss.
+            target = this;
+        }
+        else
+        {
+            target = captured ?? HitTest(position)?.VisualHit as UIElement ?? this;
+        }
 
         // Update button state for the pressed button
         var currentState = MouseButtonState.Pressed;
@@ -1894,6 +1942,12 @@ public partial class Window : ContentControl, IWindowHost
 
     private void OnMouseButtonUp(MouseButton button, nint wParam, nint lParam)
     {
+        if (_suppressMouseUpButton == button)
+        {
+            _suppressMouseUpButton = null;
+            return;
+        }
+
         var position = GetMousePosition(lParam);
         var (left, middle, right, xButton1, xButton2) = GetMouseButtonStates(wParam);
         var modifiers = GetModifierKeys();
@@ -1951,6 +2005,27 @@ public partial class Window : ContentControl, IWindowHost
                 xButton1, xButton2, modifiers, timestamp);
             target.RaiseEvent(bubbleArgs);
         }
+    }
+
+    private bool TryHandleLightDismiss(MouseButton button)
+    {
+        if (_lightDismissPopups.Count == 0)
+        {
+            return false;
+        }
+
+        // Close all light-dismiss popups and consume this click.
+        var popups = new List<Popup>(_lightDismissPopups);
+        foreach (var popup in popups)
+        {
+            if (popup.IsOpen)
+            {
+                popup.IsOpen = false;
+            }
+        }
+
+        _suppressMouseUpButton = button;
+        return true;
     }
 
     private void OnMouseWheel(nint wParam, nint lParam)

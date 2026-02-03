@@ -234,6 +234,17 @@ public abstract class ButtonBase : ContentControl
     }
 
     /// <summary>
+    /// Programmatically performs a click action on the button.
+    /// </summary>
+    public void PerformClick()
+    {
+        if (IsEnabled)
+        {
+            OnClick();
+        }
+    }
+
+    /// <summary>
     /// Sets the IsPressed property value.
     /// </summary>
     internal void SetIsPressed(bool value)

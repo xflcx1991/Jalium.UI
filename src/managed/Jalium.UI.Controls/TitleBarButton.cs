@@ -87,6 +87,19 @@ public class TitleBarButton : ButtonBase
 
     #endregion
 
+    #region Template Parts
+
+    private Border? _rootBorder;
+
+    /// <inheritdoc />
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+        _rootBorder = GetTemplateChild("PART_RootBorder") as Border;
+    }
+
+    #endregion
+
     #region Property Changed
 
     private static void OnKindChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -137,6 +150,10 @@ public class TitleBarButton : ButtonBase
     /// <inheritdoc />
     protected override void OnRender(object drawingContext)
     {
+        // If using template, let the template handle rendering
+        if (_rootBorder != null)
+            return;
+
         if (drawingContext is not DrawingContext dc)
             return;
 

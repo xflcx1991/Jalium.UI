@@ -164,19 +164,17 @@ public class Italic : Span
 public class Underline : Span
 {
     /// <summary>
-    /// Gets or sets whether text is underlined.
-    /// </summary>
-    public bool IsUnderlined { get; set; } = true;
-
-    /// <summary>
     /// Initializes a new instance of the <see cref="Underline"/> class.
     /// </summary>
-    public Underline() { }
+    public Underline()
+    {
+        TextDecorations = Media.TextDecorations.Underline;
+    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Underline"/> class with the specified inline.
     /// </summary>
-    public Underline(Inline childInline)
+    public Underline(Inline childInline) : this()
     {
         Inlines.Add(childInline);
     }

@@ -92,4 +92,49 @@
         </Style.Triggers>
     </Style>
 
+    <!-- ============================================== -->
+    <!-- HyperlinkButton Style -->
+    <!-- ============================================== -->
+    <Style TargetType="HyperlinkButton">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource HyperlinkForeground}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <ControlTemplate TargetType="HyperlinkButton">
+                <Border Background="{TemplateBinding Background}"
+                        Padding="{TemplateBinding Padding}">
+                    <StackPanel Orientation="Vertical">
+                        <ContentPresenter Name="ContentElement"
+                                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        <Border Name="UnderlineBorder"
+                                Height="1"
+                                Background="{TemplateBinding Foreground}"
+                                Margin="0,-1,0,0" />
+                    </StackPanel>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+
+        <Style.Triggers>
+            <PropertyTrigger Property="IsUnderlined" Value="False">
+                <Setter TargetName="UnderlineBorder" Property="Visibility" Value="Collapsed" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsMouseOver" Value="True">
+                <Setter Property="Foreground" Value="{StaticResource HyperlinkForegroundHover}" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsPressed" Value="True">
+                <Setter Property="Foreground" Value="{StaticResource HyperlinkForegroundPressed}" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{StaticResource TextDisabled}" />
+            </PropertyTrigger>
+        </Style.Triggers>
+    </Style>
+
 </ResourceDictionary>

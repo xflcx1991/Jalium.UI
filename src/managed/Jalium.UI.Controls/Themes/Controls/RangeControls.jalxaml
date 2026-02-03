@@ -3,12 +3,84 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- ============================================== -->
+    <!-- ProgressBar Style -->
+    <!-- ============================================== -->
+    <Style TargetType="ProgressBar">
+        <Setter Property="Background" Value="{StaticResource SliderTrack}" />
+        <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+        <Setter Property="ProgressBrush" Value="{StaticResource AccentBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource ControlBorder}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="MinHeight" Value="4" />
+        <Setter Property="Height" Value="8" />
+        <Setter Property="Template">
+            <ControlTemplate TargetType="ProgressBar">
+                <Grid>
+                    <!-- Track Background -->
+                    <Border Name="PART_Track"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}" />
+
+                    <!-- Progress Indicator -->
+                    <Border Name="PART_Indicator"
+                            Background="{TemplateBinding ProgressBrush}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            HorizontalAlignment="Left" />
+                </Grid>
+            </ControlTemplate>
+        </Setter>
+
+        <Style.Triggers>
+            <PropertyTrigger Property="IsEnabled" Value="False">
+                <Setter Property="ProgressBrush" Value="{StaticResource AccentBrushDisabled}" />
+            </PropertyTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ============================================== -->
     <!-- Slider Style -->
     <!-- ============================================== -->
     <Style TargetType="Slider">
         <Setter Property="Background" Value="{StaticResource SliderTrack}" />
         <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
         <Setter Property="BorderBrush" Value="{StaticResource ControlBorder}" />
+        <Setter Property="MinHeight" Value="24" />
+        <Setter Property="Template">
+            <ControlTemplate TargetType="Slider">
+                <Grid>
+                    <!-- Track Background -->
+                    <Border Name="PART_Track"
+                            Background="{TemplateBinding Background}"
+                            Height="4"
+                            CornerRadius="2"
+                            VerticalAlignment="Center"
+                            Margin="8,0,8,0" />
+
+                    <!-- Filled Track -->
+                    <Border Name="PART_SelectionRange"
+                            Background="{TemplateBinding Foreground}"
+                            Height="4"
+                            CornerRadius="2"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Left"
+                            Margin="8,0,8,0" />
+
+                    <!-- Thumb -->
+                    <Border Name="PART_Thumb"
+                            Width="16"
+                            Height="16"
+                            CornerRadius="8"
+                            Background="{TemplateBinding Foreground}"
+                            BorderBrush="White"
+                            BorderThickness="2"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center" />
+                </Grid>
+            </ControlTemplate>
+        </Setter>
 
         <Style.Triggers>
             <PropertyTrigger Property="IsEnabled" Value="False">
@@ -18,21 +90,54 @@
     </Style>
 
     <!-- ============================================== -->
-    <!-- ProgressBar Style -->
-    <!-- ============================================== -->
-    <Style TargetType="ProgressBar">
-        <Setter Property="Background" Value="{StaticResource SliderTrack}" />
-        <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
-        <Setter Property="BorderBrush" Value="{StaticResource ControlBorder}" />
-        <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="CornerRadius" Value="2" />
-    </Style>
-
-    <!-- ============================================== -->
     <!-- TickBar Style -->
     <!-- ============================================== -->
     <Style TargetType="TickBar">
         <Setter Property="Fill" Value="{StaticResource TextSecondary}" />
+    </Style>
+
+    <!-- ============================================== -->
+    <!-- Thumb Style -->
+    <!-- ============================================== -->
+    <Style TargetType="Thumb">
+        <Setter Property="Background" Value="{StaticResource ControlBackground}" />
+        <Setter Property="BorderBrush" Value="{StaticResource ControlBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="2" />
+        <Setter Property="Width" Value="12" />
+        <Setter Property="Height" Value="20" />
+        <Setter Property="Template">
+            <ControlTemplate TargetType="Thumb">
+                <Border Name="ThumbBorder"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="{TemplateBinding CornerRadius}">
+                    <!-- Grip Lines -->
+                    <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <StackPanel Orientation="Vertical" VerticalAlignment="Center">
+                            <Border Height="1" Width="6" Background="{StaticResource TextTertiary}" Margin="0,0,0,2" />
+                            <Border Height="1" Width="6" Background="{StaticResource TextTertiary}" Margin="0,0,0,2" />
+                            <Border Height="1" Width="6" Background="{StaticResource TextTertiary}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+
+        <Style.Triggers>
+            <PropertyTrigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource ControlBackgroundHover}" />
+                <Setter Property="BorderBrush" Value="{StaticResource ControlBorderHover}" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsDragging" Value="True">
+                <Setter Property="Background" Value="{StaticResource ControlBackgroundPressed}" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsEnabled" Value="False">
+                <Setter Property="Background" Value="{StaticResource ControlBackgroundDisabled}" />
+                <Setter Property="BorderBrush" Value="{StaticResource ControlBorderDisabled}" />
+            </PropertyTrigger>
+        </Style.Triggers>
     </Style>
 
 </ResourceDictionary>

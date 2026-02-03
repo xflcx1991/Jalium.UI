@@ -264,9 +264,11 @@ public class Control : FrameworkElement
 
         // Load new template
         var template = Template;
+
         if (template != null)
         {
             _templateRoot = template.LoadContent();
+
             if (_templateRoot != null)
             {
                 // Set the templated parent for template bindings
@@ -274,6 +276,10 @@ public class Control : FrameworkElement
 
                 // Add to visual tree
                 AddVisualChild(_templateRoot);
+
+                // Reactivate bindings now that the template tree is fully connected
+                // This allows RelativeSource FindAncestor bindings to resolve
+                ReactivateBindingsRecursive(_templateRoot);
 
                 // Call OnApplyTemplate for derived classes to get template parts
                 OnApplyTemplate();
@@ -354,13 +360,101 @@ public class Control : FrameworkElement
             parent.RegisterName(element.Name, element);
         }
 
-        // Process children
+        // Process visual children
         var childCount = element.VisualChildrenCount;
         for (int i = 0; i < childCount; i++)
         {
             if (element.GetVisualChild(i) is FrameworkElement child)
             {
                 SetTemplatedParentRecursive(child, parent);
+            }
+        }
+
+        // Special handling for Popup - its Child is not a visual child but needs TemplatedParent
+        if (element is Popup popup && popup.Child is FrameworkElement popupChild)
+        {
+            SetTemplatedParentRecursive(popupChild, parent);
+        }
+
+        // Special handling for Border - its Child might not be in visual tree yet
+        if (element is Border border && border.Child is FrameworkElement borderChild)
+        {
+            SetTemplatedParentRecursive(borderChild, parent);
+        }
+
+        // Special handling for ContentControl - its content might not be in visual tree yet
+        if (element is ContentControl contentControl && contentControl.Content is FrameworkElement contentChild)
+        {
+            SetTemplatedParentRecursive(contentChild, parent);
+        }
+
+        // Special handling for ScrollViewer - its Content might not be in visual tree yet
+        if (element is ScrollViewer scrollViewer && scrollViewer.Content is FrameworkElement scrollContent)
+        {
+            SetTemplatedParentRecursive(scrollContent, parent);
+        }
+
+        // Special handling for Panel - ensure all children are processed
+        if (element is Panel panel)
+        {
+            foreach (var panelChild in panel.Children)
+            {
+                if (panelChild is FrameworkElement panelChildElement)
+                {
+                    SetTemplatedParentRecursive(panelChildElement, parent);
+                }
+            }
+        }
+    }
+
+    private static void ReactivateBindingsRecursive(FrameworkElement element)
+    {
+        // Reactivate bindings on this element
+        element.ReactivateBindings();
+
+        // Process visual children
+        var childCount = element.VisualChildrenCount;
+        for (int i = 0; i < childCount; i++)
+        {
+            if (element.GetVisualChild(i) is FrameworkElement child)
+            {
+                ReactivateBindingsRecursive(child);
+            }
+        }
+
+        // Special handling for Popup
+        if (element is Popup popup && popup.Child is FrameworkElement popupChild)
+        {
+            ReactivateBindingsRecursive(popupChild);
+        }
+
+        // Special handling for Border
+        if (element is Border border && border.Child is FrameworkElement borderChild)
+        {
+            ReactivateBindingsRecursive(borderChild);
+        }
+
+        // Special handling for ContentControl
+        if (element is ContentControl contentControl && contentControl.Content is FrameworkElement contentChild)
+        {
+            ReactivateBindingsRecursive(contentChild);
+        }
+
+        // Special handling for ScrollViewer
+        if (element is ScrollViewer scrollViewer && scrollViewer.Content is FrameworkElement scrollContent)
+        {
+            ReactivateBindingsRecursive(scrollContent);
+        }
+
+        // Special handling for Panel
+        if (element is Panel panel)
+        {
+            foreach (var panelChild in panel.Children)
+            {
+                if (panelChild is FrameworkElement panelChildElement)
+                {
+                    ReactivateBindingsRecursive(panelChildElement);
+                }
             }
         }
     }
@@ -437,6 +531,14 @@ public class Control : FrameworkElement
             // Reset template application flag to force re-application
             control._templateApplied = false;
             control.ClearTemplateContent();
+
+            // Apply template immediately if we have a new template
+            // This ensures visual children are available right away
+            if (e.NewValue != null)
+            {
+                control.ApplyTemplate();
+            }
+
             control.InvalidateMeasure();
         }
     }

@@ -220,6 +220,19 @@ public class ToolTip : ContentControl
         Foreground = new SolidColorBrush(Color.FromRgb(240, 240, 240));
     }
 
+    #region Template Parts
+
+    private Border? _toolTipBorder;
+
+    /// <inheritdoc />
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+        _toolTipBorder = GetTemplateChild("ToolTipBorder") as Border;
+    }
+
+    #endregion
+
     private static void OnIsOpenChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is ToolTip toolTip)
@@ -342,6 +355,12 @@ public class ToolTip : ContentControl
 
     protected override void OnRender(object drawingContextObj)
     {
+        // If using template, let the template handle rendering
+        if (_toolTipBorder != null)
+        {
+            return;
+        }
+
         if (drawingContextObj is not DrawingContext drawingContext)
         {
             base.OnRender(drawingContextObj);

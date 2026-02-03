@@ -1,27 +1,6 @@
 namespace Jalium.UI.Input;
 
 /// <summary>
-/// Simple focus debug logger.
-/// </summary>
-public static class FocusDebugLog
-{
-    private static readonly string LogPath = System.IO.Path.Combine(
-        System.IO.Path.GetDirectoryName(typeof(FocusDebugLog).Assembly.Location) ?? ".",
-        "focus_debug.log");
-
-    public static void Log(string message)
-    {
-        try
-        {
-            var line = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
-            System.IO.File.AppendAllText(LogPath, line + Environment.NewLine);
-            System.Diagnostics.Debug.WriteLine(line);
-        }
-        catch { }
-    }
-}
-
-/// <summary>
 /// Represents the keyboard input device and provides keyboard focus management.
 /// </summary>
 public static class Keyboard
@@ -146,7 +125,6 @@ internal sealed class KeyboardFocusProvider : IFocusProvider
         {
             if (!element.Focusable || !element.IsEnabled)
             {
-                FocusDebugLog.Log($"[Focus] Rejected: element not focusable or enabled: {element.GetType().Name}");
                 return null;
             }
         }
@@ -155,12 +133,9 @@ internal sealed class KeyboardFocusProvider : IFocusProvider
         if (oldFocus == element)
             return element;
 
-        FocusDebugLog.Log($"[Focus] Changing focus: {oldFocus?.GetType().Name ?? "null"} -> {element?.GetType().Name ?? "null"}");
-
         // Handle re-entrancy: if we're already changing focus, queue this request
         if (_isChangingFocus)
         {
-            FocusDebugLog.Log($"[Focus] Re-entrancy detected! Queuing: {element?.GetType().Name ?? "null"}");
             _pendingFocusElement = element;
             _hasPendingFocus = true;
             return element;
@@ -179,8 +154,6 @@ internal sealed class KeyboardFocusProvider : IFocusProvider
                 _hasPendingFocus = false;
                 _pendingFocusElement = null;
 
-                FocusDebugLog.Log($"[Focus] Processing pending focus: {_focusedElement?.GetType().Name ?? "null"} -> {pending?.GetType().Name ?? "null"}");
-
                 if (pending != _focusedElement)
                 {
                     var currentFocus = _focusedElement;
@@ -194,7 +167,6 @@ internal sealed class KeyboardFocusProvider : IFocusProvider
             _isChangingFocus = false;
         }
 
-        FocusDebugLog.Log($"[Focus] Final focused element: {_focusedElement?.GetType().Name ?? "null"}");
         return _focusedElement;
     }
 

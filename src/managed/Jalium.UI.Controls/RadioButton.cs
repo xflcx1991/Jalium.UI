@@ -1,3 +1,6 @@
+using Jalium.UI.Automation;
+using Jalium.UI.Controls.Automation;
+
 namespace Jalium.UI.Controls;
 
 /// <summary>
@@ -6,6 +9,16 @@ namespace Jalium.UI.Controls;
 /// </summary>
 public class RadioButton : ToggleButton
 {
+    #region Automation
+
+    /// <inheritdoc />
+    protected override AutomationPeer? OnCreateAutomationPeer()
+    {
+        return new RadioButtonAutomationPeer(this);
+    }
+
+    #endregion
+
     #region Static Fields
 
     /// <summary>

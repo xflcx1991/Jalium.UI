@@ -4,6 +4,7 @@
 #include <cstring>
 #include <cstdio>
 #include <algorithm>
+#include <vector>
 
 // Define INITGUID before including d2d1effects.h to get CLSID definitions
 #include <initguid.h>
@@ -73,17 +74,19 @@ bool D3D12RenderTarget::CreateSwapChain() {
     auto device = backend_->GetDevice();
     auto commandQueue = backend_->GetCommandQueue();
 
-    // Check for tearing support
-    ComPtr<IDXGIFactory6> factory;
-    HRESULT hr = CreateDXGIFactory1(IID_PPV_ARGS(&factory));
-    if (FAILED(hr)) return false;
+    // Use the factory from backend - DXGI requires using the same factory that created the device
+    auto factory = backend_->GetDXGIFactory();
+    if (!factory) return false;
 
+    // Check for tearing support
     BOOL allowTearing = FALSE;
     ComPtr<IDXGIFactory5> factory5;
-    if (SUCCEEDED(factory.As(&factory5))) {
+    if (SUCCEEDED(factory->QueryInterface(IID_PPV_ARGS(&factory5)))) {
         factory5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &allowTearing, sizeof(allowTearing));
     }
     tearingSupported_ = (allowTearing == TRUE);
+
+    HRESULT hr;
 
     // Create swap chain
     DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
@@ -94,7 +97,7 @@ bool D3D12RenderTarget::CreateSwapChain() {
     swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     swapChainDesc.BufferCount = FrameCount;
     swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-    swapChainDesc.Scaling = DXGI_SCALING_NONE;
+    swapChainDesc.Scaling = DXGI_SCALING_STRETCH;
     // Note: DXGI_ALPHA_MODE_PREMULTIPLIED is not supported for CreateSwapChainForHwnd
     // DWM backdrop effects work by treating black (0,0,0) as transparent in the extended frame area
     swapChainDesc.Flags = tearingSupported_ ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0;
@@ -187,8 +190,12 @@ bool D3D12RenderTarget::CreateD2DRenderTarget() {
 
     if (FAILED(hr)) return false;
 
-    // Set DPI
+    // Use standard 96 DPI for DIPs - the managed code works in DIPs
     d2dContext_->SetDpi(96.0f, 96.0f);
+
+    // Use default antialiasing modes
+    d2dContext_->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+    d2dContext_->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_DEFAULT);
 
     // Wrap the D3D12 back buffers with D3D11 textures for D2D rendering
     D3D11_RESOURCE_FLAGS d3d11Flags = { D3D11_BIND_RENDER_TARGET };
@@ -505,6 +512,7 @@ void D3D12RenderTarget::FillRectangle(float x, float y, float w, float h, Brush*
 
     auto d2dBrush = GetD2DBrush(brush);
     if (d2dBrush) {
+        // Coordinates are pre-rounded in managed code
         d2dContext_->FillRectangle(D2D1::RectF(x, y, x + w, y + h), d2dBrush);
     }
 }
@@ -561,8 +569,80 @@ void D3D12RenderTarget::DrawLine(float x1, float y1, float x2, float y2, Brush* 
 
     auto d2dBrush = GetD2DBrush(brush);
     if (d2dBrush) {
+        // Coordinates are pre-rounded in managed code
         d2dContext_->DrawLine(D2D1::Point2F(x1, y1), D2D1::Point2F(x2, y2), d2dBrush, strokeWidth);
     }
+}
+
+void D3D12RenderTarget::FillPolygon(const float* points, uint32_t pointCount, Brush* brush, int32_t fillRule) {
+    if (!isDrawing_ || !brush || !points || pointCount < 3) return;
+
+    auto d2dBrush = GetD2DBrush(brush);
+    if (!d2dBrush) return;
+
+    auto factory = backend_->GetD2DFactory();
+    if (!factory) return;
+
+    ComPtr<ID2D1PathGeometry> pathGeometry;
+    HRESULT hr = factory->CreatePathGeometry(&pathGeometry);
+    if (FAILED(hr)) return;
+
+    ComPtr<ID2D1GeometrySink> sink;
+    hr = pathGeometry->Open(&sink);
+    if (FAILED(hr)) return;
+
+    // Set fill mode
+    sink->SetFillMode(fillRule == 1 ? D2D1_FILL_MODE_WINDING : D2D1_FILL_MODE_ALTERNATE);
+
+    // Begin figure at first point
+    sink->BeginFigure(D2D1::Point2F(points[0], points[1]), D2D1_FIGURE_BEGIN_FILLED);
+
+    // Add lines to remaining points
+    for (uint32_t i = 1; i < pointCount; ++i) {
+        sink->AddLine(D2D1::Point2F(points[i * 2], points[i * 2 + 1]));
+    }
+
+    // Close the figure
+    sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+    hr = sink->Close();
+    if (FAILED(hr)) return;
+
+    // Fill the geometry
+    d2dContext_->FillGeometry(pathGeometry.Get(), d2dBrush);
+}
+
+void D3D12RenderTarget::DrawPolygon(const float* points, uint32_t pointCount, Brush* brush, float strokeWidth, bool closed) {
+    if (!isDrawing_ || !brush || !points || pointCount < 2) return;
+
+    auto d2dBrush = GetD2DBrush(brush);
+    if (!d2dBrush) return;
+
+    auto factory = backend_->GetD2DFactory();
+    if (!factory) return;
+
+    ComPtr<ID2D1PathGeometry> pathGeometry;
+    HRESULT hr = factory->CreatePathGeometry(&pathGeometry);
+    if (FAILED(hr)) return;
+
+    ComPtr<ID2D1GeometrySink> sink;
+    hr = pathGeometry->Open(&sink);
+    if (FAILED(hr)) return;
+
+    // Begin figure at first point (hollow for stroke only)
+    sink->BeginFigure(D2D1::Point2F(points[0], points[1]), D2D1_FIGURE_BEGIN_HOLLOW);
+
+    // Add lines to remaining points
+    for (uint32_t i = 1; i < pointCount; ++i) {
+        sink->AddLine(D2D1::Point2F(points[i * 2], points[i * 2 + 1]));
+    }
+
+    // Close or leave open
+    sink->EndFigure(closed ? D2D1_FIGURE_END_CLOSED : D2D1_FIGURE_END_OPEN);
+    hr = sink->Close();
+    if (FAILED(hr)) return;
+
+    // Draw the geometry outline
+    d2dContext_->DrawGeometry(pathGeometry.Get(), d2dBrush, strokeWidth);
 }
 
 void D3D12RenderTarget::RenderText(
@@ -625,13 +705,30 @@ void D3D12RenderTarget::PopClip() {
 }
 
 void D3D12RenderTarget::PushOpacity(float opacity) {
-    // D2D doesn't have a direct opacity stack, we'd need to use layers
-    // For now, just track it
+    if (!isDrawing_ || !d2dContext_) return;
+
+    // Use D2D layers to implement opacity
+    // This correctly applies opacity to all drawing operations until PopOpacity
+    d2dContext_->PushLayer(
+        D2D1::LayerParameters(
+            D2D1::InfiniteRect(),
+            nullptr, // no clip geometry
+            D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+            D2D1::IdentityMatrix(),
+            opacity, // opacity value
+            nullptr, // no opacity mask brush
+            D2D1_LAYER_OPTIONS_NONE
+        ),
+        nullptr // let D2D manage the layer automatically
+    );
     opacityStack_.push(opacity);
 }
 
 void D3D12RenderTarget::PopOpacity() {
+    if (!isDrawing_ || !d2dContext_) return;
+
     if (!opacityStack_.empty()) {
+        d2dContext_->PopLayer();
         opacityStack_.pop();
     }
 }
@@ -807,6 +904,648 @@ bool D3D12RenderTarget::CaptureSnapshot() {
 
     snapshotValid_[frameIndex_] = true;
     return true;
+}
+
+void D3D12RenderTarget::DrawGlowingBorderHighlight(
+    float x, float y, float w, float h,
+    float animationPhase,
+    float glowColorR, float glowColorG, float glowColorB,
+    float strokeWidth,
+    float trailLength,
+    float dimOpacity,
+    float screenWidth, float screenHeight)
+{
+    if (!isDrawing_) return;
+    if (w <= 0 || h <= 0) return;
+
+    // Calculate the perimeter of the rectangle
+    float perimeter = 2 * (w + h);
+
+    // Trail length in pixels
+    float trailLengthPx = perimeter * trailLength;
+
+    // Current position along the perimeter (head of the trail)
+    float headPos = animationPhase * perimeter;
+
+    // Step 1: Draw dimmed overlay outside the highlighted area
+    if (dimOpacity > 0.01f) {
+        ComPtr<ID2D1SolidColorBrush> dimBrush;
+        HRESULT hr = d2dContext_->CreateSolidColorBrush(
+            D2D1::ColorF(0.0f, 0.0f, 0.0f, dimOpacity),
+            &dimBrush);
+
+        if (SUCCEEDED(hr) && dimBrush) {
+            auto factory = backend_->GetD2DFactory();
+
+            // Create outer rectangle (full screen)
+            D2D1_RECT_F outerRect = D2D1::RectF(0, 0, screenWidth, screenHeight);
+            // Create inner rectangle (highlighted area with expansion for spindle + glow)
+            // Spindle maxWidth = strokeWidth * 2.5, plus glow layers up to strokeWidth * 4.5
+            float glowExpand = strokeWidth * 10.0f;
+            D2D1_RECT_F innerRect = D2D1::RectF(
+                x - glowExpand, y - glowExpand,
+                x + w + glowExpand, y + h + glowExpand);
+
+            // Create geometries
+            ComPtr<ID2D1RectangleGeometry> outerGeom, innerGeom;
+            factory->CreateRectangleGeometry(outerRect, &outerGeom);
+            factory->CreateRectangleGeometry(innerRect, &innerGeom);
+
+            // Combine with exclude mode to create a frame around the element
+            ComPtr<ID2D1PathGeometry> combinedGeom;
+            factory->CreatePathGeometry(&combinedGeom);
+
+            ComPtr<ID2D1GeometrySink> sink;
+            if (SUCCEEDED(combinedGeom->Open(&sink))) {
+                outerGeom->CombineWithGeometry(
+                    innerGeom.Get(),
+                    D2D1_COMBINE_MODE_EXCLUDE,
+                    nullptr,
+                    sink.Get());
+                sink->Close();
+
+                d2dContext_->FillGeometry(combinedGeom.Get(), dimBrush.Get());
+            }
+        }
+    }
+
+    // Step 2: Draw the glowing border trail as continuous path geometry
+    auto factory = backend_->GetD2DFactory();
+
+    // Create stroke style with round caps for smooth ends
+    ComPtr<ID2D1StrokeStyle> roundStrokeStyle;
+    D2D1_STROKE_STYLE_PROPERTIES strokeProps = D2D1::StrokeStyleProperties(
+        D2D1_CAP_STYLE_ROUND,   // startCap
+        D2D1_CAP_STYLE_ROUND,   // endCap
+        D2D1_CAP_STYLE_ROUND,   // dashCap
+        D2D1_LINE_JOIN_ROUND,   // lineJoin
+        10.0f,                  // miterLimit
+        D2D1_DASH_STYLE_SOLID,  // dashStyle
+        0.0f                    // dashOffset
+    );
+    factory->CreateStrokeStyle(strokeProps, nullptr, 0, &roundStrokeStyle);
+
+    // Lambda to convert perimeter position to x,y coordinates
+    auto posToPoint = [x, y, w, h, perimeter](float pos) -> D2D1_POINT_2F {
+        pos = fmodf(pos, perimeter);
+        if (pos < 0) pos += perimeter;
+
+        if (pos < w) {
+            return D2D1::Point2F(x + pos, y);
+        } else if (pos < w + h) {
+            return D2D1::Point2F(x + w, y + (pos - w));
+        } else if (pos < 2 * w + h) {
+            return D2D1::Point2F(x + w - (pos - w - h), y + h);
+        } else {
+            return D2D1::Point2F(x, y + h - (pos - 2 * w - h));
+        }
+    };
+
+    // Corner positions on perimeter (4 corners of the rectangle)
+    float corners[] = { w, w + h, 2 * w + h };  // Top-right, bottom-right, bottom-left
+
+    // Helper to find next corner after a given position
+    auto getNextCorner = [&](float pos) -> float {
+        pos = fmodf(pos, perimeter);
+        if (pos < 0) pos += perimeter;
+
+        if (pos < w) return w;                    // On top edge -> next is top-right corner
+        if (pos < w + h) return w + h;            // On right edge -> next is bottom-right corner
+        if (pos < 2 * w + h) return 2 * w + h;    // On bottom edge -> next is bottom-left corner
+        return perimeter;                          // On left edge -> next is top-left (wrap to 0)
+    };
+
+    // Build continuous path geometry for the trail
+    auto buildTrailPath = [&](float startPos, float length) -> ComPtr<ID2D1PathGeometry> {
+        ComPtr<ID2D1PathGeometry> pathGeom;
+        if (FAILED(factory->CreatePathGeometry(&pathGeom))) return nullptr;
+
+        ComPtr<ID2D1GeometrySink> sink;
+        if (FAILED(pathGeom->Open(&sink))) return nullptr;
+
+        // Normalize start position
+        float pos = fmodf(startPos, perimeter);
+        if (pos < 0) pos += perimeter;
+
+        sink->BeginFigure(posToPoint(pos), D2D1_FIGURE_BEGIN_HOLLOW);
+
+        float traveled = 0.0f;
+        while (traveled < length - 0.01f) {
+            // Find the next corner from current position
+            float nextCorner = getNextCorner(pos);
+            float distToCorner = nextCorner - pos;
+            if (distToCorner <= 0) distToCorner += perimeter;  // Handle wrap
+
+            float remainingLength = length - traveled;
+            float segLen = (distToCorner < remainingLength) ? distToCorner : remainingLength;
+
+            // Calculate end position
+            float endPos = pos + segLen;
+            if (endPos >= perimeter) endPos -= perimeter;
+
+            sink->AddLine(posToPoint(endPos));
+
+            traveled += segLen;
+            pos = endPos;
+        }
+
+        sink->EndFigure(D2D1_FIGURE_END_OPEN);
+        sink->Close();
+        return pathGeom;
+    };
+
+    // SHADER-BASED SPINDLE EFFECT
+    // Step 1: Build a filled spindle geometry (variable width along the path)
+    // Step 2: Draw to bitmap, apply blur effect for glow
+    // Step 3: Composite with original
+
+    float tailPos = headPos - trailLengthPx;
+    if (tailPos < 0) tailPos += perimeter;
+
+    // Build spindle outline geometry - create two parallel paths offset by variable width
+    const int numPoints = 64;  // Smooth curve
+    const float maxWidth = strokeWidth * 2.5f;  // Maximum spindle width at center
+
+    ComPtr<ID2D1PathGeometry> spindleGeom;
+    if (FAILED(factory->CreatePathGeometry(&spindleGeom))) return;
+
+    ComPtr<ID2D1GeometrySink> sink;
+    if (FAILED(spindleGeom->Open(&sink))) return;
+
+    // Calculate points along the trail with spindle width
+    std::vector<D2D1_POINT_2F> centerPoints;
+    std::vector<float> widths;
+
+    for (int i = 0; i <= numPoints; i++) {
+        float t = (float)i / numPoints;  // 0 = tail, 1 = head
+        float pos = tailPos + t * trailLengthPx;
+        if (pos >= perimeter) pos -= perimeter;
+
+        centerPoints.push_back(posToPoint(pos));
+
+        // Spindle width: sin(π * t) - tapers to 0 at both ends, max in middle
+        float spindleFactor = sinf(3.14159f * t);
+        widths.push_back(maxWidth * spindleFactor);  // Pure sine: 0 at ends, 1 at middle
+    }
+
+    // Calculate normals and build outline
+    auto getNormal = [](D2D1_POINT_2F p1, D2D1_POINT_2F p2) -> D2D1_POINT_2F {
+        float dx = p2.x - p1.x;
+        float dy = p2.y - p1.y;
+        float len = sqrtf(dx * dx + dy * dy);
+        if (len < 0.001f) return D2D1::Point2F(0, 1);
+        return D2D1::Point2F(-dy / len, dx / len);
+    };
+
+    // Build the spindle shape as a filled polygon
+    // First, go forward along one side, then backward along the other
+    std::vector<D2D1_POINT_2F> outline;
+
+    // Forward pass (one side)
+    for (int i = 0; i <= numPoints; i++) {
+        D2D1_POINT_2F normal;
+        if (i == 0) {
+            normal = getNormal(centerPoints[0], centerPoints[1]);
+        } else if (i == numPoints) {
+            normal = getNormal(centerPoints[numPoints - 1], centerPoints[numPoints]);
+        } else {
+            normal = getNormal(centerPoints[i - 1], centerPoints[i + 1]);
+        }
+        float halfWidth = widths[i] * 0.5f;
+        outline.push_back(D2D1::Point2F(
+            centerPoints[i].x + normal.x * halfWidth,
+            centerPoints[i].y + normal.y * halfWidth));
+    }
+
+    // Backward pass (other side)
+    for (int i = numPoints; i >= 0; i--) {
+        D2D1_POINT_2F normal;
+        if (i == 0) {
+            normal = getNormal(centerPoints[0], centerPoints[1]);
+        } else if (i == numPoints) {
+            normal = getNormal(centerPoints[numPoints - 1], centerPoints[numPoints]);
+        } else {
+            normal = getNormal(centerPoints[i - 1], centerPoints[i + 1]);
+        }
+        float halfWidth = widths[i] * 0.5f;
+        outline.push_back(D2D1::Point2F(
+            centerPoints[i].x - normal.x * halfWidth,
+            centerPoints[i].y - normal.y * halfWidth));
+    }
+
+    // Create the geometry
+    if (!outline.empty()) {
+        sink->BeginFigure(outline[0], D2D1_FIGURE_BEGIN_FILLED);
+        for (size_t i = 1; i < outline.size(); i++) {
+            sink->AddLine(outline[i]);
+        }
+        sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+    }
+    sink->Close();
+
+    // Create brush for the spindle
+    ComPtr<ID2D1SolidColorBrush> spindleBrush;
+    d2dContext_->CreateSolidColorBrush(
+        D2D1::ColorF(glowColorR, glowColorG, glowColorB, 0.9f),
+        &spindleBrush);
+
+    if (!spindleBrush) return;
+
+    // Create clip geometry to exclude inner area (glow only outside the element)
+    ComPtr<ID2D1RectangleGeometry> glowOuterGeom, glowInnerGeom;
+    float maxGlowSize = strokeWidth * 4.5f;
+    factory->CreateRectangleGeometry(
+        D2D1::RectF(x - maxGlowSize, y - maxGlowSize,
+                    x + w + maxGlowSize, y + h + maxGlowSize),
+        &glowOuterGeom);
+    factory->CreateRectangleGeometry(
+        D2D1::RectF(x, y, x + w, y + h),
+        &glowInnerGeom);
+
+    ComPtr<ID2D1PathGeometry> glowClipGeom;
+    factory->CreatePathGeometry(&glowClipGeom);
+    ComPtr<ID2D1GeometrySink> glowClipSink;
+    bool hasGlowClip = false;
+    if (SUCCEEDED(glowClipGeom->Open(&glowClipSink))) {
+        glowOuterGeom->CombineWithGeometry(glowInnerGeom.Get(), D2D1_COMBINE_MODE_EXCLUDE, nullptr, glowClipSink.Get());
+        glowClipSink->Close();
+        hasGlowClip = true;
+    }
+
+    // Draw outer glow layers (multiple passes with increasing blur simulation)
+    // Use clip layer to only show glow OUTSIDE the element (not inside)
+    if (hasGlowClip) {
+        ComPtr<ID2D1Layer> glowClipLayer;
+        d2dContext_->CreateLayer(&glowClipLayer);
+        d2dContext_->PushLayer(
+            D2D1::LayerParameters(D2D1::InfiniteRect(), glowClipGeom.Get()),
+            glowClipLayer.Get());
+    }
+
+    for (int glowLayer = 3; glowLayer >= 0; glowLayer--) {
+        float glowScale = 1.0f + glowLayer * 0.4f;
+        float glowOpacity = 0.9f * powf(0.5f, (float)glowLayer);
+
+        // Scale the geometry for glow effect by drawing with different stroke widths
+        ComPtr<ID2D1SolidColorBrush> glowBrush;
+        d2dContext_->CreateSolidColorBrush(
+            D2D1::ColorF(glowColorR, glowColorG, glowColorB, glowOpacity),
+            &glowBrush);
+
+        if (glowBrush && glowLayer > 0) {
+            // Draw stroked outline for outer glow
+            d2dContext_->DrawGeometry(spindleGeom.Get(), glowBrush.Get(),
+                strokeWidth * glowLayer * 1.5f, roundStrokeStyle.Get());
+        }
+    }
+
+    // Draw the core spindle shape (also clipped to outside only)
+    d2dContext_->FillGeometry(spindleGeom.Get(), spindleBrush.Get());
+
+    if (hasGlowClip) {
+        d2dContext_->PopLayer();
+    }
+
+    // Step 3: Draw a subtle static border for reference
+    ComPtr<ID2D1SolidColorBrush> borderBrush;
+    HRESULT hr = d2dContext_->CreateSolidColorBrush(
+        D2D1::ColorF(glowColorR, glowColorG, glowColorB, 0.3f),
+        &borderBrush);
+
+    if (SUCCEEDED(hr) && borderBrush) {
+        d2dContext_->DrawRectangle(D2D1::RectF(x, y, x + w, y + h), borderBrush.Get(), 1.0f);
+    }
+}
+
+void D3D12RenderTarget::DrawGlowingBorderTransition(
+    float fromX, float fromY, float fromW, float fromH,
+    float toX, float toY, float toW, float toH,
+    float headProgress, float tailProgress,
+    float animationPhase,
+    float glowColorR, float glowColorG, float glowColorB,
+    float strokeWidth,
+    float trailLength,
+    float dimOpacity,
+    float screenWidth, float screenHeight)
+{
+    if (!d2dContext_) return;
+
+    auto factory = backend_->GetD2DFactory();
+    const float maxWidth = strokeWidth * 2.5f;
+
+    // Calculate center points of source and target rectangles
+    float fromCenterX = fromX + fromW / 2;
+    float fromCenterY = fromY + fromH / 2;
+    float toCenterX = toX + toW / 2;
+    float toCenterY = toY + toH / 2;
+
+    // Head position: interpolates from source border to target border
+    // Tail position: follows behind the head
+    auto lerp = [](float a, float b, float t) { return a + (b - a) * t; };
+
+    // Calculate head and tail positions along the transition path
+    float headX = lerp(fromCenterX, toCenterX, headProgress);
+    float headY = lerp(fromCenterY, toCenterY, headProgress);
+    float tailX = lerp(fromCenterX, toCenterX, tailProgress);
+    float tailY = lerp(fromCenterY, toCenterY, tailProgress);
+
+    // Draw dimmed overlay - blend between source and target
+    if (dimOpacity > 0.01f) {
+        ComPtr<ID2D1SolidColorBrush> dimBrush;
+        d2dContext_->CreateSolidColorBrush(
+            D2D1::ColorF(0.0f, 0.0f, 0.0f, dimOpacity),
+            &dimBrush);
+
+        if (dimBrush) {
+            // Interpolate the highlighted area
+            float highlightX = lerp(fromX, toX, headProgress);
+            float highlightY = lerp(fromY, toY, headProgress);
+            float highlightW = lerp(fromW, toW, headProgress);
+            float highlightH = lerp(fromH, toH, headProgress);
+
+            float glowExpand = strokeWidth * 10.0f;
+            D2D1_RECT_F outerRect = D2D1::RectF(0, 0, screenWidth, screenHeight);
+            D2D1_RECT_F innerRect = D2D1::RectF(
+                highlightX - glowExpand, highlightY - glowExpand,
+                highlightX + highlightW + glowExpand, highlightY + highlightH + glowExpand);
+
+            ComPtr<ID2D1RectangleGeometry> outerGeom, innerGeom;
+            factory->CreateRectangleGeometry(outerRect, &outerGeom);
+            factory->CreateRectangleGeometry(innerRect, &innerGeom);
+
+            ComPtr<ID2D1PathGeometry> combinedGeom;
+            factory->CreatePathGeometry(&combinedGeom);
+
+            ComPtr<ID2D1GeometrySink> sink;
+            if (SUCCEEDED(combinedGeom->Open(&sink))) {
+                outerGeom->CombineWithGeometry(innerGeom.Get(), D2D1_COMBINE_MODE_EXCLUDE, nullptr, sink.Get());
+                sink->Close();
+                d2dContext_->FillGeometry(combinedGeom.Get(), dimBrush.Get());
+            }
+        }
+    }
+
+    // Create stroke style
+    ComPtr<ID2D1StrokeStyle> roundStrokeStyle;
+    D2D1_STROKE_STYLE_PROPERTIES strokeProps = D2D1::StrokeStyleProperties(
+        D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND,
+        D2D1_LINE_JOIN_ROUND, 10.0f, D2D1_DASH_STYLE_SOLID, 0.0f);
+    factory->CreateStrokeStyle(strokeProps, nullptr, 0, &roundStrokeStyle);
+
+    // Build spindle geometry between tail and head
+    const int numPoints = 32;
+    std::vector<D2D1_POINT_2F> centerPoints;
+    std::vector<float> widths;
+
+    // Create points along the path from tail to head
+    for (int i = 0; i <= numPoints; i++) {
+        float t = (float)i / numPoints;
+
+        // Position along the transition path (from tail to head)
+        float posX = lerp(tailX, headX, t);
+        float posY = lerp(tailY, headY, t);
+        centerPoints.push_back(D2D1::Point2F(posX, posY));
+
+        // Spindle width: sin(π * t)
+        float spindleFactor = sinf(3.14159f * t);
+        widths.push_back(maxWidth * spindleFactor);
+    }
+
+    // Build the spindle outline
+    auto getNormal = [](D2D1_POINT_2F p1, D2D1_POINT_2F p2) -> D2D1_POINT_2F {
+        float dx = p2.x - p1.x;
+        float dy = p2.y - p1.y;
+        float len = sqrtf(dx * dx + dy * dy);
+        if (len < 0.001f) return D2D1::Point2F(0, 1);
+        return D2D1::Point2F(-dy / len, dx / len);
+    };
+
+    std::vector<D2D1_POINT_2F> outline;
+
+    // Forward pass
+    for (int i = 0; i <= numPoints; i++) {
+        D2D1_POINT_2F normal;
+        if (i == 0) normal = getNormal(centerPoints[0], centerPoints[1]);
+        else if (i == numPoints) normal = getNormal(centerPoints[numPoints - 1], centerPoints[numPoints]);
+        else normal = getNormal(centerPoints[i - 1], centerPoints[i + 1]);
+
+        float halfWidth = widths[i] * 0.5f;
+        outline.push_back(D2D1::Point2F(centerPoints[i].x + normal.x * halfWidth, centerPoints[i].y + normal.y * halfWidth));
+    }
+
+    // Backward pass
+    for (int i = numPoints; i >= 0; i--) {
+        D2D1_POINT_2F normal;
+        if (i == 0) normal = getNormal(centerPoints[0], centerPoints[1]);
+        else if (i == numPoints) normal = getNormal(centerPoints[numPoints - 1], centerPoints[numPoints]);
+        else normal = getNormal(centerPoints[i - 1], centerPoints[i + 1]);
+
+        float halfWidth = widths[i] * 0.5f;
+        outline.push_back(D2D1::Point2F(centerPoints[i].x - normal.x * halfWidth, centerPoints[i].y - normal.y * halfWidth));
+    }
+
+    // Create spindle geometry
+    ComPtr<ID2D1PathGeometry> spindleGeom;
+    factory->CreatePathGeometry(&spindleGeom);
+
+    ComPtr<ID2D1GeometrySink> spindleSink;
+    if (SUCCEEDED(spindleGeom->Open(&spindleSink)) && !outline.empty()) {
+        spindleSink->BeginFigure(outline[0], D2D1_FIGURE_BEGIN_FILLED);
+        for (size_t i = 1; i < outline.size(); i++) {
+            spindleSink->AddLine(outline[i]);
+        }
+        spindleSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+        spindleSink->Close();
+
+        // Draw glow layers
+        for (int glowLayer = 3; glowLayer >= 0; glowLayer--) {
+            float glowOpacity = 0.9f * powf(0.5f, (float)glowLayer);
+
+            ComPtr<ID2D1SolidColorBrush> glowBrush;
+            d2dContext_->CreateSolidColorBrush(
+                D2D1::ColorF(glowColorR, glowColorG, glowColorB, glowOpacity),
+                &glowBrush);
+
+            if (glowBrush && glowLayer > 0) {
+                d2dContext_->DrawGeometry(spindleGeom.Get(), glowBrush.Get(),
+                    strokeWidth * glowLayer * 1.5f, roundStrokeStyle.Get());
+            }
+        }
+
+        // Draw core
+        ComPtr<ID2D1SolidColorBrush> spindleBrush;
+        d2dContext_->CreateSolidColorBrush(
+            D2D1::ColorF(glowColorR, glowColorG, glowColorB, 0.9f),
+            &spindleBrush);
+
+        if (spindleBrush) {
+            d2dContext_->FillGeometry(spindleGeom.Get(), spindleBrush.Get());
+        }
+    }
+
+    // Draw target element border (fades in)
+    ComPtr<ID2D1SolidColorBrush> borderBrush;
+    d2dContext_->CreateSolidColorBrush(
+        D2D1::ColorF(glowColorR, glowColorG, glowColorB, 0.3f * headProgress),
+        &borderBrush);
+
+    if (borderBrush) {
+        d2dContext_->DrawRectangle(D2D1::RectF(toX, toY, toX + toW, toY + toH), borderBrush.Get(), 1.0f);
+    }
+}
+
+void D3D12RenderTarget::DrawRippleEffect(
+    float x, float y, float w, float h,
+    float rippleProgress,
+    float glowColorR, float glowColorG, float glowColorB,
+    float strokeWidth,
+    float dimOpacity,
+    float screenWidth, float screenHeight)
+{
+    if (!d2dContext_) return;
+
+    auto factory = backend_->GetD2DFactory();
+
+    // Calculate element center
+    float centerX = x + w / 2;
+    float centerY = y + h / 2;
+
+    // Number of ripple rings
+    const int numRipples = 3;
+
+    // Draw dimmed overlay with hole at element position
+    if (dimOpacity > 0.01f) {
+        ComPtr<ID2D1SolidColorBrush> dimBrush;
+        d2dContext_->CreateSolidColorBrush(
+            D2D1::ColorF(0.0f, 0.0f, 0.0f, dimOpacity),
+            &dimBrush);
+
+        if (dimBrush) {
+            float glowExpand = strokeWidth * 10.0f;
+            D2D1_RECT_F outerRect = D2D1::RectF(0, 0, screenWidth, screenHeight);
+            D2D1_RECT_F innerRect = D2D1::RectF(
+                x - glowExpand, y - glowExpand,
+                x + w + glowExpand, y + h + glowExpand);
+
+            ComPtr<ID2D1RectangleGeometry> outerGeom, innerGeom;
+            factory->CreateRectangleGeometry(outerRect, &outerGeom);
+            factory->CreateRectangleGeometry(innerRect, &innerGeom);
+
+            ComPtr<ID2D1PathGeometry> combinedGeom;
+            factory->CreatePathGeometry(&combinedGeom);
+
+            ComPtr<ID2D1GeometrySink> sink;
+            if (SUCCEEDED(combinedGeom->Open(&sink))) {
+                outerGeom->CombineWithGeometry(innerGeom.Get(), D2D1_COMBINE_MODE_EXCLUDE, nullptr, sink.Get());
+                sink->Close();
+                d2dContext_->FillGeometry(combinedGeom.Get(), dimBrush.Get());
+            }
+        }
+    }
+
+    // Glow size based on element height (larger elements get larger glow)
+    float baseGlowSize = max(h * 0.3f, 20.0f);  // At least 20px, or 30% of height
+
+    // Draw multiple ripple rings emanating from center, expanding to element border (rectangle shape)
+    // With inner glow only (glow toward center, not outward)
+    for (int i = 0; i < numRipples; i++) {
+        // Each ripple is offset in time (staggered start)
+        float rippleOffset = (float)i / numRipples;
+        float adjustedProgress = rippleProgress - rippleOffset * 0.3f;
+
+        if (adjustedProgress < 0.0f) continue;
+        adjustedProgress = min(1.0f, adjustedProgress / (1.0f - rippleOffset * 0.3f));
+
+        // Calculate ripple size (from center, expands to element border)
+        float currentW = adjustedProgress * w;
+        float currentH = adjustedProgress * h;
+
+        // Opacity fades out as ripple expands (faster fade for outer ripples)
+        float fadeSpeed = 1.0f + i * 0.5f;
+        float opacity = (1.0f - powf(adjustedProgress, fadeSpeed)) * 0.9f;
+
+        if (opacity < 0.01f) continue;
+
+        // Draw rectangle ripple from center
+        float rippleX = centerX - currentW / 2;
+        float rippleY = centerY - currentH / 2;
+
+        // Small corner radius for subtle rounding
+        float cornerRadius = min(currentW, currentH) * 0.05f;
+
+        // Glow stroke width based on element height, decreases as ripple expands
+        float glowStrokeWidth = baseGlowSize * (1.0f - adjustedProgress * 0.5f);
+        glowStrokeWidth = max(strokeWidth * 2.0f, glowStrokeWidth);
+
+        D2D1_ROUNDED_RECT roundedRect = D2D1::RoundedRect(
+            D2D1::RectF(rippleX, rippleY, rippleX + currentW, rippleY + currentH),
+            cornerRadius, cornerRadius);
+
+        // Create clip geometry for inner glow only (clip to inside of ripple rectangle)
+        ComPtr<ID2D1RectangleGeometry> innerClipGeom;
+        factory->CreateRectangleGeometry(
+            D2D1::RectF(rippleX, rippleY, rippleX + currentW, rippleY + currentH),
+            &innerClipGeom);
+
+        // Push layer with inner clip
+        D2D1_LAYER_PARAMETERS layerParams = D2D1::LayerParameters(
+            D2D1::InfiniteRect(),
+            innerClipGeom.Get());
+        d2dContext_->PushLayer(layerParams, nullptr);
+
+        // Draw multiple glow layers for softer effect (inner glow only due to clip)
+        // Outer glow layer (softest, largest)
+        ComPtr<ID2D1SolidColorBrush> outerGlowBrush;
+        d2dContext_->CreateSolidColorBrush(
+            D2D1::ColorF(glowColorR, glowColorG, glowColorB, opacity * 0.15f),
+            &outerGlowBrush);
+        if (outerGlowBrush) {
+            d2dContext_->DrawRoundedRectangle(roundedRect, outerGlowBrush.Get(), glowStrokeWidth * 2.0f);
+        }
+
+        // Middle glow layer
+        ComPtr<ID2D1SolidColorBrush> midGlowBrush;
+        d2dContext_->CreateSolidColorBrush(
+            D2D1::ColorF(glowColorR, glowColorG, glowColorB, opacity * 0.3f),
+            &midGlowBrush);
+        if (midGlowBrush) {
+            d2dContext_->DrawRoundedRectangle(roundedRect, midGlowBrush.Get(), glowStrokeWidth);
+        }
+
+        // Inner glow layer (brighter)
+        ComPtr<ID2D1SolidColorBrush> innerGlowBrush;
+        d2dContext_->CreateSolidColorBrush(
+            D2D1::ColorF(glowColorR, glowColorG, glowColorB, opacity * 0.6f),
+            &innerGlowBrush);
+        if (innerGlowBrush) {
+            d2dContext_->DrawRoundedRectangle(roundedRect, innerGlowBrush.Get(), glowStrokeWidth * 0.5f);
+        }
+
+        // Draw the main ripple stroke (brightest core)
+        ComPtr<ID2D1SolidColorBrush> rippleBrush;
+        d2dContext_->CreateSolidColorBrush(
+            D2D1::ColorF(glowColorR, glowColorG, glowColorB, opacity),
+            &rippleBrush);
+
+        if (rippleBrush) {
+            float coreStrokeWidth = strokeWidth * 1.5f * (1.0f - adjustedProgress * 0.5f);
+            d2dContext_->DrawRoundedRectangle(roundedRect, rippleBrush.Get(), max(1.0f, coreStrokeWidth));
+        }
+
+        // Pop the inner clip layer
+        d2dContext_->PopLayer();
+    }
+
+    // Draw the element border (fades in as ripple reaches edge)
+    ComPtr<ID2D1SolidColorBrush> borderBrush;
+    float borderOpacity = 0.6f + 0.4f * rippleProgress; // Fades in to full
+    d2dContext_->CreateSolidColorBrush(
+        D2D1::ColorF(glowColorR, glowColorG, glowColorB, borderOpacity),
+        &borderBrush);
+
+    if (borderBrush) {
+        d2dContext_->DrawRectangle(D2D1::RectF(x, y, x + w, y + h), borderBrush.Get(), 1.0f);
+    }
 }
 
 } // namespace jalium

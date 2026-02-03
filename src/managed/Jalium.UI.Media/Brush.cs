@@ -286,6 +286,36 @@ public class ImageBrush : TileBrush
 }
 
 /// <summary>
+/// Paints an area with a Drawing.
+/// </summary>
+public class DrawingBrush : TileBrush
+{
+    /// <summary>
+    /// Gets or sets the Drawing that defines the content of this brush.
+    /// </summary>
+    public Drawing? Drawing { get; set; }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DrawingBrush"/> class.
+    /// </summary>
+    public DrawingBrush()
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DrawingBrush"/> class with the specified drawing.
+    /// </summary>
+    /// <param name="drawing">The drawing to use.</param>
+    public DrawingBrush(Drawing drawing)
+    {
+        Drawing = drawing;
+    }
+
+    /// <inheritdoc />
+    public override string ToString() => $"DrawingBrush({Drawing})";
+}
+
+/// <summary>
 /// Paints an area with a visual element.
 /// </summary>
 public class VisualBrush : TileBrush

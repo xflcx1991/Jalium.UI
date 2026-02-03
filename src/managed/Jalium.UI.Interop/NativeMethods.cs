@@ -198,6 +198,29 @@ internal static partial class NativeMethods
     internal static partial void DrawLine(nint renderTarget, float x1, float y1, float x2, float y2, nint brush, float strokeWidth);
 
     /// <summary>
+    /// Fills a polygon defined by an array of points.
+    /// </summary>
+    /// <param name="renderTarget">The render target.</param>
+    /// <param name="points">Array of point coordinates (x0, y0, x1, y1, ...).</param>
+    /// <param name="pointCount">Number of points.</param>
+    /// <param name="brush">Brush to fill with.</param>
+    /// <param name="fillRule">0 = EvenOdd, 1 = NonZero.</param>
+    [LibraryImport(CoreLib, EntryPoint = "jalium_fill_polygon")]
+    internal static partial void FillPolygon(nint renderTarget, float[] points, int pointCount, nint brush, int fillRule);
+
+    /// <summary>
+    /// Draws a polygon outline.
+    /// </summary>
+    /// <param name="renderTarget">The render target.</param>
+    /// <param name="points">Array of point coordinates (x0, y0, x1, y1, ...).</param>
+    /// <param name="pointCount">Number of points.</param>
+    /// <param name="brush">Brush for stroke.</param>
+    /// <param name="strokeWidth">Width of stroke.</param>
+    /// <param name="closed">Whether to close the polygon (1 = closed, 0 = open).</param>
+    [LibraryImport(CoreLib, EntryPoint = "jalium_draw_polygon")]
+    internal static partial void DrawPolygon(nint renderTarget, float[] points, int pointCount, nint brush, float strokeWidth, int closed);
+
+    /// <summary>
     /// Draws text.
     /// </summary>
     [LibraryImport(CoreLib, EntryPoint = "jalium_draw_text", StringMarshalling = StringMarshalling.Utf16)]
@@ -219,6 +242,49 @@ internal static partial class NativeMethods
         float cornerRadiusTR,
         float cornerRadiusBR,
         float cornerRadiusBL);
+
+    /// <summary>
+    /// Draws a glowing border highlight effect for DevTools.
+    /// </summary>
+    [LibraryImport(CoreLib, EntryPoint = "jalium_draw_glowing_border_highlight")]
+    internal static partial void DrawGlowingBorderHighlight(
+        nint renderTarget,
+        float x, float y, float width, float height,
+        float animationPhase,
+        float glowColorR, float glowColorG, float glowColorB,
+        float strokeWidth,
+        float trailLength,
+        float dimOpacity,
+        float screenWidth, float screenHeight);
+
+    /// <summary>
+    /// Draws a glowing border transition effect between two elements.
+    /// </summary>
+    [LibraryImport(CoreLib, EntryPoint = "jalium_draw_glowing_border_transition")]
+    internal static partial void DrawGlowingBorderTransition(
+        nint renderTarget,
+        float fromX, float fromY, float fromWidth, float fromHeight,
+        float toX, float toY, float toWidth, float toHeight,
+        float headProgress, float tailProgress,
+        float animationPhase,
+        float glowColorR, float glowColorG, float glowColorB,
+        float strokeWidth,
+        float trailLength,
+        float dimOpacity,
+        float screenWidth, float screenHeight);
+
+    /// <summary>
+    /// Draws a ripple effect expanding from element border.
+    /// </summary>
+    [LibraryImport(CoreLib, EntryPoint = "jalium_draw_ripple_effect")]
+    internal static partial void DrawRippleEffect(
+        nint renderTarget,
+        float x, float y, float width, float height,
+        float rippleProgress,
+        float glowColorR, float glowColorG, float glowColorB,
+        float strokeWidth,
+        float dimOpacity,
+        float screenWidth, float screenHeight);
 
     #endregion
 

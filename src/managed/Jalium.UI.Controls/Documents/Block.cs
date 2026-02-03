@@ -381,3 +381,415 @@ public class BlockUIContainer : Block
     /// </summary>
     public UIElement? Child { get; set; }
 }
+
+/// <summary>
+/// Base class for elements that can be anchored within a paragraph.
+/// </summary>
+public abstract class AnchoredBlock : Inline
+{
+    /// <summary>
+    /// Gets the collection of block elements.
+    /// </summary>
+    public BlockCollection Blocks { get; }
+
+    /// <summary>
+    /// Identifies the Margin dependency property.
+    /// </summary>
+    public static readonly DependencyProperty MarginProperty =
+        DependencyProperty.Register(nameof(Margin), typeof(Thickness), typeof(AnchoredBlock),
+            new PropertyMetadata(new Thickness(0)));
+
+    /// <summary>
+    /// Identifies the Padding dependency property.
+    /// </summary>
+    public static readonly DependencyProperty PaddingProperty =
+        DependencyProperty.Register(nameof(Padding), typeof(Thickness), typeof(AnchoredBlock),
+            new PropertyMetadata(new Thickness(0)));
+
+    /// <summary>
+    /// Identifies the BorderThickness dependency property.
+    /// </summary>
+    public static readonly DependencyProperty BorderThicknessProperty =
+        DependencyProperty.Register(nameof(BorderThickness), typeof(Thickness), typeof(AnchoredBlock),
+            new PropertyMetadata(new Thickness(0)));
+
+    /// <summary>
+    /// Identifies the BorderBrush dependency property.
+    /// </summary>
+    public static readonly DependencyProperty BorderBrushProperty =
+        DependencyProperty.Register(nameof(BorderBrush), typeof(Brush), typeof(AnchoredBlock),
+            new PropertyMetadata(null));
+
+    /// <summary>
+    /// Gets or sets the margin.
+    /// </summary>
+    public Thickness Margin
+    {
+        get => (Thickness)(GetValue(MarginProperty) ?? new Thickness(0));
+        set => SetValue(MarginProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the padding.
+    /// </summary>
+    public Thickness Padding
+    {
+        get => (Thickness)(GetValue(PaddingProperty) ?? new Thickness(0));
+        set => SetValue(PaddingProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the border thickness.
+    /// </summary>
+    public Thickness BorderThickness
+    {
+        get => (Thickness)(GetValue(BorderThicknessProperty) ?? new Thickness(0));
+        set => SetValue(BorderThicknessProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the border brush.
+    /// </summary>
+    public Brush? BorderBrush
+    {
+        get => (Brush?)GetValue(BorderBrushProperty);
+        set => SetValue(BorderBrushProperty, value);
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="AnchoredBlock"/> class.
+    /// </summary>
+    protected AnchoredBlock()
+    {
+        Blocks = new BlockCollection(this);
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="AnchoredBlock"/> class with a block.
+    /// </summary>
+    protected AnchoredBlock(Block block) : this()
+    {
+        Blocks.Add(block);
+    }
+}
+
+/// <summary>
+/// An anchored element that can be positioned within a flow document.
+/// </summary>
+public class Figure : AnchoredBlock
+{
+    /// <summary>
+    /// Identifies the HorizontalAnchor dependency property.
+    /// </summary>
+    public static readonly DependencyProperty HorizontalAnchorProperty =
+        DependencyProperty.Register(nameof(HorizontalAnchor), typeof(FigureHorizontalAnchor), typeof(Figure),
+            new PropertyMetadata(FigureHorizontalAnchor.ColumnRight));
+
+    /// <summary>
+    /// Identifies the VerticalAnchor dependency property.
+    /// </summary>
+    public static readonly DependencyProperty VerticalAnchorProperty =
+        DependencyProperty.Register(nameof(VerticalAnchor), typeof(FigureVerticalAnchor), typeof(Figure),
+            new PropertyMetadata(FigureVerticalAnchor.ParagraphTop));
+
+    /// <summary>
+    /// Identifies the Width dependency property.
+    /// </summary>
+    public static readonly DependencyProperty WidthProperty =
+        DependencyProperty.Register(nameof(Width), typeof(FigureLength), typeof(Figure),
+            new PropertyMetadata(new FigureLength(1, FigureUnitType.Auto)));
+
+    /// <summary>
+    /// Identifies the Height dependency property.
+    /// </summary>
+    public static readonly DependencyProperty HeightProperty =
+        DependencyProperty.Register(nameof(Height), typeof(FigureLength), typeof(Figure),
+            new PropertyMetadata(new FigureLength(1, FigureUnitType.Auto)));
+
+    /// <summary>
+    /// Identifies the HorizontalOffset dependency property.
+    /// </summary>
+    public static readonly DependencyProperty HorizontalOffsetProperty =
+        DependencyProperty.Register(nameof(HorizontalOffset), typeof(double), typeof(Figure),
+            new PropertyMetadata(0.0));
+
+    /// <summary>
+    /// Identifies the VerticalOffset dependency property.
+    /// </summary>
+    public static readonly DependencyProperty VerticalOffsetProperty =
+        DependencyProperty.Register(nameof(VerticalOffset), typeof(double), typeof(Figure),
+            new PropertyMetadata(0.0));
+
+    /// <summary>
+    /// Identifies the WrapDirection dependency property.
+    /// </summary>
+    public static readonly DependencyProperty WrapDirectionProperty =
+        DependencyProperty.Register(nameof(WrapDirection), typeof(WrapDirection), typeof(Figure),
+            new PropertyMetadata(WrapDirection.Both));
+
+    /// <summary>
+    /// Gets or sets the horizontal anchor position.
+    /// </summary>
+    public FigureHorizontalAnchor HorizontalAnchor
+    {
+        get => (FigureHorizontalAnchor)(GetValue(HorizontalAnchorProperty) ?? FigureHorizontalAnchor.ColumnRight);
+        set => SetValue(HorizontalAnchorProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the vertical anchor position.
+    /// </summary>
+    public FigureVerticalAnchor VerticalAnchor
+    {
+        get => (FigureVerticalAnchor)(GetValue(VerticalAnchorProperty) ?? FigureVerticalAnchor.ParagraphTop);
+        set => SetValue(VerticalAnchorProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the width.
+    /// </summary>
+    public FigureLength Width
+    {
+        get => (FigureLength)(GetValue(WidthProperty) ?? new FigureLength(1, FigureUnitType.Auto));
+        set => SetValue(WidthProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the height.
+    /// </summary>
+    public FigureLength Height
+    {
+        get => (FigureLength)(GetValue(HeightProperty) ?? new FigureLength(1, FigureUnitType.Auto));
+        set => SetValue(HeightProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the horizontal offset.
+    /// </summary>
+    public double HorizontalOffset
+    {
+        get => (double)(GetValue(HorizontalOffsetProperty) ?? 0.0);
+        set => SetValue(HorizontalOffsetProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the vertical offset.
+    /// </summary>
+    public double VerticalOffset
+    {
+        get => (double)(GetValue(VerticalOffsetProperty) ?? 0.0);
+        set => SetValue(VerticalOffsetProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the wrap direction.
+    /// </summary>
+    public WrapDirection WrapDirection
+    {
+        get => (WrapDirection)(GetValue(WrapDirectionProperty) ?? WrapDirection.Both);
+        set => SetValue(WrapDirectionProperty, value);
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="Figure"/> class.
+    /// </summary>
+    public Figure()
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="Figure"/> class with a block.
+    /// </summary>
+    public Figure(Block block) : base(block)
+    {
+    }
+}
+
+/// <summary>
+/// A floating element within a paragraph.
+/// </summary>
+public class Floater : AnchoredBlock
+{
+    /// <summary>
+    /// Identifies the HorizontalAlignment dependency property.
+    /// </summary>
+    public static readonly DependencyProperty HorizontalAlignmentProperty =
+        DependencyProperty.Register(nameof(HorizontalAlignment), typeof(HorizontalAlignment), typeof(Floater),
+            new PropertyMetadata(HorizontalAlignment.Left));
+
+    /// <summary>
+    /// Identifies the Width dependency property.
+    /// </summary>
+    public static readonly DependencyProperty WidthProperty =
+        DependencyProperty.Register(nameof(Width), typeof(double), typeof(Floater),
+            new PropertyMetadata(double.NaN));
+
+    /// <summary>
+    /// Gets or sets the horizontal alignment.
+    /// </summary>
+    public HorizontalAlignment HorizontalAlignment
+    {
+        get => (HorizontalAlignment)(GetValue(HorizontalAlignmentProperty) ?? HorizontalAlignment.Left);
+        set => SetValue(HorizontalAlignmentProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the width.
+    /// </summary>
+    public double Width
+    {
+        get => (double)(GetValue(WidthProperty) ?? double.NaN);
+        set => SetValue(WidthProperty, value);
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="Floater"/> class.
+    /// </summary>
+    public Floater()
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="Floater"/> class with a block.
+    /// </summary>
+    public Floater(Block block) : base(block)
+    {
+    }
+}
+
+/// <summary>
+/// Specifies the horizontal anchor for a Figure element.
+/// </summary>
+public enum FigureHorizontalAnchor
+{
+    /// <summary>Anchored to the page left.</summary>
+    PageLeft,
+    /// <summary>Anchored to the page center.</summary>
+    PageCenter,
+    /// <summary>Anchored to the page right.</summary>
+    PageRight,
+    /// <summary>Anchored to the content left.</summary>
+    ContentLeft,
+    /// <summary>Anchored to the content center.</summary>
+    ContentCenter,
+    /// <summary>Anchored to the content right.</summary>
+    ContentRight,
+    /// <summary>Anchored to the column left.</summary>
+    ColumnLeft,
+    /// <summary>Anchored to the column center.</summary>
+    ColumnCenter,
+    /// <summary>Anchored to the column right.</summary>
+    ColumnRight
+}
+
+/// <summary>
+/// Specifies the vertical anchor for a Figure element.
+/// </summary>
+public enum FigureVerticalAnchor
+{
+    /// <summary>Anchored to the page top.</summary>
+    PageTop,
+    /// <summary>Anchored to the page center.</summary>
+    PageCenter,
+    /// <summary>Anchored to the page bottom.</summary>
+    PageBottom,
+    /// <summary>Anchored to the content top.</summary>
+    ContentTop,
+    /// <summary>Anchored to the content center.</summary>
+    ContentCenter,
+    /// <summary>Anchored to the content bottom.</summary>
+    ContentBottom,
+    /// <summary>Anchored to the paragraph top.</summary>
+    ParagraphTop
+}
+
+/// <summary>
+/// Specifies the wrap direction for a Figure element.
+/// </summary>
+public enum WrapDirection
+{
+    /// <summary>No wrapping.</summary>
+    None,
+    /// <summary>Wrap on the left side.</summary>
+    Left,
+    /// <summary>Wrap on the right side.</summary>
+    Right,
+    /// <summary>Wrap on both sides.</summary>
+    Both
+}
+
+/// <summary>
+/// Specifies the unit type for Figure dimensions.
+/// </summary>
+public enum FigureUnitType
+{
+    /// <summary>Automatic sizing.</summary>
+    Auto,
+    /// <summary>Size in device-independent pixels.</summary>
+    Pixel,
+    /// <summary>Size as a proportion of column width.</summary>
+    Column,
+    /// <summary>Size as a proportion of content width.</summary>
+    Content,
+    /// <summary>Size as a proportion of page width.</summary>
+    Page
+}
+
+/// <summary>
+/// Describes the width or height of a Figure element.
+/// </summary>
+public readonly struct FigureLength : IEquatable<FigureLength>
+{
+    /// <summary>
+    /// Gets the value.
+    /// </summary>
+    public double Value { get; }
+
+    /// <summary>
+    /// Gets the unit type.
+    /// </summary>
+    public FigureUnitType FigureUnitType { get; }
+
+    /// <summary>
+    /// Gets whether this is auto sizing.
+    /// </summary>
+    public bool IsAuto => FigureUnitType == FigureUnitType.Auto;
+
+    /// <summary>
+    /// Gets whether this is absolute sizing.
+    /// </summary>
+    public bool IsAbsolute => FigureUnitType == FigureUnitType.Pixel;
+
+    /// <summary>
+    /// Creates a new FigureLength.
+    /// </summary>
+    public FigureLength(double value)
+    {
+        Value = value;
+        FigureUnitType = FigureUnitType.Pixel;
+    }
+
+    /// <summary>
+    /// Creates a new FigureLength with the specified unit type.
+    /// </summary>
+    public FigureLength(double value, FigureUnitType type)
+    {
+        Value = value;
+        FigureUnitType = type;
+    }
+
+    /// <inheritdoc />
+    public bool Equals(FigureLength other) => Value == other.Value && FigureUnitType == other.FigureUnitType;
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj) => obj is FigureLength other && Equals(other);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => HashCode.Combine(Value, FigureUnitType);
+
+    /// <summary>Equality operator.</summary>
+    public static bool operator ==(FigureLength left, FigureLength right) => left.Equals(right);
+
+    /// <summary>Inequality operator.</summary>
+    public static bool operator !=(FigureLength left, FigureLength right) => !left.Equals(right);
+}

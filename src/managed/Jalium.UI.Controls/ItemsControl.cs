@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Specialized;
+using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
@@ -9,6 +10,9 @@ namespace Jalium.UI.Controls;
 /// </summary>
 public class ItemsControl : Control
 {
+    private ItemsPresenter? _itemsPresenter;
+    private Panel? _fallbackItemsHost;
+
     #region Dependency Properties
 
     /// <summary>
@@ -71,7 +75,7 @@ public class ItemsControl : Control
     /// <summary>
     /// Gets the panel that hosts the items.
     /// </summary>
-    protected Panel? ItemsHost { get; private set; }
+    protected Panel? ItemsHost => _itemsPresenter?.ItemsPanel ?? _fallbackItemsHost;
 
     #endregion
 
@@ -84,6 +88,29 @@ public class ItemsControl : Control
     {
         Items = new ItemCollection(this);
         Items.CollectionChanged += OnItemsCollectionChanged;
+    }
+
+    #endregion
+
+    #region Template Support
+
+    /// <summary>
+    /// Called when the template is applied.
+    /// </summary>
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+
+        // ItemsPresenter will call SetItemsPresenter when it attaches
+    }
+
+    /// <summary>
+    /// Sets the ItemsPresenter for this control (called by ItemsPresenter).
+    /// </summary>
+    internal void SetItemsPresenter(ItemsPresenter presenter)
+    {
+        _itemsPresenter = presenter;
+        RefreshItems();
     }
 
     #endregion
@@ -136,15 +163,21 @@ public class ItemsControl : Control
     /// </summary>
     protected virtual void RefreshItems()
     {
-        // Create or get the items panel
-        if (ItemsHost == null)
+        // Get the panel (either from ItemsPresenter or fallback)
+        var panel = ItemsHost;
+
+        // If no panel from template, create fallback
+        if (panel == null && !HasTemplate)
         {
-            ItemsHost = CreateItemsPanel();
-            AddVisualChild(ItemsHost);
+            _fallbackItemsHost = CreateItemsPanel();
+            AddVisualChild(_fallbackItemsHost);
+            panel = _fallbackItemsHost;
         }
 
+        if (panel == null) return;
+
         // Clear existing items
-        ItemsHost.Children.Clear();
+        panel.Children.Clear();
 
         // Add items from ItemsSource or Items collection
         var source = ItemsSource ?? Items;
@@ -181,18 +214,30 @@ public class ItemsControl : Control
 
     #region Layout
 
+    /// <summary>
+    /// Gets whether this control has a template (either explicitly set or from style).
+    /// </summary>
+    private bool HasTemplate => Template != null;
+
     /// <inheritdoc />
     protected override Size MeasureOverride(Size availableSize)
     {
-        if (ItemsHost == null)
+        // If we have a template, let Control handle it (this will also apply the template)
+        if (HasTemplate)
+        {
+            return base.MeasureOverride(availableSize);
+        }
+
+        // Fallback: direct items host rendering (no template)
+        if (_fallbackItemsHost == null)
         {
             RefreshItems();
         }
 
-        if (ItemsHost != null)
+        if (_fallbackItemsHost != null)
         {
-            ItemsHost.Measure(availableSize);
-            return ItemsHost.DesiredSize;
+            _fallbackItemsHost.Measure(availableSize);
+            return _fallbackItemsHost.DesiredSize;
         }
 
         return Size.Empty;
@@ -201,23 +246,49 @@ public class ItemsControl : Control
     /// <inheritdoc />
     protected override Size ArrangeOverride(Size finalSize)
     {
-        if (ItemsHost != null)
+        // If we have a template, let Control handle it
+        if (HasTemplate)
         {
-            ItemsHost.Arrange(new Rect(0, 0, finalSize.Width, finalSize.Height));
-            // Note: Do NOT call SetVisualBounds here - ArrangeCore already handles margin
+            return base.ArrangeOverride(finalSize);
+        }
+
+        // Fallback: direct items host rendering
+        if (_fallbackItemsHost != null)
+        {
+            _fallbackItemsHost.Arrange(new Rect(0, 0, finalSize.Width, finalSize.Height));
         }
 
         return finalSize;
     }
 
     /// <inheritdoc />
-    public override int VisualChildrenCount => ItemsHost != null ? 1 : 0;
+    public override int VisualChildrenCount
+    {
+        get
+        {
+            // If we have a template, let Control handle it
+            if (HasTemplate)
+            {
+                return base.VisualChildrenCount;
+            }
+
+            // Fallback: direct items host rendering
+            return _fallbackItemsHost != null ? 1 : 0;
+        }
+    }
 
     /// <inheritdoc />
     public override Visual? GetVisualChild(int index)
     {
-        if (index == 0 && ItemsHost != null)
-            return ItemsHost;
+        // If we have a template, let Control handle it
+        if (HasTemplate)
+        {
+            return base.GetVisualChild(index);
+        }
+
+        // Fallback: direct items host rendering
+        if (index == 0 && _fallbackItemsHost != null)
+            return _fallbackItemsHost;
         throw new ArgumentOutOfRangeException(nameof(index));
     }
 
@@ -267,7 +338,8 @@ public class ItemsControl : Control
     {
         if (d is ItemsControl itemsControl)
         {
-            itemsControl.ItemsHost = null;
+            itemsControl._fallbackItemsHost = null;
+            itemsControl._itemsPresenter = null;
             itemsControl.RefreshItems();
         }
     }

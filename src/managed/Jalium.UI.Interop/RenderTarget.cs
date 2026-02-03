@@ -174,6 +174,33 @@ public sealed class RenderTarget : IDisposable
     }
 
     /// <summary>
+    /// Fills a polygon defined by an array of points.
+    /// </summary>
+    /// <param name="points">Array of point coordinates (x0, y0, x1, y1, ...).</param>
+    /// <param name="brush">Brush to fill with.</param>
+    /// <param name="fillRule">Fill rule: 0 = EvenOdd, 1 = NonZero.</param>
+    public void FillPolygon(float[] points, NativeBrush brush, int fillRule = 0)
+    {
+        ThrowIfDisposed();
+        if (brush == null || !brush.IsValid || points == null || points.Length < 6) return;
+        NativeMethods.FillPolygon(_handle, points, points.Length / 2, brush.Handle, fillRule);
+    }
+
+    /// <summary>
+    /// Draws a polygon outline.
+    /// </summary>
+    /// <param name="points">Array of point coordinates (x0, y0, x1, y1, ...).</param>
+    /// <param name="brush">Brush for stroke.</param>
+    /// <param name="strokeWidth">Width of stroke.</param>
+    /// <param name="closed">Whether to close the polygon.</param>
+    public void DrawPolygon(float[] points, NativeBrush brush, float strokeWidth = 1.0f, bool closed = true)
+    {
+        ThrowIfDisposed();
+        if (brush == null || !brush.IsValid || points == null || points.Length < 4) return;
+        NativeMethods.DrawPolygon(_handle, points, points.Length / 2, brush.Handle, strokeWidth, closed ? 1 : 0);
+    }
+
+    /// <summary>
     /// Draws text.
     /// </summary>
     public void DrawText(string text, NativeTextFormat format, float x, float y, float width, float height, NativeBrush brush)
@@ -306,6 +333,106 @@ public sealed class RenderTarget : IDisposable
             cornerRadiusTR,
             cornerRadiusBR,
             cornerRadiusBL);
+    }
+
+    /// <summary>
+    /// Draws a glowing border highlight effect for DevTools element inspection.
+    /// </summary>
+    /// <param name="x">The x coordinate of the element.</param>
+    /// <param name="y">The y coordinate of the element.</param>
+    /// <param name="width">The width of the element.</param>
+    /// <param name="height">The height of the element.</param>
+    /// <param name="animationPhase">Animation phase (0.0 - 1.0).</param>
+    /// <param name="glowColorR">Glow color red component (0-1).</param>
+    /// <param name="glowColorG">Glow color green component (0-1).</param>
+    /// <param name="glowColorB">Glow color blue component (0-1).</param>
+    /// <param name="strokeWidth">Width of the glowing stroke.</param>
+    /// <param name="trailLength">Length of the trailing glow (0.0 - 1.0 of perimeter).</param>
+    /// <param name="dimOpacity">Opacity of the dimmed area outside (0-1).</param>
+    /// <param name="screenWidth">Total screen/window width for dimming.</param>
+    /// <param name="screenHeight">Total screen/window height for dimming.</param>
+    public void DrawGlowingBorderHighlight(
+        float x, float y, float width, float height,
+        float animationPhase,
+        float glowColorR, float glowColorG, float glowColorB,
+        float strokeWidth,
+        float trailLength,
+        float dimOpacity,
+        float screenWidth, float screenHeight)
+    {
+        ThrowIfDisposed();
+        NativeMethods.DrawGlowingBorderHighlight(
+            _handle,
+            x, y, width, height,
+            animationPhase,
+            glowColorR, glowColorG, glowColorB,
+            strokeWidth,
+            trailLength,
+            dimOpacity,
+            screenWidth, screenHeight);
+    }
+
+    /// <summary>
+    /// Draws a glowing border transition effect between two elements.
+    /// </summary>
+    public void DrawGlowingBorderTransition(
+        float fromX, float fromY, float fromWidth, float fromHeight,
+        float toX, float toY, float toWidth, float toHeight,
+        float headProgress, float tailProgress,
+        float animationPhase,
+        float glowColorR, float glowColorG, float glowColorB,
+        float strokeWidth,
+        float trailLength,
+        float dimOpacity,
+        float screenWidth, float screenHeight)
+    {
+        ThrowIfDisposed();
+        NativeMethods.DrawGlowingBorderTransition(
+            _handle,
+            fromX, fromY, fromWidth, fromHeight,
+            toX, toY, toWidth, toHeight,
+            headProgress, tailProgress,
+            animationPhase,
+            glowColorR, glowColorG, glowColorB,
+            strokeWidth,
+            trailLength,
+            dimOpacity,
+            screenWidth, screenHeight);
+    }
+
+    /// <summary>
+    /// Draws a ripple effect expanding from element border.
+    /// Used after transition animation completes, before rotation starts.
+    /// </summary>
+    /// <param name="x">The x coordinate of the element.</param>
+    /// <param name="y">The y coordinate of the element.</param>
+    /// <param name="width">The width of the element.</param>
+    /// <param name="height">The height of the element.</param>
+    /// <param name="rippleProgress">Ripple expansion progress (0.0 - 1.0).</param>
+    /// <param name="glowColorR">Glow color red component (0-1).</param>
+    /// <param name="glowColorG">Glow color green component (0-1).</param>
+    /// <param name="glowColorB">Glow color blue component (0-1).</param>
+    /// <param name="strokeWidth">Base stroke width.</param>
+    /// <param name="dimOpacity">Opacity of the dimmed area outside (0-1).</param>
+    /// <param name="screenWidth">Total screen/window width for dimming.</param>
+    /// <param name="screenHeight">Total screen/window height for dimming.</param>
+    public void DrawRippleEffect(
+        float x, float y, float width, float height,
+        float rippleProgress,
+        float glowColorR, float glowColorG, float glowColorB,
+        float strokeWidth,
+        float dimOpacity,
+        float screenWidth, float screenHeight)
+    {
+        ThrowIfDisposed();
+        NativeMethods.DrawRippleEffect(
+            _handle,
+            x, y, width, height,
+            rippleProgress,
+            glowColorR, glowColorG, glowColorB,
+            strokeWidth,
+            dimOpacity,
+            screenWidth, screenHeight);
     }
 
     private void ThrowIfDisposed()

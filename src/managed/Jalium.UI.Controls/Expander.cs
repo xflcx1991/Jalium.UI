@@ -141,6 +141,23 @@ public class Expander : ContentControl
 
     #endregion
 
+    #region Template Parts
+
+    private Border? _headerBorder;
+    private Border? _contentBorder;
+    private Shapes.Path? _chevron;
+
+    /// <inheritdoc />
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+        _headerBorder = GetTemplateChild("PART_HeaderBorder") as Border;
+        _contentBorder = GetTemplateChild("PART_ContentBorder") as Border;
+        _chevron = GetTemplateChild("PART_Chevron") as Shapes.Path;
+    }
+
+    #endregion
+
     #region Input Handling
 
     private void OnMouseDownHandler(object sender, RoutedEventArgs e)
@@ -323,6 +340,12 @@ public class Expander : ContentControl
     /// <inheritdoc />
     protected override void OnRender(object drawingContext)
     {
+        // If using template, let the template handle rendering
+        if (_contentBorder != null)
+        {
+            return;
+        }
+
         if (drawingContext is not DrawingContext dc)
             return;
 

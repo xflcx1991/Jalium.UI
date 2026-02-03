@@ -194,6 +194,21 @@ public abstract partial class UIElement : Visual, IInputElement
             new PropertyMetadata(null, OnBackdropEffectChanged));
 
     /// <summary>
+    /// Identifies the Effect dependency property.
+    /// This is for element-level bitmap effects like DropShadowEffect, distinct from BackdropEffect.
+    /// </summary>
+    public static readonly DependencyProperty EffectProperty =
+        DependencyProperty.Register(nameof(Effect), typeof(object), typeof(UIElement),
+            new PropertyMetadata(null, OnEffectChanged));
+
+    /// <summary>
+    /// Identifies the OpacityMask dependency property.
+    /// </summary>
+    public static readonly DependencyProperty OpacityMaskProperty =
+        DependencyProperty.Register(nameof(OpacityMask), typeof(object), typeof(UIElement),
+            new PropertyMetadata(null, OnOpacityMaskChanged));
+
+    /// <summary>
     /// Identifies the RenderTransform dependency property.
     /// </summary>
     public static readonly DependencyProperty RenderTransformProperty =
@@ -265,6 +280,27 @@ public abstract partial class UIElement : Visual, IInputElement
     {
         get => (IBackdropEffect?)GetValue(BackdropEffectProperty);
         set => SetValue(BackdropEffectProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the bitmap effect applied to the element's rendered content.
+    /// Use DropShadowEffect, ElementBlurEffect, etc. from Jalium.UI.Media.Effects.
+    /// This is distinct from BackdropEffect which affects content behind the element.
+    /// </summary>
+    public object? Effect
+    {
+        get => GetValue(EffectProperty);
+        set => SetValue(EffectProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets a brush that specifies the opacity mask for this element.
+    /// The alpha channel of the brush determines the opacity of corresponding parts of the element.
+    /// </summary>
+    public object? OpacityMask
+    {
+        get => GetValue(OpacityMaskProperty);
+        set => SetValue(OpacityMaskProperty, value);
     }
 
     /// <summary>
@@ -361,9 +397,6 @@ public abstract partial class UIElement : Visual, IInputElement
     {
         if (_isKeyboardFocused != isFocused)
         {
-            var msg = $"[{DateTime.Now:HH:mm:ss.fff}] [Focus] {GetType().Name}.IsKeyboardFocused: {_isKeyboardFocused} -> {isFocused}";
-            System.Diagnostics.Debug.WriteLine(msg);
-            try { System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(GetType().Assembly.Location) ?? ".", "focus_debug.log"), msg + Environment.NewLine); } catch { }
             _isKeyboardFocused = isFocused;
             OnIsKeyboardFocusedChanged(isFocused);
             InvalidateVisual();
@@ -698,6 +731,47 @@ public abstract partial class UIElement : Visual, IInputElement
     protected virtual void OnBackdropEffectChanged(IBackdropEffect? oldValue, IBackdropEffect? newValue)
     {
         InvalidateVisual();
+    }
+
+    private static void OnEffectChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is UIElement element)
+        {
+            element.OnEffectChanged(e.OldValue, e.NewValue);
+        }
+    }
+
+    /// <summary>
+    /// Called when the Effect property changes.
+    /// </summary>
+    protected virtual void OnEffectChanged(object? oldValue, object? newValue)
+    {
+        // Unsubscribe from old effect changes
+        if (oldValue is IEffect oldEffect)
+        {
+            oldEffect.EffectChanged -= OnEffectPropertyChanged;
+        }
+
+        // Subscribe to new effect changes
+        if (newValue is IEffect newEffect)
+        {
+            newEffect.EffectChanged += OnEffectPropertyChanged;
+        }
+
+        InvalidateVisual();
+    }
+
+    private void OnEffectPropertyChanged(object? sender, EventArgs e)
+    {
+        InvalidateVisual();
+    }
+
+    private static void OnOpacityMaskChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is UIElement element)
+        {
+            element.InvalidateVisual();
+        }
     }
 
     private static void OnClipToBoundsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -1102,6 +1176,281 @@ public abstract partial class UIElement : Visual, IInputElement
     {
         add => AddHandler(MouseWheelEvent, value);
         remove => RemoveHandler(MouseWheelEvent, value);
+    }
+
+    #endregion
+
+    #region Animation
+
+    /// <summary>
+    /// Tracks active animations on this element.
+    /// </summary>
+    private Dictionary<DependencyProperty, ElementAnimation>? _activeAnimations;
+    private System.Threading.Timer? _animationTimer;
+    private static readonly object _animationTimerLock = new();
+
+    private sealed class ElementAnimation
+    {
+        public IAnimationTimeline Animation { get; }
+        public IAnimationClock Clock { get; }
+        public object? BaseValue { get; }
+
+        public ElementAnimation(IAnimationTimeline animation, IAnimationClock clock, object? baseValue)
+        {
+            Animation = animation;
+            Clock = clock;
+            BaseValue = baseValue;
+        }
+    }
+
+    /// <summary>
+    /// Starts an animation for the specified dependency property.
+    /// </summary>
+    /// <param name="dp">The dependency property to animate.</param>
+    /// <param name="animation">The animation timeline, or null to stop any existing animation.</param>
+    public void BeginAnimation(DependencyProperty dp, IAnimationTimeline? animation)
+    {
+        BeginAnimation(dp, animation, HandoffBehavior.SnapshotAndReplace);
+    }
+
+    /// <summary>
+    /// Starts an animation for the specified dependency property with a handoff behavior.
+    /// </summary>
+    /// <param name="dp">The dependency property to animate.</param>
+    /// <param name="animation">The animation timeline, or null to stop any existing animation.</param>
+    /// <param name="handoffBehavior">How to handle existing animations (currently only Replace is supported).</param>
+    public void BeginAnimation(DependencyProperty dp, IAnimationTimeline? animation, HandoffBehavior handoffBehavior)
+    {
+        ArgumentNullException.ThrowIfNull(dp);
+
+        _activeAnimations ??= new Dictionary<DependencyProperty, ElementAnimation>();
+
+        // Stop any existing animation on this property
+        if (_activeAnimations.TryGetValue(dp, out var existing))
+        {
+            existing.Clock.Stop();
+            existing.Clock.Completed -= OnAnimationClockCompleted;
+            ClearAnimatedValue(dp);
+            _activeAnimations.Remove(dp);
+        }
+
+        if (animation == null)
+        {
+            StopAnimationTimerIfNeeded();
+            return;
+        }
+
+        // Store base value and create clock
+        var baseValue = GetAnimationBaseValue(dp);
+        var clock = animation.CreateClock();
+
+        _activeAnimations[dp] = new ElementAnimation(animation, clock, baseValue);
+
+        // Subscribe to completion
+        clock.Completed += OnAnimationClockCompleted;
+
+        // Start the clock
+        clock.Begin();
+
+        // Start the animation timer
+        StartAnimationTimerIfNeeded();
+
+        // Set initial animated value
+        UpdateAnimatedValue(dp);
+    }
+
+    /// <summary>
+    /// Gets a value indicating whether the specified property has an active animation.
+    /// </summary>
+    /// <param name="dp">The dependency property to check.</param>
+    /// <returns>True if the property has an active animation; otherwise, false.</returns>
+    public bool HasAnimation(DependencyProperty dp)
+    {
+        return _activeAnimations?.ContainsKey(dp) == true;
+    }
+
+    private void OnAnimationClockCompleted(object? sender, EventArgs e)
+    {
+        if (sender is not IAnimationClock clock)
+            return;
+
+        // Find the property this clock belongs to
+        if (_activeAnimations == null)
+            return;
+
+        DependencyProperty? completedProperty = null;
+        ElementAnimation? completedAnimation = null;
+
+        foreach (var (dp, anim) in _activeAnimations)
+        {
+            if (anim.Clock == clock)
+            {
+                completedProperty = dp;
+                completedAnimation = anim;
+                break;
+            }
+        }
+
+        if (completedProperty == null || completedAnimation == null)
+            return;
+
+        // Handle fill behavior
+        var fillBehavior = completedAnimation.Animation.AnimationFillBehavior;
+
+        if (fillBehavior == AnimationFillBehavior.Stop)
+        {
+            // Remove animation and restore base value
+            _activeAnimations.Remove(completedProperty);
+            clock.Completed -= OnAnimationClockCompleted;
+            ClearAnimatedValue(completedProperty);
+        }
+        // For HoldEnd, keep the animation record but mark as completed
+        // The final value remains via the animated value layer
+
+        StopAnimationTimerIfNeeded();
+        InvalidateVisual();
+    }
+
+    private void StartAnimationTimerIfNeeded()
+    {
+        lock (_animationTimerLock)
+        {
+            if (_animationTimer == null && _activeAnimations?.Count > 0)
+            {
+                // ~60 FPS
+                _animationTimer = new System.Threading.Timer(OnAnimationTick, null, 0, 16);
+            }
+        }
+    }
+
+    private void StopAnimationTimerIfNeeded()
+    {
+        lock (_animationTimerLock)
+        {
+            if (_activeAnimations == null || _activeAnimations.Count == 0 ||
+                !_activeAnimations.Values.Any(a => a.Clock.IsRunning))
+            {
+                _animationTimer?.Dispose();
+                _animationTimer = null;
+            }
+        }
+    }
+
+    private void OnAnimationTick(object? state)
+    {
+        // Must marshal to UI thread
+        Dispatcher?.InvokeAsync(ProcessAnimationFrame);
+    }
+
+    private void ProcessAnimationFrame()
+    {
+        if (_activeAnimations == null || _activeAnimations.Count == 0)
+            return;
+
+        var hasRunningAnimation = false;
+
+        foreach (var (dp, anim) in _activeAnimations.ToArray())
+        {
+            if (!anim.Clock.IsRunning)
+                continue;
+
+            hasRunningAnimation = true;
+
+            // Update clock progress
+            anim.Clock.Tick();
+
+            // Update animated value
+            UpdateAnimatedValue(dp);
+        }
+
+        if (hasRunningAnimation)
+        {
+            InvalidateVisual();
+        }
+        else
+        {
+            StopAnimationTimerIfNeeded();
+        }
+    }
+
+    private void UpdateAnimatedValue(DependencyProperty dp)
+    {
+        if (_activeAnimations == null || !_activeAnimations.TryGetValue(dp, out var anim))
+            return;
+
+        try
+        {
+            var baseValue = anim.BaseValue ?? dp.DefaultMetadata.DefaultValue ?? GetDefaultAnimationValue(dp);
+            var currentValue = anim.Animation.GetCurrentValue(baseValue, baseValue, anim.Clock);
+
+            var holdEnd = anim.Animation.AnimationFillBehavior == AnimationFillBehavior.HoldEnd;
+            SetAnimatedValue(dp, currentValue, holdEnd);
+        }
+        catch
+        {
+            // If animation value calculation fails, silently continue
+        }
+    }
+
+    private static object GetDefaultAnimationValue(DependencyProperty dp)
+    {
+        var type = dp.PropertyType;
+
+        if (type == typeof(double))
+            return 0.0;
+        if (type == typeof(float))
+            return 0f;
+        if (type == typeof(int))
+            return 0;
+
+        return type.IsValueType ? Activator.CreateInstance(type)! : null!;
+    }
+
+    #endregion
+
+    #region Commands
+
+    private Input.CommandBindingCollection? _commandBindings;
+    private Input.InputBindingCollection? _inputBindings;
+
+    /// <summary>
+    /// Gets the collection of command bindings associated with this element.
+    /// </summary>
+    public Input.CommandBindingCollection CommandBindings => _commandBindings ??= new Input.CommandBindingCollection();
+
+    /// <summary>
+    /// Gets the collection of input bindings associated with this element.
+    /// </summary>
+    public Input.InputBindingCollection InputBindings => _inputBindings ??= new Input.InputBindingCollection();
+
+    #endregion
+
+    #region Automation
+
+    private Automation.AutomationPeer? _automationPeer;
+
+    /// <summary>
+    /// Creates the automation peer for this element.
+    /// </summary>
+    /// <returns>The automation peer, or null if no peer should be created.</returns>
+    protected virtual Automation.AutomationPeer? OnCreateAutomationPeer() => null;
+
+    /// <summary>
+    /// Gets or creates the automation peer for this element.
+    /// </summary>
+    /// <returns>The automation peer, or null if the element doesn't support automation.</returns>
+    public Automation.AutomationPeer? GetAutomationPeer()
+    {
+        _automationPeer ??= OnCreateAutomationPeer();
+        return _automationPeer;
+    }
+
+    /// <summary>
+    /// Invalidates the automation peer, causing it to be recreated on next access.
+    /// </summary>
+    protected void InvalidateAutomationPeer()
+    {
+        _automationPeer = null;
     }
 
     #endregion

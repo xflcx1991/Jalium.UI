@@ -69,6 +69,21 @@ public class GroupBox : ContentControl
 
     #endregion
 
+    #region Template Parts
+
+    private Border? _headerBorder;
+    private Border? _contentBorder;
+
+    /// <inheritdoc />
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+        _headerBorder = GetTemplateChild("PART_HeaderBorder") as Border;
+        _contentBorder = GetTemplateChild("PART_ContentBorder") as Border;
+    }
+
+    #endregion
+
     #region Layout
 
     /// <inheritdoc />
@@ -157,6 +172,12 @@ public class GroupBox : ContentControl
     /// <inheritdoc />
     protected override void OnRender(object drawingContext)
     {
+        // If using template, let the template handle rendering
+        if (_contentBorder != null)
+        {
+            return;
+        }
+
         if (drawingContext is not DrawingContext dc)
             return;
 

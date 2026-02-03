@@ -1,3 +1,6 @@
+using Jalium.UI.Automation;
+using Jalium.UI.Controls.Automation;
+
 namespace Jalium.UI.Controls;
 
 /// <summary>
@@ -11,5 +14,11 @@ public class CheckBox : ToggleButton
     public CheckBox()
     {
         // CheckBox uses ControlTemplate for visual appearance (inherited from ButtonBase)
+    }
+
+    /// <inheritdoc />
+    protected override AutomationPeer? OnCreateAutomationPeer()
+    {
+        return new CheckBoxAutomationPeer(this);
     }
 }

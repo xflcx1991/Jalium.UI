@@ -1,4 +1,6 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using System.Reflection;
 
 namespace Jalium.UI;
@@ -204,6 +206,31 @@ public class Binding : BindingBase
     public bool NotifyOnTargetUpdated { get; set; }
 
     /// <summary>
+    /// Gets the collection of validation rules to apply to the binding.
+    /// </summary>
+    public Collection<ValidationRule> ValidationRules { get; } = new();
+
+    /// <summary>
+    /// Gets or sets a value that indicates whether to include exceptions as validation errors.
+    /// </summary>
+    public bool ValidatesOnExceptions { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value that indicates whether to use IDataErrorInfo for validation.
+    /// </summary>
+    public bool ValidatesOnDataErrors { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value that indicates whether to use INotifyDataErrorInfo for validation.
+    /// </summary>
+    public bool ValidatesOnNotifyDataErrors { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets a value that indicates whether to raise validation error events.
+    /// </summary>
+    public bool NotifyOnValidationError { get; set; }
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="Binding"/> class.
     /// </summary>
     public Binding()
@@ -224,35 +251,6 @@ public class Binding : BindingBase
     {
         return new BindingExpression(this, target, targetProperty);
     }
-}
-
-/// <summary>
-/// Represents a property path for data binding.
-/// </summary>
-public class PropertyPath
-{
-    /// <summary>
-    /// Gets the path string.
-    /// </summary>
-    public string Path { get; }
-
-    /// <summary>
-    /// Gets the path segments.
-    /// </summary>
-    public string[] PathSegments { get; }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="PropertyPath"/> class.
-    /// </summary>
-    /// <param name="path">The path string (e.g., "PropertyName" or "Object.Property").</param>
-    public PropertyPath(string path)
-    {
-        Path = path ?? string.Empty;
-        PathSegments = string.IsNullOrEmpty(path) ? [] : path.Split('.');
-    }
-
-    /// <inheritdoc />
-    public override string ToString() => Path;
 }
 
 /// <summary>
@@ -387,6 +385,8 @@ public class BindingExpression : BindingExpressionBase
 {
     private readonly Binding _binding;
     private INotifyPropertyChanged? _sourceNotify;
+    private INotifyDataErrorInfo? _notifyDataErrorInfo;
+    private DependencyObject? _sourceDependencyObject;
     private PropertyInfo? _sourceProperty;
     private bool _isUpdating;
 
@@ -415,11 +415,19 @@ public class BindingExpression : BindingExpressionBase
         if (IsActive)
             return;
 
-        IsActive = true;
-        Status = BindingStatus.Active;
-
         // Resolve the data source
         ResolveDataSource();
+
+        // For FindAncestor bindings, if the source couldn't be resolved (visual tree not ready),
+        // don't mark as active so we can retry later when visual parent changes
+        if (ResolvedSource == null && _binding.RelativeSource?.Mode == RelativeSourceMode.FindAncestor)
+        {
+            Status = BindingStatus.Unattached;
+            return;
+        }
+
+        IsActive = true;
+        Status = BindingStatus.Active;
 
         // Subscribe to source changes
         SubscribeToSource();
@@ -459,13 +467,174 @@ public class BindingExpression : BindingExpressionBase
             _isUpdating = true;
 
             var targetValue = Target.GetValue(TargetProperty);
-            var sourceValue = ConvertBack(targetValue);
 
-            _sourceProperty.SetValue(ResolvedSource, sourceValue);
+            // Step 1: RawProposedValue validation
+            if (!ValidateValue(targetValue, ValidationStep.RawProposedValue))
+                return;
+
+            // Step 2: Convert value
+            object? sourceValue;
+            try
+            {
+                sourceValue = ConvertBack(targetValue);
+            }
+            catch (Exception ex)
+            {
+                if (_binding.ValidatesOnExceptions)
+                {
+                    AddValidationError(new ValidationError(null, ResolvedSource, ex.Message, ex));
+                }
+                return;
+            }
+
+            // Step 3: ConvertedProposedValue validation
+            if (!ValidateValue(sourceValue, ValidationStep.ConvertedProposedValue))
+                return;
+
+            // Step 4: Update source
+            try
+            {
+                _sourceProperty.SetValue(ResolvedSource, sourceValue);
+            }
+            catch (Exception ex)
+            {
+                if (_binding.ValidatesOnExceptions)
+                {
+                    AddValidationError(new ValidationError(null, ResolvedSource, ex.Message, ex));
+                }
+                return;
+            }
+
+            // Step 5: UpdatedValue validation
+            if (!ValidateValue(sourceValue, ValidationStep.UpdatedValue))
+                return;
+
+            // Step 6: Validate IDataErrorInfo if enabled
+            if (_binding.ValidatesOnDataErrors)
+            {
+                if (!ValidateDataErrorInfo())
+                    return;
+            }
+
+            // Success - clear validation errors
+            ClearValidationErrors();
         }
         finally
         {
             _isUpdating = false;
+        }
+    }
+
+    /// <summary>
+    /// Validates a value against all validation rules for the specified step.
+    /// </summary>
+    private bool ValidateValue(object? value, ValidationStep step)
+    {
+        var culture = _binding.ConverterCulture ?? CultureInfo.CurrentCulture;
+
+        foreach (var rule in _binding.ValidationRules)
+        {
+            if (rule.ValidationStep != step)
+                continue;
+
+            var result = rule.Validate(value, culture);
+            if (!result.IsValid)
+            {
+                AddValidationError(new ValidationError(rule, ResolvedSource, result.ErrorContent, null));
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Validates using IDataErrorInfo if the source implements it.
+    /// </summary>
+    private bool ValidateDataErrorInfo()
+    {
+        if (ResolvedSource is not IDataErrorInfo dataErrorInfo || _binding.Path == null)
+            return true;
+
+        var propertyName = _binding.Path.PathSegments.LastOrDefault() ?? _binding.Path.Path;
+        var error = dataErrorInfo[propertyName];
+
+        if (!string.IsNullOrEmpty(error))
+        {
+            AddValidationError(new ValidationError(error));
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Validates using INotifyDataErrorInfo if the source implements it.
+    /// </summary>
+    private void ValidateNotifyDataErrorInfo()
+    {
+        if (_notifyDataErrorInfo == null || _binding.Path == null)
+            return;
+
+        var propertyName = _binding.Path.PathSegments.LastOrDefault() ?? _binding.Path.Path;
+        var errors = _notifyDataErrorInfo.GetErrors(propertyName);
+
+        if (errors != null)
+        {
+            foreach (var error in errors)
+            {
+                if (error != null)
+                {
+                    AddValidationError(new ValidationError(error.ToString() ?? "Validation error"));
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Adds a validation error to the target element.
+    /// </summary>
+    private void AddValidationError(ValidationError error)
+    {
+        Validation.MarkInvalid(Target, error);
+        Status = BindingStatus.UpdateSourceError;
+
+        if (_binding.NotifyOnValidationError)
+        {
+            RaiseValidationErrorEvent(error, ValidationErrorEventAction.Added);
+        }
+    }
+
+    /// <summary>
+    /// Clears all validation errors from the target element.
+    /// </summary>
+    private void ClearValidationErrors()
+    {
+        if (Validation.GetHasError(Target))
+        {
+            var errors = Validation.GetErrors(Target);
+            if (errors != null && _binding.NotifyOnValidationError)
+            {
+                foreach (var error in errors.ToList())
+                {
+                    RaiseValidationErrorEvent(error, ValidationErrorEventAction.Removed);
+                }
+            }
+
+            Validation.ClearInvalid(Target);
+        }
+        Status = BindingStatus.Active;
+    }
+
+    /// <summary>
+    /// Raises the validation error event.
+    /// </summary>
+    private void RaiseValidationErrorEvent(ValidationError error, ValidationErrorEventAction action)
+    {
+        if (Target is UIElement uiElement)
+        {
+            var args = new ValidationErrorEventArgs(Validation.ErrorEvent, error, action);
+            uiElement.RaiseEvent(args);
         }
     }
 
@@ -715,10 +884,27 @@ public class BindingExpression : BindingExpressionBase
             _sourceNotify.PropertyChanged += OnSourcePropertyChanged;
         }
 
+        // Also subscribe to DependencyObject PropertyChangedInternal for DependencyProperty changes
+        if (ResolvedSource is DependencyObject depObj)
+        {
+            _sourceDependencyObject = depObj;
+            _sourceDependencyObject.PropertyChangedInternal += OnSourceDependencyPropertyChanged;
+        }
+
         // Also subscribe to DataContext changes
         if (Target is FrameworkElement fe)
         {
             fe.DataContextChanged += OnDataContextChanged;
+        }
+
+        // Subscribe to INotifyDataErrorInfo if enabled
+        if (_binding.ValidatesOnNotifyDataErrors && ResolvedSource is INotifyDataErrorInfo ndei)
+        {
+            _notifyDataErrorInfo = ndei;
+            _notifyDataErrorInfo.ErrorsChanged += OnErrorsChanged;
+
+            // Check for initial errors
+            ValidateNotifyDataErrorInfo();
         }
     }
 
@@ -730,9 +916,44 @@ public class BindingExpression : BindingExpressionBase
             _sourceNotify = null;
         }
 
+        if (_sourceDependencyObject != null)
+        {
+            _sourceDependencyObject.PropertyChangedInternal -= OnSourceDependencyPropertyChanged;
+            _sourceDependencyObject = null;
+        }
+
         if (Target is FrameworkElement fe)
         {
             fe.DataContextChanged -= OnDataContextChanged;
+        }
+
+        if (_notifyDataErrorInfo != null)
+        {
+            _notifyDataErrorInfo.ErrorsChanged -= OnErrorsChanged;
+            _notifyDataErrorInfo = null;
+        }
+    }
+
+    private void OnErrorsChanged(object? sender, DataErrorsChangedEventArgs e)
+    {
+        if (_binding.Path == null)
+            return;
+
+        var propertyName = _binding.Path.PathSegments.LastOrDefault() ?? _binding.Path.Path;
+
+        // Check if the changed property matches our binding path
+        if (string.IsNullOrEmpty(e.PropertyName) || e.PropertyName == propertyName)
+        {
+            // Clear existing errors and revalidate
+            if (_notifyDataErrorInfo != null && _notifyDataErrorInfo.HasErrors)
+            {
+                ClearValidationErrors();
+                ValidateNotifyDataErrorInfo();
+            }
+            else
+            {
+                ClearValidationErrors();
+            }
         }
     }
 
@@ -744,6 +965,18 @@ public class BindingExpression : BindingExpressionBase
         // Check if the changed property is in our path
         if (string.IsNullOrEmpty(e.PropertyName) ||
             _binding.Path.PathSegments.Length > 0 && _binding.Path.PathSegments[0] == e.PropertyName)
+        {
+            UpdateTarget();
+        }
+    }
+
+    private void OnSourceDependencyPropertyChanged(DependencyProperty dp, object? oldValue, object? newValue)
+    {
+        if (_binding.Path == null)
+            return;
+
+        // Check if the changed property matches our path
+        if (_binding.Path.PathSegments.Length > 0 && _binding.Path.PathSegments[0] == dp.Name)
         {
             UpdateTarget();
         }

@@ -734,6 +734,309 @@ public class PathGeometry : Geometry
         if (pt.X > maxX) maxX = pt.X;
         if (pt.Y > maxY) maxY = pt.Y;
     }
+
+    /// <summary>
+    /// Gets the point and tangent vector at the specified fraction of the path length.
+    /// </summary>
+    /// <param name="progress">A value between 0.0 and 1.0 indicating the fraction of the path.</param>
+    /// <param name="point">The point at the specified fraction.</param>
+    /// <param name="tangent">The tangent vector at the specified fraction (normalized).</param>
+    public void GetPointAtFractionLength(double progress, out Point point, out Point tangent)
+    {
+        progress = Math.Clamp(progress, 0.0, 1.0);
+
+        if (Figures.Count == 0)
+        {
+            point = new Point(0, 0);
+            tangent = new Point(1, 0);
+            return;
+        }
+
+        // Calculate total path length
+        var totalLength = GetTotalLength();
+        if (totalLength <= 0)
+        {
+            point = Figures[0].StartPoint;
+            tangent = new Point(1, 0);
+            return;
+        }
+
+        var targetLength = progress * totalLength;
+        var currentLength = 0.0;
+
+        foreach (var figure in Figures)
+        {
+            var currentPoint = figure.StartPoint;
+
+            foreach (var segment in figure.Segments)
+            {
+                var segmentLength = GetSegmentLength(currentPoint, segment);
+
+                if (currentLength + segmentLength >= targetLength)
+                {
+                    // The target point is within this segment
+                    var segmentProgress = segmentLength > 0
+                        ? (targetLength - currentLength) / segmentLength
+                        : 0;
+
+                    GetPointOnSegment(currentPoint, segment, segmentProgress, out point, out tangent);
+                    return;
+                }
+
+                currentLength += segmentLength;
+                currentPoint = segment.GetEndPoint(currentPoint);
+            }
+
+            // Handle closed figures
+            if (figure.IsClosed)
+            {
+                var closeLength = Distance(currentPoint, figure.StartPoint);
+                if (currentLength + closeLength >= targetLength)
+                {
+                    var closeProgress = closeLength > 0
+                        ? (targetLength - currentLength) / closeLength
+                        : 0;
+                    point = Lerp(currentPoint, figure.StartPoint, closeProgress);
+                    var diff = new Point(figure.StartPoint.X - currentPoint.X, figure.StartPoint.Y - currentPoint.Y);
+                    var len = Math.Sqrt(diff.X * diff.X + diff.Y * diff.Y);
+                    tangent = len > 0 ? new Point(diff.X / len, diff.Y / len) : new Point(1, 0);
+                    return;
+                }
+                currentLength += closeLength;
+            }
+        }
+
+        // Return the end point
+        var lastFigure = Figures[^1];
+        if (lastFigure.Segments.Count > 0)
+        {
+            var lastPoint = lastFigure.StartPoint;
+            foreach (var seg in lastFigure.Segments)
+            {
+                lastPoint = seg.GetEndPoint(lastPoint);
+            }
+            point = lastPoint;
+        }
+        else
+        {
+            point = lastFigure.StartPoint;
+        }
+        tangent = new Point(1, 0);
+    }
+
+    /// <summary>
+    /// Gets the total length of the path.
+    /// </summary>
+    public double GetTotalLength()
+    {
+        var totalLength = 0.0;
+
+        foreach (var figure in Figures)
+        {
+            var currentPoint = figure.StartPoint;
+
+            foreach (var segment in figure.Segments)
+            {
+                totalLength += GetSegmentLength(currentPoint, segment);
+                currentPoint = segment.GetEndPoint(currentPoint);
+            }
+
+            if (figure.IsClosed)
+            {
+                totalLength += Distance(currentPoint, figure.StartPoint);
+            }
+        }
+
+        return totalLength;
+    }
+
+    private static double GetSegmentLength(Point startPoint, PathSegment segment)
+    {
+        return segment switch
+        {
+            LineSegment line => Distance(startPoint, line.Point),
+            PolyLineSegment poly => GetPolyLineLength(startPoint, poly.Points),
+            BezierSegment bezier => GetBezierLength(startPoint, bezier.Point1, bezier.Point2, bezier.Point3),
+            QuadraticBezierSegment quad => GetQuadraticBezierLength(startPoint, quad.Point1, quad.Point2),
+            PolyBezierSegment polyBezier => GetPolyBezierLength(startPoint, polyBezier.Points),
+            PolyQuadraticBezierSegment polyQuad => GetPolyQuadraticBezierLength(startPoint, polyQuad.Points),
+            ArcSegment arc => GetArcLength(startPoint, arc),
+            _ => 0
+        };
+    }
+
+    private static void GetPointOnSegment(Point startPoint, PathSegment segment, double progress, out Point point, out Point tangent)
+    {
+        switch (segment)
+        {
+            case LineSegment line:
+                point = Lerp(startPoint, line.Point, progress);
+                var lineDiff = new Point(line.Point.X - startPoint.X, line.Point.Y - startPoint.Y);
+                var lineLen = Math.Sqrt(lineDiff.X * lineDiff.X + lineDiff.Y * lineDiff.Y);
+                tangent = lineLen > 0 ? new Point(lineDiff.X / lineLen, lineDiff.Y / lineLen) : new Point(1, 0);
+                break;
+
+            case BezierSegment bezier:
+                GetCubicBezierPointAndTangent(startPoint, bezier.Point1, bezier.Point2, bezier.Point3, progress, out point, out tangent);
+                break;
+
+            case QuadraticBezierSegment quad:
+                GetQuadraticBezierPointAndTangent(startPoint, quad.Point1, quad.Point2, progress, out point, out tangent);
+                break;
+
+            case ArcSegment arc:
+                GetArcPointAndTangent(startPoint, arc, progress, out point, out tangent);
+                break;
+
+            default:
+                point = startPoint;
+                tangent = new Point(1, 0);
+                break;
+        }
+    }
+
+    private static Point Lerp(Point a, Point b, double t) =>
+        new(a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t);
+
+    private static double Distance(Point a, Point b) =>
+        Math.Sqrt((b.X - a.X) * (b.X - a.X) + (b.Y - a.Y) * (b.Y - a.Y));
+
+    private static double GetPolyLineLength(Point start, IList<Point> points)
+    {
+        var length = 0.0;
+        var current = start;
+        foreach (var pt in points)
+        {
+            length += Distance(current, pt);
+            current = pt;
+        }
+        return length;
+    }
+
+    private static double GetBezierLength(Point p0, Point p1, Point p2, Point p3, int samples = 20)
+    {
+        var length = 0.0;
+        var prev = p0;
+        for (var i = 1; i <= samples; i++)
+        {
+            var t = i / (double)samples;
+            var pt = GetCubicBezierPoint(p0, p1, p2, p3, t);
+            length += Distance(prev, pt);
+            prev = pt;
+        }
+        return length;
+    }
+
+    private static double GetQuadraticBezierLength(Point p0, Point p1, Point p2, int samples = 20)
+    {
+        var length = 0.0;
+        var prev = p0;
+        for (var i = 1; i <= samples; i++)
+        {
+            var t = i / (double)samples;
+            var pt = GetQuadraticBezierPoint(p0, p1, p2, t);
+            length += Distance(prev, pt);
+            prev = pt;
+        }
+        return length;
+    }
+
+    private static double GetPolyBezierLength(Point start, IList<Point> points)
+    {
+        var length = 0.0;
+        var current = start;
+        for (var i = 0; i + 2 < points.Count; i += 3)
+        {
+            length += GetBezierLength(current, points[i], points[i + 1], points[i + 2]);
+            current = points[i + 2];
+        }
+        return length;
+    }
+
+    private static double GetPolyQuadraticBezierLength(Point start, IList<Point> points)
+    {
+        var length = 0.0;
+        var current = start;
+        for (var i = 0; i + 1 < points.Count; i += 2)
+        {
+            length += GetQuadraticBezierLength(current, points[i], points[i + 1]);
+            current = points[i + 1];
+        }
+        return length;
+    }
+
+    private static double GetArcLength(Point start, ArcSegment arc)
+    {
+        // Approximate arc length using line segments
+        var length = 0.0;
+        var prev = start;
+        const int samples = 20;
+        for (var i = 1; i <= samples; i++)
+        {
+            GetArcPointAndTangent(start, arc, i / (double)samples, out var pt, out _);
+            length += Distance(prev, pt);
+            prev = pt;
+        }
+        return length;
+    }
+
+    private static Point GetCubicBezierPoint(Point p0, Point p1, Point p2, Point p3, double t)
+    {
+        var u = 1 - t;
+        var tt = t * t;
+        var uu = u * u;
+        var uuu = uu * u;
+        var ttt = tt * t;
+
+        return new Point(
+            uuu * p0.X + 3 * uu * t * p1.X + 3 * u * tt * p2.X + ttt * p3.X,
+            uuu * p0.Y + 3 * uu * t * p1.Y + 3 * u * tt * p2.Y + ttt * p3.Y
+        );
+    }
+
+    private static Point GetQuadraticBezierPoint(Point p0, Point p1, Point p2, double t)
+    {
+        var u = 1 - t;
+        return new Point(
+            u * u * p0.X + 2 * u * t * p1.X + t * t * p2.X,
+            u * u * p0.Y + 2 * u * t * p1.Y + t * t * p2.Y
+        );
+    }
+
+    private static void GetCubicBezierPointAndTangent(Point p0, Point p1, Point p2, Point p3, double t, out Point point, out Point tangent)
+    {
+        point = GetCubicBezierPoint(p0, p1, p2, p3, t);
+
+        // Derivative of cubic Bezier
+        var u = 1 - t;
+        var dx = 3 * u * u * (p1.X - p0.X) + 6 * u * t * (p2.X - p1.X) + 3 * t * t * (p3.X - p2.X);
+        var dy = 3 * u * u * (p1.Y - p0.Y) + 6 * u * t * (p2.Y - p1.Y) + 3 * t * t * (p3.Y - p2.Y);
+
+        var len = Math.Sqrt(dx * dx + dy * dy);
+        tangent = len > 0 ? new Point(dx / len, dy / len) : new Point(1, 0);
+    }
+
+    private static void GetQuadraticBezierPointAndTangent(Point p0, Point p1, Point p2, double t, out Point point, out Point tangent)
+    {
+        point = GetQuadraticBezierPoint(p0, p1, p2, t);
+
+        // Derivative of quadratic Bezier
+        var dx = 2 * (1 - t) * (p1.X - p0.X) + 2 * t * (p2.X - p1.X);
+        var dy = 2 * (1 - t) * (p1.Y - p0.Y) + 2 * t * (p2.Y - p1.Y);
+
+        var len = Math.Sqrt(dx * dx + dy * dy);
+        tangent = len > 0 ? new Point(dx / len, dy / len) : new Point(1, 0);
+    }
+
+    private static void GetArcPointAndTangent(Point start, ArcSegment arc, double progress, out Point point, out Point tangent)
+    {
+        // Simplified arc point calculation
+        // For a complete implementation, this would need proper elliptical arc math
+        point = Lerp(start, arc.Point, progress);
+        var diff = new Point(arc.Point.X - start.X, arc.Point.Y - start.Y);
+        var len = Math.Sqrt(diff.X * diff.X + diff.Y * diff.Y);
+        tangent = len > 0 ? new Point(diff.X / len, diff.Y / len) : new Point(1, 0);
+    }
 }
 
 /// <summary>
@@ -796,6 +1099,13 @@ public abstract class PathSegment
     /// Gets the points that define this segment.
     /// </summary>
     public abstract IEnumerable<Point> GetPoints();
+
+    /// <summary>
+    /// Gets the end point of this segment given a start point.
+    /// </summary>
+    /// <param name="startPoint">The start point of the segment.</param>
+    /// <returns>The end point of the segment.</returns>
+    public abstract Point GetEndPoint(Point startPoint);
 }
 
 /// <summary>
@@ -831,6 +1141,9 @@ public class LineSegment : PathSegment
     {
         yield return Point;
     }
+
+    /// <inheritdoc />
+    public override Point GetEndPoint(Point startPoint) => Point;
 }
 
 /// <summary>
@@ -863,6 +1176,9 @@ public class PolyLineSegment : PathSegment
 
     /// <inheritdoc />
     public override IEnumerable<Point> GetPoints() => Points;
+
+    /// <inheritdoc />
+    public override Point GetEndPoint(Point startPoint) => Points.Count > 0 ? Points[^1] : startPoint;
 }
 
 /// <summary>
@@ -920,6 +1236,9 @@ public class ArcSegment : PathSegment
     {
         yield return Point;
     }
+
+    /// <inheritdoc />
+    public override Point GetEndPoint(Point startPoint) => Point;
 }
 
 /// <summary>
@@ -983,6 +1302,9 @@ public class BezierSegment : PathSegment
         yield return Point2;
         yield return Point3;
     }
+
+    /// <inheritdoc />
+    public override Point GetEndPoint(Point startPoint) => Point3;
 }
 
 /// <summary>
@@ -997,6 +1319,9 @@ public class PolyBezierSegment : PathSegment
 
     /// <inheritdoc />
     public override IEnumerable<Point> GetPoints() => Points;
+
+    /// <inheritdoc />
+    public override Point GetEndPoint(Point startPoint) => Points.Count > 0 ? Points[^1] : startPoint;
 }
 
 /// <summary>
@@ -1037,6 +1362,9 @@ public class QuadraticBezierSegment : PathSegment
         yield return Point1;
         yield return Point2;
     }
+
+    /// <inheritdoc />
+    public override Point GetEndPoint(Point startPoint) => Point2;
 }
 
 /// <summary>
@@ -1051,6 +1379,9 @@ public class PolyQuadraticBezierSegment : PathSegment
 
     /// <inheritdoc />
     public override IEnumerable<Point> GetPoints() => Points;
+
+    /// <inheritdoc />
+    public override Point GetEndPoint(Point startPoint) => Points.Count > 0 ? Points[^1] : startPoint;
 }
 
 // ImageSource is defined in ImageSource.cs

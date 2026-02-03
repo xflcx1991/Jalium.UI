@@ -126,18 +126,106 @@ public class VisualStateGroup
             transition = FindTransition(_currentState?.Name, stateName);
         }
 
-        // Remove current state setters
-        if (_currentState != null)
+        // Check if we should use animated transition
+        if (transition != null && transition.GeneratedDuration > TimeSpan.Zero)
         {
-            RemoveStateSetters(_currentState, _attachedElement);
+            ApplyAnimatedTransition(_currentState, newState, transition);
         }
+        else
+        {
+            // Immediate transition (no animation)
+            if (_currentState != null)
+            {
+                RemoveStateSetters(_currentState, _attachedElement);
+            }
 
-        // Apply new state setters
-        _currentState = newState;
-        ApplyStateSetters(newState, _attachedElement);
+            _currentState = newState;
+            ApplyStateSetters(newState, _attachedElement);
+        }
 
         _attachedElement.InvalidateVisual();
         return true;
+    }
+
+    private void ApplyAnimatedTransition(VisualState? fromState, VisualState toState, VisualTransition transition)
+    {
+        if (_attachedElement == null) return;
+
+        // Collect property changes
+        var fromSetters = fromState?.Setters.ToDictionary(
+            s => (s.TargetName, s.Property),
+            s => s.Value) ?? new Dictionary<(string?, DependencyProperty?), object?>();
+
+        var toSetters = toState.Setters.ToDictionary(
+            s => (s.TargetName, s.Property),
+            s => s.Value);
+
+        // Apply animations for changing properties
+        foreach (var (key, toValue) in toSetters)
+        {
+            var (targetName, property) = key;
+            if (property == null) continue;
+
+            // Resolve target element
+            var target = string.IsNullOrEmpty(targetName)
+                ? _attachedElement
+                : _attachedElement.FindName(targetName) as FrameworkElement;
+
+            if (target == null) continue;
+
+            // Get from value
+            object? fromValue;
+            if (fromSetters.TryGetValue(key, out var fv))
+            {
+                fromValue = fv;
+            }
+            else
+            {
+                fromValue = target.GetValue(property);
+            }
+
+            // Try to create animation
+            IAnimationTimeline? animation = null;
+
+            // Use custom factory if provided
+            if (transition.AnimationFactory != null)
+            {
+                animation = transition.AnimationFactory(property.PropertyType, fromValue, toValue, transition.GeneratedDuration);
+            }
+
+            // Apply animation or immediate value
+            if (animation != null)
+            {
+                target.BeginAnimation(property, animation);
+            }
+            else
+            {
+                // No animation available, apply value immediately
+                target.SetValue(property, toValue);
+            }
+        }
+
+        // Remove properties that are no longer in the new state
+        foreach (var (key, _) in fromSetters)
+        {
+            if (!toSetters.ContainsKey(key))
+            {
+                var (targetName, property) = key;
+                if (property == null) continue;
+
+                var target = string.IsNullOrEmpty(targetName)
+                    ? _attachedElement
+                    : _attachedElement.FindName(targetName) as FrameworkElement;
+
+                if (target != null)
+                {
+                    // Stop any animation and clear the value
+                    target.BeginAnimation(property, null);
+                }
+            }
+        }
+
+        _currentState = toState;
     }
 
     private VisualTransition? FindTransition(string? from, string to)
@@ -202,8 +290,15 @@ public class VisualTransition
 
     /// <summary>
     /// Gets or sets the duration of the transition.
+    /// When greater than zero, animated transitions are generated automatically.
     /// </summary>
     public TimeSpan GeneratedDuration { get; set; } = TimeSpan.Zero;
+
+    /// <summary>
+    /// Gets or sets an optional animation timeline factory for custom animations.
+    /// This is called for each property that changes during the transition.
+    /// </summary>
+    public Func<Type, object?, object?, TimeSpan, IAnimationTimeline?>? AnimationFactory { get; set; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="VisualTransition"/> class.

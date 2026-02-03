@@ -11,6 +11,8 @@
     <InternalsVisibleTo Include="Jalium.UI.Controls" />
     <InternalsVisibleTo Include="Jalium.UI.Interop" />
     <InternalsVisibleTo Include="Jalium.UI.Xaml" />
+    <InternalsVisibleTo Include="Jalium.UI.Media" />
+    <InternalsVisibleTo Include="Jalium.UI.Tests" />
   </ItemGroup>
 
 </Project>

@@ -80,6 +80,19 @@ public class Separator : Control
 
     #endregion
 
+    #region Template Parts
+
+    private Border? _separatorBorder;
+
+    /// <inheritdoc />
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+        _separatorBorder = GetTemplateChild("SeparatorBorder") as Border;
+    }
+
+    #endregion
+
     #region Layout
 
     /// <inheritdoc />
@@ -109,6 +122,12 @@ public class Separator : Control
     /// <inheritdoc />
     protected override void OnRender(object drawingContext)
     {
+        // If using template, let the template handle rendering
+        if (_separatorBorder != null)
+        {
+            return;
+        }
+
         if (drawingContext is not DrawingContext dc)
             return;
 

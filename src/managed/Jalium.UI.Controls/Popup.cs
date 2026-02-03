@@ -66,6 +66,7 @@ public enum PlacementMode
 /// Represents a popup window that displays content in a separate top-level window.
 /// This is implemented as a Win32 HWND with WS_POPUP style, separate from the main window.
 /// </summary>
+[ContentProperty("Child")]
 public partial class Popup : FrameworkElement
 {
     private PopupWindow? _popupWindow;
@@ -284,27 +285,48 @@ public partial class Popup : FrameworkElement
         var child = Child;
         if (child == null) return;
 
+        // Get minimum width from multiple sources:
+        // 1. Popup's own MinWidth (if explicitly set)
+        // 2. TemplatedParent's ActualWidth (for popups inside control templates like ComboBox)
+        // 3. PlacementTarget's ActualWidth
+        // 4. Fallback to 50
+        var popupMinWidth = MinWidth > 0 && !double.IsNaN(MinWidth) && !double.IsInfinity(MinWidth) ? MinWidth : 0;
+        var templatedParentWidth = TemplatedParent is FrameworkElement tp ? tp.ActualWidth : 0;
+        var targetWidth = PlacementTarget is FrameworkElement target ? target.ActualWidth : 0;
+        var minWidth = Math.Max(50, Math.Max(popupMinWidth, Math.Max(templatedParentWidth, targetWidth)));
+
         // Calculate the popup size from child's desired size
-        child.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        // Use the min width as available width for measurement
+        child.Measure(new Size(minWidth, double.PositiveInfinity));
         var childSize = child is FrameworkElement fe ? fe.DesiredSize : new Size(100, 100);
 
-        // Ensure minimum size - render target creation fails with 0 dimensions
-        var width = Math.Max(1, (int)childSize.Width);
-        var height = Math.Max(1, (int)childSize.Height);
+        // Clamp to reasonable maximum to avoid overflow issues
+        var maxReasonableSize = 4096.0;
+
+        var childWidth = double.IsInfinity(childSize.Width) || childSize.Width > maxReasonableSize
+            ? minWidth : Math.Max(childSize.Width, minWidth);
+        var childHeight = double.IsInfinity(childSize.Height) || childSize.Height > maxReasonableSize
+            ? 200.0 : childSize.Height;
+
+        var width = Math.Max((int)minWidth, (int)childWidth);
+        var height = Math.Max(20, (int)childHeight);
 
         // If child has explicit Width/Height set, use those
         if (child is FrameworkElement childFe)
         {
             if (!double.IsNaN(childFe.Width) && childFe.Width > 0)
-                width = (int)childFe.Width;
+                width = Math.Max(width, (int)childFe.Width);
             if (!double.IsNaN(childFe.Height) && childFe.Height > 0)
-                height = (int)childFe.Height;
+                height = Math.Max(height, (int)childFe.Height);
+            // Also check MinWidth/MinHeight
+            if (childFe.MinWidth > 0)
+                width = Math.Max(width, (int)childFe.MinWidth);
+            if (childFe.MinHeight > 0)
+                height = Math.Max(height, (int)childFe.MinHeight);
         }
 
         // Calculate the position in screen coordinates
         var screenPosition = CalculateScreenPosition(new Size(width, height));
-
-        System.Diagnostics.Debug.WriteLine($"Popup.OpenPopup: Position=({screenPosition.X}, {screenPosition.Y}), Size=({width}, {height})");
 
         // Create the popup window
         _popupWindow = new PopupWindow(this, AllowsTransparency);
@@ -315,6 +337,10 @@ public partial class Popup : FrameworkElement
         if (!StaysOpen)
         {
             _popupWindow.Deactivated += OnPopupDeactivated;
+            // Note: We don't use the global mouse hook anymore because it fires BEFORE
+            // WM_LBUTTONDOWN is posted, causing BeginInvoke to process before the clicked
+            // element receives its MouseDown event. Instead, the parent window closes
+            // light-dismiss popups at the start of its mouse down handling.
         }
 
         // Subscribe to parent window's LocationChanged to reposition popup when window moves
@@ -322,6 +348,11 @@ public partial class Popup : FrameworkElement
         if (_parentWindow != null)
         {
             _parentWindow.LocationChanged += OnParentWindowLocationChanged;
+            // Register with the parent window so light-dismiss clicks are handled centrally
+            if (!StaysOpen)
+            {
+                _parentWindow.RegisterLightDismissPopup(this);
+            }
         }
 
         Opened?.Invoke(this, EventArgs.Empty);
@@ -335,6 +366,7 @@ public partial class Popup : FrameworkElement
         if (_parentWindow != null)
         {
             _parentWindow.LocationChanged -= OnParentWindowLocationChanged;
+            _parentWindow.UnregisterLightDismissPopup(this);
             _parentWindow = null;
         }
 
@@ -441,7 +473,6 @@ public partial class Popup : FrameworkElement
     {
         // Get the element's bounds in client coordinates
         var bounds = element.VisualBounds;
-        System.Diagnostics.Debug.WriteLine($"Popup.GetElementScreenBounds: Initial bounds={bounds}");
 
         // Walk up the visual tree to accumulate offsets and find the window
         Window? window = null;
@@ -451,7 +482,6 @@ public partial class Popup : FrameworkElement
             if (current is Window w)
             {
                 window = w;
-                System.Diagnostics.Debug.WriteLine($"Popup.GetElementScreenBounds: Found window, HWND={w.Handle:X}");
                 break;
             }
             if (current is UIElement uiElement)
@@ -462,7 +492,6 @@ public partial class Popup : FrameworkElement
                     bounds.Y + parentBounds.Y,
                     bounds.Width,
                     bounds.Height);
-                System.Diagnostics.Debug.WriteLine($"Popup.GetElementScreenBounds: After adding {uiElement.GetType().Name} offset, bounds={bounds}");
             }
             current = current.VisualParent;
         }
@@ -472,15 +501,9 @@ public partial class Popup : FrameworkElement
         {
             var pt = new POINT { X = (int)bounds.X, Y = (int)bounds.Y };
             ClientToScreen(window.Handle, ref pt);
-            System.Diagnostics.Debug.WriteLine($"Popup.GetElementScreenBounds: After ClientToScreen, pt=({pt.X}, {pt.Y})");
             bounds = new Rect(pt.X, pt.Y, bounds.Width, bounds.Height);
         }
-        else
-        {
-            System.Diagnostics.Debug.WriteLine($"Popup.GetElementScreenBounds: No window found!");
-        }
 
-        System.Diagnostics.Debug.WriteLine($"Popup.GetElementScreenBounds: Final bounds={bounds}");
         return bounds;
     }
 
@@ -621,6 +644,9 @@ internal partial class PopupWindow : IDisposable
     private RenderTargetDrawingContext? _drawingContext;
     private int _width;
     private int _height;
+    private readonly HashSet<UIElement> _elementsUnderMouse = new(); // Track all elements currently under mouse
+    private nint _mouseHook;
+    private LowLevelMouseProc? _mouseHookProc; // Keep reference to prevent GC
 
     private static bool _classRegistered;
     private static readonly Dictionary<nint, PopupWindow> _popupWindows = new();
@@ -656,8 +682,8 @@ internal partial class PopupWindow : IDisposable
         // WS_POPUP: No border, no title bar
         // WS_EX_TOOLWINDOW: Not in taskbar, not in Alt+Tab
         // WS_EX_TOPMOST: Always on top
-        // WS_EX_NOACTIVATE: Don't activate when shown (optional, depends on use case)
-        uint exStyle = WS_EX_TOOLWINDOW | WS_EX_TOPMOST;
+        // WS_EX_NOACTIVATE: Don't activate when shown - allows clicks to pass through to underlying windows
+        uint exStyle = WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE;
         if (_allowsTransparency)
         {
             exStyle |= WS_EX_LAYERED;
@@ -681,12 +707,74 @@ internal partial class PopupWindow : IDisposable
 
         _popupWindows[_handle] = this;
 
-        // Create render target
-        EnsureRenderTarget();
-
-        // Show without activating
+        // Show window first - D3D12/DXGI swap chain creation may require visible window
         ShowWindow(_handle, SW_SHOWNOACTIVATE);
         UpdateWindow(_handle);
+
+        // Create render target after window is shown
+        EnsureRenderTarget();
+
+        // Trigger initial paint
+        InvalidateRect(_handle, nint.Zero, false);
+    }
+
+    /// <summary>
+    /// Installs a global mouse hook to detect clicks outside the popup.
+    /// Used for light dismiss behavior when StaysOpen is false.
+    /// </summary>
+    public void InstallMouseHook()
+    {
+        if (_mouseHook != nint.Zero) return;
+
+        _mouseHookProc = MouseHookCallback;
+        _mouseHook = SetWindowsHookEx(WH_MOUSE_LL, _mouseHookProc, nint.Zero, 0);
+    }
+
+    /// <summary>
+    /// Uninstalls the global mouse hook.
+    /// </summary>
+    public void UninstallMouseHook()
+    {
+        if (_mouseHook != nint.Zero)
+        {
+            UnhookWindowsHookEx(_mouseHook);
+            _mouseHook = nint.Zero;
+            _mouseHookProc = null;
+        }
+    }
+
+    private nint MouseHookCallback(int nCode, nint wParam, nint lParam)
+    {
+        if (nCode >= HC_ACTION && _handle != nint.Zero)
+        {
+            uint msg = (uint)wParam.ToInt64();
+            // Check for mouse button down events
+            if (msg == WM_LBUTTONDOWN_HOOK || msg == WM_RBUTTONDOWN_HOOK || msg == WM_MBUTTONDOWN_HOOK)
+            {
+                // Get current cursor position
+                if (GetCursorPos(out var cursorPos))
+                {
+                    // Check if click is inside the popup window
+                    if (GetWindowRect(_handle, out var windowRect))
+                    {
+                        bool isInsidePopup = cursorPos.X >= windowRect.left && cursorPos.X < windowRect.right &&
+                                             cursorPos.Y >= windowRect.top && cursorPos.Y < windowRect.bottom;
+
+                        if (!isInsidePopup)
+                        {
+                            // Click is outside popup - trigger close
+                            // Use Dispatcher to avoid issues with hook callback context
+                            _popup.Dispatcher?.BeginInvoke(() =>
+                            {
+                                Deactivated?.Invoke(this, EventArgs.Empty);
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
     }
 
     public void Move(int x, int y)
@@ -712,6 +800,9 @@ internal partial class PopupWindow : IDisposable
 
     public void Close()
     {
+        // Uninstall mouse hook first
+        UninstallMouseHook();
+
         if (_handle != nint.Zero)
         {
             _popupWindows.Remove(_handle);
@@ -738,18 +829,7 @@ internal partial class PopupWindow : IDisposable
             context = new RenderContext(RenderBackend.D3D12);
         }
 
-        System.Diagnostics.Debug.WriteLine($"PopupWindow: Creating RenderTarget for HWND {_handle:X}, Size: {_width}x{_height}");
-
-        try
-        {
-            _renderTarget = context.CreateRenderTarget(_handle, _width, _height);
-            System.Diagnostics.Debug.WriteLine($"PopupWindow: RenderTarget created successfully");
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"PopupWindow: RenderTarget creation failed: {ex.Message}");
-            throw;
-        }
+        _renderTarget = context.CreateRenderTarget(_handle, _width, _height);
     }
 
     #region Window Class Registration
@@ -831,6 +911,10 @@ internal partial class PopupWindow : IDisposable
                     popup.HandleMouseMessage(msg, wParam, lParam);
                     return nint.Zero;
 
+                case WM_MOUSELEAVE:
+                    popup.HandleMouseLeave();
+                    return nint.Zero;
+
                 case WM_DESTROY:
                     _popupWindows.Remove(hWnd);
                     return nint.Zero;
@@ -859,15 +943,25 @@ internal partial class PopupWindow : IDisposable
 
                 _renderTarget.BeginDraw();
 
-                // Clear with transparent or white background
-                if (_allowsTransparency)
+                // Clear with the content's background color if available, otherwise use dark gray
+                float clearR = 0.15f, clearG = 0.15f, clearB = 0.15f, clearA = 1.0f;
+                if (_content is Control control && control.Background is SolidColorBrush bgBrush)
                 {
-                    _renderTarget.Clear(0, 0, 0, 0);
+                    var color = bgBrush.Color;
+                    clearR = color.ScR;
+                    clearG = color.ScG;
+                    clearB = color.ScB;
+                    clearA = color.ScA;
                 }
-                else
+                else if (_content is Border border && border.Background is SolidColorBrush borderBgBrush)
                 {
-                    _renderTarget.Clear(1.0f, 1.0f, 1.0f, 1.0f);
+                    var color = borderBgBrush.Color;
+                    clearR = color.ScR;
+                    clearG = color.ScG;
+                    clearB = color.ScB;
+                    clearA = color.ScA;
                 }
+                _renderTarget.Clear(clearR, clearG, clearB, clearA);
 
                 // Render the content
                 var context = RenderContext.Current;
@@ -884,9 +978,9 @@ internal partial class PopupWindow : IDisposable
                 _drawingContext?.TrimCacheIfNeeded();
             }
         }
-        catch (Exception ex)
+        catch
         {
-            System.Diagnostics.Debug.WriteLine($"Popup render error: {ex}");
+            // Ignore render errors
         }
 
         EndPaint(_handle, ref ps);
@@ -905,11 +999,53 @@ internal partial class PopupWindow : IDisposable
         var position = new Point(x, y);
 
         var target = HitTest(position);
-        if (target == null) return;
+        if (target == null) target = _content; // Fallback to content
 
         var modifiers = GetModifierKeys();
         var buttonStates = GetMouseButtonStates(wParam);
         int timestamp = Environment.TickCount;
+
+        // Build the chain of elements from target up to content root
+        var newElementsUnderMouse = new HashSet<UIElement>();
+        UIElement? current = target;
+        while (current != null)
+        {
+            newElementsUnderMouse.Add(current);
+            current = (current as Visual)?.VisualParent as UIElement;
+        }
+
+        // Raise MouseLeave on elements no longer under mouse
+        foreach (var element in _elementsUnderMouse)
+        {
+            if (!newElementsUnderMouse.Contains(element))
+            {
+                var leaveArgs = new MouseEventArgs(
+                    UIElement.MouseLeaveEvent, position,
+                    buttonStates.left, buttonStates.middle, buttonStates.right,
+                    buttonStates.xButton1, buttonStates.xButton2, modifiers, timestamp);
+                element.RaiseEvent(leaveArgs);
+            }
+        }
+
+        // Raise MouseEnter on elements newly under mouse
+        foreach (var element in newElementsUnderMouse)
+        {
+            if (!_elementsUnderMouse.Contains(element))
+            {
+                var enterArgs = new MouseEventArgs(
+                    UIElement.MouseEnterEvent, position,
+                    buttonStates.left, buttonStates.middle, buttonStates.right,
+                    buttonStates.xButton1, buttonStates.xButton2, modifiers, timestamp);
+                element.RaiseEvent(enterArgs);
+            }
+        }
+
+        // Update tracking
+        _elementsUnderMouse.Clear();
+        foreach (var element in newElementsUnderMouse)
+        {
+            _elementsUnderMouse.Add(element);
+        }
 
         switch (msg)
         {
@@ -927,6 +1063,8 @@ internal partial class PopupWindow : IDisposable
 
             case WM_LBUTTONUP:
                 RaiseMouseButtonEvent(target, MouseButton.Left, MouseButtonState.Released, position, buttonStates, modifiers, timestamp);
+                // Direct handling for ComboBoxItem clicks - traverse visual tree to find ComboBoxItem
+                TryInvokeComboBoxItemClick(target);
                 break;
 
             case WM_RBUTTONDOWN:
@@ -960,6 +1098,24 @@ internal partial class PopupWindow : IDisposable
             buttonStates.left, buttonStates.middle, buttonStates.right,
             buttonStates.xButton1, buttonStates.xButton2, modifiers, timestamp);
         target.RaiseEvent(args);
+    }
+
+    /// <summary>
+    /// Directly invokes ComboBoxItem click - workaround for routed event issues in popup context.
+    /// </summary>
+    private void TryInvokeComboBoxItemClick(UIElement target)
+    {
+        // Walk up the visual tree to find a ComboBoxItem
+        UIElement? current = target;
+        while (current != null)
+        {
+            if (current is ComboBoxItem comboBoxItem)
+            {
+                comboBoxItem.InvokeClick();
+                return;
+            }
+            current = (current as Visual)?.VisualParent as UIElement;
+        }
     }
 
     private UIElement? HitTest(Point position)
@@ -996,6 +1152,25 @@ internal partial class PopupWindow : IDisposable
             (flags & MK_XBUTTON1) != 0 ? MouseButtonState.Pressed : MouseButtonState.Released,
             (flags & MK_XBUTTON2) != 0 ? MouseButtonState.Pressed : MouseButtonState.Released
         );
+    }
+
+    private void HandleMouseLeave()
+    {
+        // Raise MouseLeave on all elements that were under the mouse
+        var modifiers = GetModifierKeys();
+        int timestamp = Environment.TickCount;
+
+        foreach (var element in _elementsUnderMouse)
+        {
+            var leaveArgs = new MouseEventArgs(
+                UIElement.MouseLeaveEvent, Point.Zero,
+                MouseButtonState.Released, MouseButtonState.Released, MouseButtonState.Released,
+                MouseButtonState.Released, MouseButtonState.Released, modifiers, timestamp);
+            element.RaiseEvent(leaveArgs);
+        }
+        _elementsUnderMouse.Clear();
+
+        InvalidateRect(_handle, nint.Zero, false);
     }
 
     #endregion
@@ -1035,6 +1210,7 @@ internal partial class PopupWindow : IDisposable
     private const uint WM_RBUTTONUP = 0x0205;
     private const uint WM_MBUTTONDOWN = 0x0207;
     private const uint WM_MBUTTONUP = 0x0208;
+    private const uint WM_MOUSELEAVE = 0x02A3;
 
     private const int VK_SHIFT = 0x10;
     private const int VK_CONTROL = 0x11;
@@ -1138,6 +1314,52 @@ internal partial class PopupWindow : IDisposable
 
     [LibraryImport("user32.dll")]
     private static partial short GetKeyState(int nVirtKey);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    private static partial nint SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, nint hMod, uint dwThreadId);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool UnhookWindowsHookEx(nint hhk);
+
+    [LibraryImport("user32.dll")]
+    private static partial nint CallNextHookEx(nint hhk, int nCode, nint wParam, nint lParam);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetCursorPos(out POINT lpPoint);
+
+    [LibraryImport("user32.dll")]
+    private static partial nint WindowFromPoint(POINT point);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetWindowRect(nint hWnd, out RECT lpRect);
+
+    private const int WH_MOUSE_LL = 14;
+    private const int HC_ACTION = 0;
+    private const uint WM_LBUTTONDOWN_HOOK = 0x0201;
+    private const uint WM_RBUTTONDOWN_HOOK = 0x0204;
+    private const uint WM_MBUTTONDOWN_HOOK = 0x0207;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MSLLHOOKSTRUCT
+    {
+        public POINT pt;
+        public uint mouseData;
+        public uint flags;
+        public uint time;
+        public nint dwExtraInfo;
+    }
+
+    private delegate nint LowLevelMouseProc(int nCode, nint wParam, nint lParam);
 
     #endregion
 }

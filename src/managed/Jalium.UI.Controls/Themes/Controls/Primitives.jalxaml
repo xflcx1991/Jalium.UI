@@ -68,4 +68,73 @@
         <Setter Property="Height" Value="12" />
     </Style>
 
+    <!-- ============================================== -->
+    <!-- Separator Style -->
+    <!-- ============================================== -->
+    <Style TargetType="Separator">
+        <Setter Property="Background" Value="{StaticResource ControlBorder}" />
+        <Setter Property="StrokeBrush" Value="{StaticResource ControlBorder}" />
+        <Setter Property="StrokeThickness" Value="1" />
+        <Setter Property="Margin" Value="0,4,0,4" />
+        <Setter Property="Template">
+            <ControlTemplate TargetType="Separator">
+                <Border Name="SeparatorBorder"
+                        Background="{TemplateBinding StrokeBrush}"
+                        Height="{TemplateBinding StrokeThickness}" />
+            </ControlTemplate>
+        </Setter>
+
+        <Style.Triggers>
+            <PropertyTrigger Property="Orientation" Value="Vertical">
+                <Setter Property="Margin" Value="4,0,4,0" />
+                <Setter TargetName="SeparatorBorder" Property="Height" Value="Auto" />
+                <Setter TargetName="SeparatorBorder" Property="Width" Value="{Binding StrokeThickness, RelativeSource={RelativeSource TemplatedParent}}" />
+            </PropertyTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ============================================== -->
+    <!-- Label Style -->
+    <!-- ============================================== -->
+    <Style TargetType="Label">
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Template">
+            <ControlTemplate TargetType="Label">
+                <Border Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        Padding="{TemplateBinding Padding}">
+                    <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+
+    <!-- ============================================== -->
+    <!-- ToolTip Style -->
+    <!-- ============================================== -->
+    <Style TargetType="ToolTip">
+        <Setter Property="Background" Value="{StaticResource TooltipBackground}" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        <Setter Property="BorderBrush" Value="{StaticResource ControlBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="8,4,8,4" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Template">
+            <ControlTemplate TargetType="ToolTip">
+                <Border Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="{TemplateBinding CornerRadius}"
+                        Padding="{TemplateBinding Padding}">
+                    <ContentPresenter />
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>

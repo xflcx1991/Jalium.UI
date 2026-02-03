@@ -63,7 +63,12 @@ public partial class GalleryWindow : Window
         { "repeatbutton", () => new RepeatButtonPage() },
         { "thumb", () => new ThumbPage() },
         { "calendar", () => new CalendarPage() },
-        { "infobar", () => new InfoBarPage() }
+        { "infobar", () => new InfoBarPage() },
+        // New WPF parity features
+        { "shadereffects", () => new ShaderEffectsPage() },
+        { "navigationdemo", () => new NavigationDemoPage() },
+        { "printing", () => new PrintingPage() },
+        { "shellintegration", () => new ShellIntegrationPage() }
     };
 
     public GalleryWindow()
@@ -163,6 +168,13 @@ public partial class GalleryWindow : Window
         // Effects (expandable group)
         var effectsGroup = AddGroupItem("Effects");
         AddChildItem(effectsGroup, "Backdrop Effects", "backdropeffects");
+        AddChildItem(effectsGroup, "Shader Effects", "shadereffects");
+
+        // System (expandable group) - new WPF parity features
+        var systemGroup = AddGroupItem("System");
+        AddChildItem(systemGroup, "Navigation", "navigationdemo");
+        AddChildItem(systemGroup, "Printing", "printing");
+        AddChildItem(systemGroup, "Shell Integration", "shellintegration");
 
         // Update the visual tree
         NavigationView.UpdateMenuItems();

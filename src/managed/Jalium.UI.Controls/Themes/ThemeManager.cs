@@ -26,34 +26,12 @@ public static class ThemeManager
 
         ArgumentNullException.ThrowIfNull(app);
 
-        System.Diagnostics.Debug.WriteLine("[ThemeManager.Initialize] Loading Generic theme...");
-        Console.WriteLine("[ThemeManager.Initialize] Loading Generic theme...");
-
         // Try to load the Generic theme using XamlReader via reflection
         // This avoids circular dependency between Controls and Xaml projects
         var theme = LoadGenericThemeViaReflection();
         if (theme != null)
         {
             app.Resources.MergedDictionaries.Add(theme);
-            System.Diagnostics.Debug.WriteLine($"[ThemeManager.Initialize] Theme loaded. Resources: {theme.Count}, MergedDicts: {theme.MergedDictionaries.Count}");
-            Console.WriteLine($"[ThemeManager.Initialize] Theme loaded. Resources: {theme.Count}, MergedDicts: {theme.MergedDictionaries.Count}");
-
-            // Debug: Check for Button style specifically
-            if (theme.TryGetValue(typeof(Button), out var buttonStyle))
-            {
-                System.Diagnostics.Debug.WriteLine($"[ThemeManager.Initialize] Found Button style: {buttonStyle?.GetType().Name}");
-                Console.WriteLine($"[ThemeManager.Initialize] Found Button style: {buttonStyle?.GetType().Name}");
-            }
-            else
-            {
-                System.Diagnostics.Debug.WriteLine("[ThemeManager.Initialize] WARNING: Button style NOT found in theme!");
-                Console.WriteLine("[ThemeManager.Initialize] WARNING: Button style NOT found in theme!");
-            }
-        }
-        else
-        {
-            System.Diagnostics.Debug.WriteLine("[ThemeManager.Initialize] WARNING: Theme loading returned null!");
-            Console.WriteLine("[ThemeManager.Initialize] WARNING: Theme loading returned null!");
         }
 
         _initialized = true;
@@ -80,7 +58,6 @@ public static class ThemeManager
                 }
                 catch
                 {
-                    System.Diagnostics.Debug.WriteLine("Warning: Jalium.UI.Xaml assembly not found. Theme loading skipped.");
                     return null;
                 }
             }
@@ -89,7 +66,6 @@ public static class ThemeManager
             var xamlReaderType = xamlAssembly.GetType("Jalium.UI.Markup.XamlReader");
             if (xamlReaderType == null)
             {
-                System.Diagnostics.Debug.WriteLine("Warning: XamlReader type not found in Jalium.UI.Xaml assembly.");
                 return null;
             }
 
@@ -101,7 +77,6 @@ public static class ThemeManager
                 loadMethod = xamlReaderType.GetMethod("Load", [typeof(Stream)]);
                 if (loadMethod == null)
                 {
-                    System.Diagnostics.Debug.WriteLine("Warning: XamlReader.Load method not found.");
                     return null;
                 }
 
@@ -132,8 +107,6 @@ public static class ThemeManager
         {
             // Get the real exception (reflection wraps in TargetInvocationException)
             var realException = ex is System.Reflection.TargetInvocationException tie ? tie.InnerException ?? ex : ex;
-            System.Diagnostics.Debug.WriteLine($"ERROR: Failed to load theme: {realException.Message}");
-            System.Diagnostics.Debug.WriteLine($"Stack trace: {realException.StackTrace}");
             // Re-throw to make the error visible during development
             throw new InvalidOperationException($"Failed to load Generic theme: {realException.Message}", realException);
         }
@@ -159,10 +132,6 @@ public static class ThemeManager
                 stream = assembly.GetManifestResourceStream(genericResource);
             }
 
-            if (stream == null)
-            {
-                System.Diagnostics.Debug.WriteLine($"Warning: Could not find embedded resource '{GenericThemeResourceName}'");
-            }
         }
 
         return stream;

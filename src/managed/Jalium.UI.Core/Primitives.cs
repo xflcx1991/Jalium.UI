@@ -365,6 +365,11 @@ public readonly struct Thickness : IEquatable<Thickness>
     public double Bottom { get; }
 
     /// <summary>
+    /// Gets a thickness with all values set to zero.
+    /// </summary>
+    public static Thickness Zero => new(0, 0, 0, 0);
+
+    /// <summary>
     /// Initializes a new instance with uniform thickness.
     /// </summary>
     public Thickness(double uniformLength)

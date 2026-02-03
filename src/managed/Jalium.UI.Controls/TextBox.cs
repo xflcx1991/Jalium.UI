@@ -1,4 +1,6 @@
 using System.Text;
+using Jalium.UI.Automation;
+using Jalium.UI.Controls.Automation;
 using Jalium.UI.Input;
 using Jalium.UI.Interop;
 using Jalium.UI.Media;
@@ -10,6 +12,16 @@ namespace Jalium.UI.Controls;
 /// </summary>
 public class TextBox : TextBoxBase, IImeSupport
 {
+    #region Automation
+
+    /// <inheritdoc />
+    protected override AutomationPeer? OnCreateAutomationPeer()
+    {
+        return new TextBoxAutomationPeer(this);
+    }
+
+    #endregion
+
     #region Fields
 
     // Multi-line support

@@ -304,4 +304,87 @@ public static class ResourceLookup
         value = FindResource(element, resourceKey);
         return value != null;
     }
+
+    /// <summary>
+    /// Gets or sets a callback to find implicit DataTemplate for a data type.
+    /// This is set by the Controls assembly to avoid circular dependencies.
+    /// </summary>
+    public static Func<FrameworkElement?, Type?, object?>? ImplicitDataTemplateLookup { get; set; }
+
+    /// <summary>
+    /// Finds an implicit DataTemplate for the specified data type.
+    /// </summary>
+    /// <param name="element">The starting element for the search.</param>
+    /// <param name="dataType">The type of the data object.</param>
+    /// <returns>The DataTemplate (as object to avoid circular dependency), or null if not found.</returns>
+    public static object? FindImplicitDataTemplate(FrameworkElement? element, Type? dataType)
+    {
+        if (dataType == null)
+            return null;
+
+        // Use the callback if set
+        if (ImplicitDataTemplateLookup != null)
+        {
+            return ImplicitDataTemplateLookup(element, dataType);
+        }
+
+        // Fallback: try finding by DataTemplateKey (Type as key)
+        var resource = FindResource(element, new DataTemplateKey(dataType));
+        if (resource != null)
+            return resource;
+
+        // Also try the type directly as key
+        resource = FindResource(element, dataType);
+        if (resource != null)
+            return resource;
+
+        // Try base types
+        var baseType = dataType.BaseType;
+        while (baseType != null && baseType != typeof(object))
+        {
+            resource = FindResource(element, new DataTemplateKey(baseType));
+            if (resource != null)
+                return resource;
+
+            resource = FindResource(element, baseType);
+            if (resource != null)
+                return resource;
+
+            baseType = baseType.BaseType;
+        }
+
+        return null;
+    }
+}
+
+/// <summary>
+/// Represents a key for an implicit DataTemplate resource.
+/// </summary>
+public class DataTemplateKey : IEquatable<DataTemplateKey>
+{
+    /// <summary>
+    /// Gets the data type for which this key is used.
+    /// </summary>
+    public Type DataType { get; }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DataTemplateKey"/> class.
+    /// </summary>
+    /// <param name="dataType">The data type for which this key is used.</param>
+    public DataTemplateKey(Type dataType)
+    {
+        DataType = dataType ?? throw new ArgumentNullException(nameof(dataType));
+    }
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj) => Equals(obj as DataTemplateKey);
+
+    /// <inheritdoc />
+    public bool Equals(DataTemplateKey? other) => other != null && DataType == other.DataType;
+
+    /// <inheritdoc />
+    public override int GetHashCode() => DataType.GetHashCode();
+
+    /// <inheritdoc />
+    public override string ToString() => $"DataTemplateKey({DataType.Name})";
 }

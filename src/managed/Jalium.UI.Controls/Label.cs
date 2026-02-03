@@ -66,6 +66,19 @@ public class Label : ContentControl
 
     #endregion
 
+    #region Template Parts
+
+    private Border? _labelBorder;
+
+    /// <inheritdoc />
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+        _labelBorder = GetTemplateChild("LabelBorder") as Border;
+    }
+
+    #endregion
+
     #region Input Handling
 
     private void OnMouseDownHandler(object sender, RoutedEventArgs e)
@@ -135,6 +148,10 @@ public class Label : ContentControl
     /// <inheritdoc />
     protected override void OnRender(object drawingContext)
     {
+        // If using template, let the template handle rendering
+        if (_labelBorder != null)
+            return;
+
         if (drawingContext is not DrawingContext dc)
             return;
 

@@ -144,6 +144,13 @@ public class ProgressBar : Control
 
     #endregion
 
+    #region Template Parts
+
+    private Border? _trackBorder;
+    private Border? _indicatorBorder;
+
+    #endregion
+
     #region Constructor
 
     private double _indeterminateOffset = 0;
@@ -159,6 +166,46 @@ public class ProgressBar : Control
     {
         // Default size
         Height = 8;
+    }
+
+    #endregion
+
+    #region Template
+
+    /// <inheritdoc />
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+
+        _trackBorder = GetTemplateChild("PART_Track") as Border;
+        _indicatorBorder = GetTemplateChild("PART_Indicator") as Border;
+
+        UpdateIndicator();
+    }
+
+    private void UpdateIndicator()
+    {
+        if (_indicatorBorder == null) return;
+
+        if (IsIndeterminate)
+        {
+            // For indeterminate mode, animate the indicator
+            var totalWidth = RenderSize.Width;
+            var indicatorWidth = totalWidth * IndeterminateBlockWidth;
+            var offset = (totalWidth - indicatorWidth) * _indeterminateOffset;
+
+            _indicatorBorder.Width = indicatorWidth;
+            _indicatorBorder.Margin = new Thickness(offset, 0, 0, 0);
+        }
+        else
+        {
+            // For determinate mode, set width based on percentage
+            var totalWidth = RenderSize.Width;
+            var indicatorWidth = totalWidth * Percentage;
+
+            _indicatorBorder.Width = indicatorWidth;
+            _indicatorBorder.Margin = new Thickness(0);
+        }
     }
 
     #endregion
@@ -233,6 +280,13 @@ public class ProgressBar : Control
     /// <inheritdoc />
     protected override void OnRender(object drawingContext)
     {
+        // If using template, let the template handle rendering
+        if (_indicatorBorder != null)
+        {
+            UpdateIndicator();
+            return;
+        }
+
         if (drawingContext is not DrawingContext dc)
             return;
 
@@ -278,7 +332,6 @@ public class ProgressBar : Control
     private void DrawIndeterminateProgress(DrawingContext dc, Rect bounds, Brush progressBrush)
     {
         // Draw an animated block that moves across the track
-        // In a real implementation, this would be animated; for now, it's static
         var blockSize = Orientation == Orientation.Horizontal
             ? bounds.Width * IndeterminateBlockWidth
             : bounds.Height * IndeterminateBlockWidth;
@@ -307,6 +360,7 @@ public class ProgressBar : Control
         _indeterminateOffset = Math.Clamp(offset, 0, 1);
         if (IsIndeterminate)
         {
+            UpdateIndicator();
             InvalidateVisual();
         }
     }

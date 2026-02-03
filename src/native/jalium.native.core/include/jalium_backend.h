@@ -84,6 +84,21 @@ public:
     /// Draws a line.
     virtual void DrawLine(float x1, float y1, float x2, float y2, Brush* brush, float strokeWidth) = 0;
 
+    /// Fills a polygon defined by an array of points.
+    /// @param points Array of point coordinates (x0, y0, x1, y1, ...).
+    /// @param pointCount Number of points (length of array / 2).
+    /// @param brush Brush to fill with.
+    /// @param fillRule 0 = EvenOdd, 1 = NonZero (Winding).
+    virtual void FillPolygon(const float* points, uint32_t pointCount, Brush* brush, int32_t fillRule) = 0;
+
+    /// Draws a polygon outline.
+    /// @param points Array of point coordinates (x0, y0, x1, y1, ...).
+    /// @param pointCount Number of points (length of array / 2).
+    /// @param brush Brush for stroke.
+    /// @param strokeWidth Width of stroke.
+    /// @param closed Whether to close the polygon.
+    virtual void DrawPolygon(const float* points, uint32_t pointCount, Brush* brush, float strokeWidth, bool closed) = 0;
+
     /// Draws text.
     virtual void RenderText(
         const wchar_t* text, uint32_t textLength,
@@ -139,6 +154,67 @@ public:
         float blurRadius,
         float cornerRadiusTL, float cornerRadiusTR,
         float cornerRadiusBR, float cornerRadiusBL) = 0;
+
+    /// Draws a glowing border highlight effect for DevTools element inspection.
+    /// Creates an animated glowing line that follows the element border with:
+    /// - Gradient trail (thick in middle, thin at ends)
+    /// - Non-linear rotation animation
+    /// - Dimmed overlay outside the highlighted area
+    /// @param x X position of the element.
+    /// @param y Y position of the element.
+    /// @param w Width of the element.
+    /// @param h Height of the element.
+    /// @param animationPhase Animation phase (0.0 - 1.0, cycles continuously).
+    /// @param glowColorR Glow color red component (0-1).
+    /// @param glowColorG Glow color green component (0-1).
+    /// @param glowColorB Glow color blue component (0-1).
+    /// @param strokeWidth Width of the glowing stroke.
+    /// @param trailLength Length of the trailing glow (0.0 - 1.0 of perimeter).
+    /// @param dimOpacity Opacity of the dimmed area outside (0-1).
+    /// @param screenWidth Total screen/window width for dimming.
+    /// @param screenHeight Total screen/window height for dimming.
+    virtual void DrawGlowingBorderHighlight(
+        float x, float y, float w, float h,
+        float animationPhase,
+        float glowColorR, float glowColorG, float glowColorB,
+        float strokeWidth,
+        float trailLength,
+        float dimOpacity,
+        float screenWidth, float screenHeight) = 0;
+
+    /// Draws a glowing border transition effect between two elements.
+    virtual void DrawGlowingBorderTransition(
+        float fromX, float fromY, float fromW, float fromH,
+        float toX, float toY, float toW, float toH,
+        float headProgress, float tailProgress,
+        float animationPhase,
+        float glowColorR, float glowColorG, float glowColorB,
+        float strokeWidth,
+        float trailLength,
+        float dimOpacity,
+        float screenWidth, float screenHeight) = 0;
+
+    /// Draws a ripple effect expanding from element border.
+    /// Used after transition animation completes, before rotation starts.
+    /// @param x X position of the element.
+    /// @param y Y position of the element.
+    /// @param w Width of the element.
+    /// @param h Height of the element.
+    /// @param rippleProgress Ripple expansion progress (0.0 - 1.0).
+    /// @param glowColorR Glow color red component (0-1).
+    /// @param glowColorG Glow color green component (0-1).
+    /// @param glowColorB Glow color blue component (0-1).
+    /// @param strokeWidth Base stroke width.
+    /// @param dimOpacity Opacity of the dimmed area outside (0-1).
+    /// @param screenWidth Total screen/window width for dimming.
+    /// @param screenHeight Total screen/window height for dimming.
+    virtual void DrawRippleEffect(
+        float x, float y, float w, float h,
+        float rippleProgress,
+        float glowColorR, float glowColorG, float glowColorB,
+        float strokeWidth,
+        float dimOpacity,
+        float screenWidth, float screenHeight) = 0;
 
 protected:
     int32_t width_ = 0;

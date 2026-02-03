@@ -190,6 +190,31 @@ public class InfoBar : ContentControl
 
     #endregion
 
+    #region Template Parts
+
+    private Border? _rootBorder;
+    private Button? _closeButton;
+
+    /// <inheritdoc />
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+
+        _rootBorder = GetTemplateChild("RootBorder") as Border;
+        _closeButton = GetTemplateChild("PART_CloseButton") as Button;
+
+        if (_closeButton != null)
+        {
+            _closeButton.Click += (s, e) =>
+            {
+                RaiseEvent(new RoutedEventArgs(CloseButtonClickEvent, this));
+                IsOpen = false;
+            };
+        }
+    }
+
+    #endregion
+
     #region Input Handling
 
     private void OnMouseDownHandler(object sender, RoutedEventArgs e)
@@ -258,6 +283,12 @@ public class InfoBar : ContentControl
     /// <inheritdoc />
     protected override void OnRender(object drawingContext)
     {
+        // If using template, let the template handle rendering
+        if (_rootBorder != null)
+        {
+            return;
+        }
+
         if (drawingContext is not DrawingContext dc || !IsOpen)
             return;
 

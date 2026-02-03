@@ -11,8 +11,20 @@
         <Setter Property="BorderBrush" Value="{StaticResource ControlBorder}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="8,6,8,6" />
-        <Setter Property="CornerRadius" Value="4" />
         <Setter Property="FontSize" Value="14" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Template">
+            <ControlTemplate TargetType="TextBox">
+                <Border Name="BackgroundBorder"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="8">
+                    <ScrollViewer Name="PART_ContentHost"
+                                  Margin="{TemplateBinding Padding}" />
+                </Border>
+            </ControlTemplate>
+        </Setter>
 
         <Style.Triggers>
             <PropertyTrigger Property="IsMouseOver" Value="True">
@@ -37,6 +49,111 @@
     </Style>
 
     <!-- ============================================== -->
+    <!-- PasswordBox Style -->
+    <!-- ============================================== -->
+    <Style TargetType="PasswordBox">
+        <Setter Property="Background" Value="{StaticResource SurfaceBackground}" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        <Setter Property="BorderBrush" Value="{StaticResource ControlBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="8,6,8,6" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="PasswordChar" Value="●" />
+        <Setter Property="Template">
+            <ControlTemplate TargetType="PasswordBox">
+                <Border Name="BackgroundBorder"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="8">
+                    <ScrollViewer Name="PART_ContentHost"
+                                  Margin="{TemplateBinding Padding}" />
+                </Border>
+            </ControlTemplate>
+        </Setter>
+
+        <Style.Triggers>
+            <PropertyTrigger Property="IsMouseOver" Value="True">
+                <Setter Property="BorderBrush" Value="{StaticResource ControlBorderHover}" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsFocused" Value="True">
+                <Setter Property="BorderBrush" Value="{StaticResource ControlBorderFocused}" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsEnabled" Value="False">
+                <Setter Property="Background" Value="{StaticResource ControlBackgroundDisabled}" />
+                <Setter Property="Foreground" Value="{StaticResource TextDisabled}" />
+            </PropertyTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ============================================== -->
+    <!-- NumberBox Style -->
+    <!-- ============================================== -->
+    <Style TargetType="NumberBox">
+        <Setter Property="Background" Value="{StaticResource SurfaceBackground}" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        <Setter Property="BorderBrush" Value="{StaticResource ControlBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="8,6,8,6" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Template">
+            <ControlTemplate TargetType="NumberBox">
+                <Border Name="BackgroundBorder"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="8">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ScrollViewer Name="PART_ContentHost"
+                                      Grid.Column="0"
+                                      Margin="{TemplateBinding Padding}" />
+                        <StackPanel Name="PART_SpinButtons"
+                                    Grid.Column="1"
+                                    Orientation="Vertical"
+                                    VerticalAlignment="Center"
+                                    Margin="0,0,4,0">
+                            <RepeatButton Name="PART_UpButton"
+                                          Content="▲"
+                                          FontSize="8"
+                                          MinWidth="20"
+                                          MinHeight="12"
+                                          Padding="4,2,4,2" />
+                            <RepeatButton Name="PART_DownButton"
+                                          Content="▼"
+                                          FontSize="8"
+                                          MinWidth="20"
+                                          MinHeight="12"
+                                          Padding="4,2,4,2" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+
+        <Style.Triggers>
+            <PropertyTrigger Property="IsMouseOver" Value="True">
+                <Setter Property="BorderBrush" Value="{StaticResource ControlBorderHover}" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsFocused" Value="True">
+                <Setter Property="BorderBrush" Value="{StaticResource ControlBorderFocused}" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsEnabled" Value="False">
+                <Setter Property="Background" Value="{StaticResource ControlBackgroundDisabled}" />
+                <Setter Property="Foreground" Value="{StaticResource TextDisabled}" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="SpinButtonPlacementMode" Value="Hidden">
+                <Setter TargetName="PART_SpinButtons" Property="Visibility" Value="Collapsed" />
+            </PropertyTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ============================================== -->
     <!-- AutoCompleteBox Style -->
     <!-- ============================================== -->
     <Style TargetType="AutoCompleteBox">
@@ -45,9 +162,39 @@
         <Setter Property="BorderBrush" Value="{StaticResource ControlBorder}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="8,6,8,6" />
-        <Setter Property="CornerRadius" Value="4" />
         <Setter Property="FontSize" Value="14" />
+        <Setter Property="CornerRadius" Value="8" />
         <Setter Property="MaxDropDownHeight" Value="200" />
+        <Setter Property="Template">
+            <ControlTemplate TargetType="AutoCompleteBox">
+                <Grid>
+                    <Border Name="BackgroundBorder"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="8">
+                        <ScrollViewer Name="PART_ContentHost"
+                                      Margin="{TemplateBinding Padding}" />
+                    </Border>
+                    <Popup Name="PART_Popup"
+                           PlacementTarget="{TemplateBinding}"
+                           Placement="Bottom"
+                           IsOpen="{TemplateBinding IsDropDownOpen}"
+                           StaysOpen="False"
+                           MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                        <Border Background="{StaticResource SurfaceBackground}"
+                                BorderBrush="{StaticResource ControlBorder}"
+                                BorderThickness="1"
+                                CornerRadius="8">
+                            <ListBox Name="PART_SelectionAdapter"
+                                     ItemsSource="{TemplateBinding FilteredItems}"
+                                     Background="Transparent"
+                                     BorderThickness="0" />
+                        </Border>
+                    </Popup>
+                </Grid>
+            </ControlTemplate>
+        </Setter>
 
         <Style.Triggers>
             <PropertyTrigger Property="IsMouseOver" Value="True">

@@ -143,7 +143,22 @@ public abstract class Visual : DependencyObject
                 var savedOffset = offsetContext.Offset;
                 offsetContext.Offset = new Point(savedOffset.X + bounds.X, savedOffset.Y + bounds.Y);
 
+                // Handle opacity for child elements
+                var childOpacity = uiChild.Opacity;
+                var pushedOpacity = false;
+                if (childOpacity < 1.0 && drawingContext is IOpacityDrawingContext opacityContext)
+                {
+                    opacityContext.PushOpacity(childOpacity);
+                    pushedOpacity = true;
+                }
+
                 child.Render(drawingContext);
+
+                // Pop opacity if it was pushed
+                if (pushedOpacity && drawingContext is IOpacityDrawingContext opacityContext2)
+                {
+                    opacityContext2.PopOpacity();
+                }
 
                 offsetContext.Offset = savedOffset;
             }
@@ -177,6 +192,58 @@ public abstract class Visual : DependencyObject
     /// <param name="drawingContext">The drawing context.</param>
     protected virtual void OnPostRender(object drawingContext)
     {
+    }
+
+    /// <summary>
+    /// Returns a transform that can be used to transform coordinates from this Visual to the specified Visual.
+    /// </summary>
+    /// <param name="visual">The Visual to transform coordinates to.</param>
+    /// <returns>A GeneralTransform that can be used to transform coordinates.</returns>
+    public GeneralTransform? TransformToVisual(Visual? visual)
+    {
+        if (visual == null)
+        {
+            // Transform to root coordinates
+            return GetTransformToRoot();
+        }
+
+        // Get transforms from both visuals to the root
+        var thisToRoot = GetTransformToRoot();
+        var targetToRoot = visual.GetTransformToRoot();
+
+        if (thisToRoot == null || targetToRoot == null)
+            return null;
+
+        // Combine: this -> root -> target (using inverse of target -> root)
+        var targetInverse = targetToRoot.Inverse;
+        if (targetInverse == null)
+            return thisToRoot;
+
+        var group = new GeneralTransformGroup();
+        group.Children.Add(thisToRoot);
+        group.Children.Add(targetInverse);
+        return group;
+    }
+
+    /// <summary>
+    /// Gets the transform from this visual to the root of the visual tree.
+    /// </summary>
+    private GeneralTransform? GetTransformToRoot()
+    {
+        var offset = Point.Zero;
+        Visual? current = this;
+
+        while (current != null)
+        {
+            if (current is UIElement uiElement)
+            {
+                var bounds = uiElement.VisualBounds;
+                offset = new Point(offset.X + bounds.X, offset.Y + bounds.Y);
+            }
+            current = current.VisualParent;
+        }
+
+        return new TranslateTransform2D(offset.X, offset.Y);
     }
 }
 

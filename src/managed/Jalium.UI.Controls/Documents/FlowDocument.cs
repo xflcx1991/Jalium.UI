@@ -250,6 +250,258 @@ public class FlowDocument : DependencyObject
 
     #endregion
 
+    #region TextPointer Properties
+
+    /// <summary>
+    /// Gets a TextPointer at the start of the document content.
+    /// </summary>
+    public TextPointer ContentStart
+    {
+        get
+        {
+            if (Blocks.Count > 0)
+            {
+                var firstBlock = Blocks[0];
+                if (firstBlock is Paragraph p && p.Inlines.Count > 0)
+                {
+                    return new TextPointer(this, p.Inlines[0], 0, LogicalDirection.Forward);
+                }
+                return new TextPointer(this, firstBlock, 0, LogicalDirection.Forward);
+            }
+            return new TextPointer(this, null, 0, LogicalDirection.Forward);
+        }
+    }
+
+    /// <summary>
+    /// Gets a TextPointer at the end of the document content.
+    /// </summary>
+    public TextPointer ContentEnd
+    {
+        get
+        {
+            int totalLength = GetDocumentLength();
+            return GetPositionAtOffset(totalLength, LogicalDirection.Backward)
+                ?? new TextPointer(this, null, totalLength, LogicalDirection.Backward);
+        }
+    }
+
+    #endregion
+
+    #region TextPointer Methods
+
+    /// <summary>
+    /// Gets a TextPointer at the specified offset from the start of the document.
+    /// </summary>
+    /// <param name="offset">The character offset from the start.</param>
+    /// <param name="direction">The logical direction for the TextPointer.</param>
+    /// <returns>A TextPointer at the specified offset, or null if the offset is invalid.</returns>
+    public TextPointer? GetPositionAtOffset(int offset, LogicalDirection direction)
+    {
+        if (offset < 0)
+            return null;
+
+        int currentOffset = 0;
+
+        foreach (var block in Blocks)
+        {
+            var result = GetPositionInBlock(block, offset, direction, ref currentOffset);
+            if (result != null)
+                return result;
+        }
+
+        // If offset is at the very end
+        if (offset == currentOffset)
+        {
+            if (Blocks.Count > 0)
+            {
+                var lastBlock = Blocks[Blocks.Count - 1];
+                return new TextPointer(this, lastBlock, GetBlockLength(lastBlock), direction);
+            }
+            return new TextPointer(this, null, 0, direction);
+        }
+
+        return null;
+    }
+
+    private TextPointer? GetPositionInBlock(Block block, int targetOffset, LogicalDirection direction, ref int currentOffset)
+    {
+        if (block is Paragraph p)
+        {
+            foreach (var inline in p.Inlines)
+            {
+                var result = GetPositionInInline(inline, targetOffset, direction, ref currentOffset);
+                if (result != null)
+                    return result;
+            }
+
+            // Paragraph break
+            if (targetOffset == currentOffset)
+            {
+                return new TextPointer(this, p, GetParagraphTextLength(p), direction);
+            }
+            currentOffset++; // paragraph break counts as 1
+        }
+        else if (block is Section section)
+        {
+            foreach (var childBlock in section.Blocks)
+            {
+                var result = GetPositionInBlock(childBlock, targetOffset, direction, ref currentOffset);
+                if (result != null)
+                    return result;
+            }
+        }
+        else if (block is List list)
+        {
+            foreach (var item in list.ListItems)
+            {
+                foreach (var itemBlock in item.Blocks)
+                {
+                    var result = GetPositionInBlock(itemBlock, targetOffset, direction, ref currentOffset);
+                    if (result != null)
+                        return result;
+                }
+            }
+        }
+        else if (block is BlockUIContainer)
+        {
+            if (targetOffset >= currentOffset && targetOffset < currentOffset + 1)
+            {
+                return new TextPointer(this, block, targetOffset - currentOffset, direction);
+            }
+            currentOffset++;
+        }
+
+        return null;
+    }
+
+    private TextPointer? GetPositionInInline(Inline inline, int targetOffset, LogicalDirection direction, ref int currentOffset)
+    {
+        if (inline is Run run)
+        {
+            int textLength = run.Text.Length;
+            if (targetOffset >= currentOffset && targetOffset <= currentOffset + textLength)
+            {
+                return new TextPointer(this, run, targetOffset - currentOffset, direction);
+            }
+            currentOffset += textLength;
+        }
+        else if (inline is Span span)
+        {
+            foreach (var child in span.Inlines)
+            {
+                var result = GetPositionInInline(child, targetOffset, direction, ref currentOffset);
+                if (result != null)
+                    return result;
+            }
+        }
+        else if (inline is LineBreak)
+        {
+            if (targetOffset == currentOffset)
+            {
+                return new TextPointer(this, inline, 0, direction);
+            }
+            currentOffset++;
+        }
+        else if (inline is InlineUIContainer)
+        {
+            if (targetOffset >= currentOffset && targetOffset < currentOffset + 1)
+            {
+                return new TextPointer(this, inline, targetOffset - currentOffset, direction);
+            }
+            currentOffset++;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Gets the total document length in characters.
+    /// </summary>
+    private int GetDocumentLength()
+    {
+        int length = 0;
+        foreach (var block in Blocks)
+        {
+            length += GetBlockLength(block);
+        }
+        return length;
+    }
+
+    private static int GetBlockLength(Block block)
+    {
+        if (block is Paragraph p)
+        {
+            int length = GetParagraphTextLength(p);
+            return length + 1; // +1 for paragraph break
+        }
+        else if (block is Section section)
+        {
+            int length = 0;
+            foreach (var childBlock in section.Blocks)
+            {
+                length += GetBlockLength(childBlock);
+            }
+            return length;
+        }
+        else if (block is List list)
+        {
+            int length = 0;
+            foreach (var item in list.ListItems)
+            {
+                foreach (var itemBlock in item.Blocks)
+                {
+                    length += GetBlockLength(itemBlock);
+                }
+            }
+            return length;
+        }
+        else if (block is BlockUIContainer)
+        {
+            return 1;
+        }
+
+        return 0;
+    }
+
+    private static int GetParagraphTextLength(Paragraph p)
+    {
+        int length = 0;
+        foreach (var inline in p.Inlines)
+        {
+            length += GetInlineLength(inline);
+        }
+        return length;
+    }
+
+    private static int GetInlineLength(Inline inline)
+    {
+        if (inline is Run run)
+        {
+            return run.Text.Length;
+        }
+        else if (inline is Span span)
+        {
+            int length = 0;
+            foreach (var child in span.Inlines)
+            {
+                length += GetInlineLength(child);
+            }
+            return length;
+        }
+        else if (inline is LineBreak)
+        {
+            return 1;
+        }
+        else if (inline is InlineUIContainer)
+        {
+            return 1;
+        }
+
+        return 0;
+    }
+
+    #endregion
+
     #region Methods
 
     /// <summary>

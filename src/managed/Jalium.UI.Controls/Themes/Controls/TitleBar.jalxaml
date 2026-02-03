@@ -21,15 +21,143 @@
         <Setter Property="Foreground" Value="{StaticResource TitleBarGlyph}" />
         <Setter Property="Width" Value="46" />
         <Setter Property="Height" Value="32" />
+        <Setter Property="GlyphSize" Value="10" />
+        <Setter Property="Template">
+            <ControlTemplate TargetType="TitleBarButton">
+                <Border Name="PART_RootBorder"
+                        Background="{TemplateBinding Background}">
+                    <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <!-- Minimize Glyph (horizontal line) -->
+                        <Path Name="MinimizeGlyph"
+                              Data="M 0,5 L 10,5"
+                              Stroke="{TemplateBinding Foreground}"
+                              StrokeThickness="1"
+                              Visibility="Collapsed" />
 
-        <Style.Triggers>
-            <PropertyTrigger Property="IsMouseOver" Value="True">
-                <Setter Property="Background" Value="{StaticResource TitleBarButtonHover}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsPressed" Value="True">
-                <Setter Property="Background" Value="{StaticResource TitleBarButtonPressed}" />
-            </PropertyTrigger>
-        </Style.Triggers>
+                        <!-- Maximize Glyph (square) -->
+                        <Path Name="MaximizeGlyph"
+                              Data="M 0,0 L 10,0 L 10,10 L 0,10 Z"
+                              Stroke="{TemplateBinding Foreground}"
+                              StrokeThickness="1"
+                              Fill="Transparent"
+                              Visibility="Collapsed" />
+
+                        <!-- Restore Glyph (two overlapping squares) -->
+                        <Grid Name="RestoreGlyph" Visibility="Collapsed">
+                            <!-- Back square (top-right) -->
+                            <Path Data="M 2,0 L 10,0 L 10,8 L 8,8 L 8,2 L 2,2 Z"
+                                  Stroke="{TemplateBinding Foreground}"
+                                  StrokeThickness="1"
+                                  Fill="Transparent" />
+                            <!-- Front square (bottom-left) -->
+                            <Path Data="M 0,2 L 8,2 L 8,10 L 0,10 Z"
+                                  Stroke="{TemplateBinding Foreground}"
+                                  StrokeThickness="1"
+                                  Fill="{TemplateBinding Background}" />
+                        </Grid>
+
+                        <!-- Close Glyph (X shape) -->
+                        <Path Name="CloseGlyph"
+                              Data="M 0,0 L 10,10 M 10,0 L 0,10"
+                              Stroke="{TemplateBinding Foreground}"
+                              StrokeThickness="1"
+                              Visibility="Visible" />
+                    </Grid>
+                </Border>
+
+                <ControlTemplate.Triggers>
+                    <!-- Show correct glyph based on Kind -->
+                    <PropertyTrigger Property="Kind" Value="Minimize">
+                        <Setter TargetName="MinimizeGlyph" Property="Visibility" Value="Visible" />
+                        <Setter TargetName="MaximizeGlyph" Property="Visibility" Value="Collapsed" />
+                        <Setter TargetName="RestoreGlyph" Property="Visibility" Value="Collapsed" />
+                        <Setter TargetName="CloseGlyph" Property="Visibility" Value="Collapsed" />
+                    </PropertyTrigger>
+                    <PropertyTrigger Property="Kind" Value="Maximize">
+                        <Setter TargetName="MinimizeGlyph" Property="Visibility" Value="Collapsed" />
+                        <Setter TargetName="MaximizeGlyph" Property="Visibility" Value="Visible" />
+                        <Setter TargetName="RestoreGlyph" Property="Visibility" Value="Collapsed" />
+                        <Setter TargetName="CloseGlyph" Property="Visibility" Value="Collapsed" />
+                    </PropertyTrigger>
+                    <PropertyTrigger Property="Kind" Value="Restore">
+                        <Setter TargetName="MinimizeGlyph" Property="Visibility" Value="Collapsed" />
+                        <Setter TargetName="MaximizeGlyph" Property="Visibility" Value="Collapsed" />
+                        <Setter TargetName="RestoreGlyph" Property="Visibility" Value="Visible" />
+                        <Setter TargetName="CloseGlyph" Property="Visibility" Value="Collapsed" />
+                    </PropertyTrigger>
+                    <PropertyTrigger Property="Kind" Value="Close">
+                        <Setter TargetName="MinimizeGlyph" Property="Visibility" Value="Collapsed" />
+                        <Setter TargetName="MaximizeGlyph" Property="Visibility" Value="Collapsed" />
+                        <Setter TargetName="RestoreGlyph" Property="Visibility" Value="Collapsed" />
+                        <Setter TargetName="CloseGlyph" Property="Visibility" Value="Visible" />
+                    </PropertyTrigger>
+
+                    <!-- Hover state for non-close buttons -->
+                    <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                            <Condition Property="IsMouseOver" Value="True" />
+                            <Condition Property="Kind" Value="Minimize" />
+                        </MultiTrigger.Conditions>
+                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{StaticResource TitleBarButtonHover}" />
+                    </MultiTrigger>
+                    <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                            <Condition Property="IsMouseOver" Value="True" />
+                            <Condition Property="Kind" Value="Maximize" />
+                        </MultiTrigger.Conditions>
+                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{StaticResource TitleBarButtonHover}" />
+                    </MultiTrigger>
+                    <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                            <Condition Property="IsMouseOver" Value="True" />
+                            <Condition Property="Kind" Value="Restore" />
+                        </MultiTrigger.Conditions>
+                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{StaticResource TitleBarButtonHover}" />
+                    </MultiTrigger>
+
+                    <!-- Hover state for close button (red) -->
+                    <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                            <Condition Property="IsMouseOver" Value="True" />
+                            <Condition Property="Kind" Value="Close" />
+                        </MultiTrigger.Conditions>
+                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{StaticResource TitleBarCloseButtonHover}" />
+                    </MultiTrigger>
+
+                    <!-- Pressed state for non-close buttons -->
+                    <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                            <Condition Property="IsPressed" Value="True" />
+                            <Condition Property="Kind" Value="Minimize" />
+                        </MultiTrigger.Conditions>
+                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{StaticResource TitleBarButtonPressed}" />
+                    </MultiTrigger>
+                    <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                            <Condition Property="IsPressed" Value="True" />
+                            <Condition Property="Kind" Value="Maximize" />
+                        </MultiTrigger.Conditions>
+                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{StaticResource TitleBarButtonPressed}" />
+                    </MultiTrigger>
+                    <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                            <Condition Property="IsPressed" Value="True" />
+                            <Condition Property="Kind" Value="Restore" />
+                        </MultiTrigger.Conditions>
+                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{StaticResource TitleBarButtonPressed}" />
+                    </MultiTrigger>
+
+                    <!-- Pressed state for close button -->
+                    <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                            <Condition Property="IsPressed" Value="True" />
+                            <Condition Property="Kind" Value="Close" />
+                        </MultiTrigger.Conditions>
+                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{StaticResource TitleBarCloseButtonPressed}" />
+                    </MultiTrigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate>
+        </Setter>
     </Style>
 
 </ResourceDictionary>

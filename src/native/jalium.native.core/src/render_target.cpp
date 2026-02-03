@@ -154,6 +154,38 @@ JALIUM_API void jalium_draw_line(
     }
 }
 
+JALIUM_API void jalium_fill_polygon(
+    JaliumRenderTarget* rt,
+    const float* points,
+    uint32_t pointCount,
+    JaliumBrush* brush,
+    int32_t fillRule)
+{
+    if (rt && brush && points && pointCount >= 3) {
+        reinterpret_cast<jalium::RenderTarget*>(rt)->FillPolygon(
+            points, pointCount,
+            reinterpret_cast<jalium::Brush*>(brush),
+            fillRule);
+    }
+}
+
+JALIUM_API void jalium_draw_polygon(
+    JaliumRenderTarget* rt,
+    const float* points,
+    uint32_t pointCount,
+    JaliumBrush* brush,
+    float strokeWidth,
+    int32_t closed)
+{
+    if (rt && brush && points && pointCount >= 2) {
+        reinterpret_cast<jalium::RenderTarget*>(rt)->DrawPolygon(
+            points, pointCount,
+            reinterpret_cast<jalium::Brush*>(brush),
+            strokeWidth,
+            closed != 0);
+    }
+}
+
 JALIUM_API void jalium_draw_text(
     JaliumRenderTarget* rt,
     const wchar_t* text,
@@ -241,6 +273,74 @@ JALIUM_API void jalium_draw_backdrop_filter(
             blurRadius,
             cornerRadiusTL, cornerRadiusTR,
             cornerRadiusBR, cornerRadiusBL);
+    }
+}
+
+JALIUM_API void jalium_draw_glowing_border_highlight(
+    JaliumRenderTarget* rt,
+    float x, float y, float width, float height,
+    float animationPhase,
+    float glowColorR, float glowColorG, float glowColorB,
+    float strokeWidth,
+    float trailLength,
+    float dimOpacity,
+    float screenWidth, float screenHeight)
+{
+    if (rt) {
+        reinterpret_cast<jalium::RenderTarget*>(rt)->DrawGlowingBorderHighlight(
+            x, y, width, height,
+            animationPhase,
+            glowColorR, glowColorG, glowColorB,
+            strokeWidth,
+            trailLength,
+            dimOpacity,
+            screenWidth, screenHeight);
+    }
+}
+
+JALIUM_API void jalium_draw_glowing_border_transition(
+    JaliumRenderTarget* rt,
+    float fromX, float fromY, float fromWidth, float fromHeight,
+    float toX, float toY, float toWidth, float toHeight,
+    float headProgress, float tailProgress,
+    float animationPhase,
+    float glowColorR, float glowColorG, float glowColorB,
+    float strokeWidth,
+    float trailLength,
+    float dimOpacity,
+    float screenWidth, float screenHeight)
+{
+    if (rt) {
+        reinterpret_cast<jalium::RenderTarget*>(rt)->DrawGlowingBorderTransition(
+            fromX, fromY, fromWidth, fromHeight,
+            toX, toY, toWidth, toHeight,
+            headProgress, tailProgress,
+            animationPhase,
+            glowColorR, glowColorG, glowColorB,
+            strokeWidth,
+            trailLength,
+            dimOpacity,
+            screenWidth, screenHeight);
+    }
+}
+
+JALIUM_API void jalium_draw_ripple_effect(
+    JaliumRenderTarget* rt,
+    float x, float y, float width, float height,
+    float rippleProgress,
+    float glowColorR, float glowColorG, float glowColorB,
+    float strokeWidth,
+    float dimOpacity,
+    float screenWidth, float screenHeight)
+{
+    if (rt) {
+        reinterpret_cast<jalium::RenderTarget*>(rt)->DrawRippleEffect(
+            x, y, width, height,
+            rippleProgress,
+            glowColorR, glowColorG, glowColorB,
+            strokeWidth,
+            dimOpacity,
+            screenWidth, screenHeight);
     }
 }
 

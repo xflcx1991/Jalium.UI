@@ -109,6 +109,19 @@ public class Thumb : Control
 
     #endregion
 
+    #region Template Parts
+
+    private Border? _thumbBorder;
+
+    /// <inheritdoc />
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+        _thumbBorder = GetTemplateChild("ThumbBorder") as Border;
+    }
+
+    #endregion
+
     #region Input Handling
 
     private void OnMouseDownHandler(object sender, RoutedEventArgs e)
@@ -262,6 +275,12 @@ public class Thumb : Control
     /// <inheritdoc />
     protected override void OnRender(object drawingContext)
     {
+        // If using template, let the template handle rendering
+        if (_thumbBorder != null)
+        {
+            return;
+        }
+
         if (drawingContext is not DrawingContext dc)
             return;
 

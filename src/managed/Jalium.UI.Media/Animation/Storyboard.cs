@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Jalium.UI;
 
 namespace Jalium.UI.Media.Animation;
 
@@ -193,11 +194,18 @@ public class Storyboard : Timeline
             clock.Stop();
         }
 
-        // Restore original values if FillBehavior is Stop
+        // Clear animated values - ClearAnimatedValue handles FillBehavior internally
         foreach (var (clock, target, property, originalValue) in _activeAnimations)
         {
-            if (clock.Timeline.FillBehavior == FillBehavior.Stop && originalValue != null)
+            if (target is UIElement uiElement)
             {
+                // For explicit Stop(), always clear the animation
+                // The DependencyObject.ClearAnimatedValue will handle HoldEnd vs Stop behavior
+                uiElement.ClearAnimatedValue(property);
+            }
+            else if (clock.Timeline.FillBehavior == FillBehavior.Stop && originalValue != null)
+            {
+                // Fallback for non-UIElement targets
                 target.SetValue(property, originalValue);
             }
         }
@@ -261,7 +269,17 @@ public class Storyboard : Timeline
                     originalValue ?? GetDefaultValue(property),
                     clock);
 
-                target.SetValue(property, currentValue);
+                // Use animation layer instead of direct SetValue for UIElement targets
+                if (target is UIElement uiElement)
+                {
+                    var holdEnd = animationTimeline.FillBehavior == FillBehavior.HoldEnd;
+                    uiElement.SetAnimatedValue(property, currentValue, holdEnd);
+                }
+                else
+                {
+                    // Fallback for non-UIElement targets (e.g., Brush, Geometry)
+                    target.SetValue(property, currentValue);
+                }
             }
         }
 

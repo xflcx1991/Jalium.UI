@@ -1,9 +1,11 @@
+using Jalium.UI;
+
 namespace Jalium.UI.Media.Animation;
 
 /// <summary>
 /// Defines a segment of time over which output values are produced.
 /// </summary>
-public abstract class AnimationTimeline : Timeline
+public abstract class AnimationTimeline : Timeline, IAnimationTimeline
 {
     /// <summary>
     /// Gets the type of value that this animation produces.
@@ -11,9 +13,35 @@ public abstract class AnimationTimeline : Timeline
     public abstract Type TargetPropertyType { get; }
 
     /// <summary>
+    /// Gets the fill behavior as the core interface type.
+    /// </summary>
+    AnimationFillBehavior IAnimationTimeline.AnimationFillBehavior =>
+        FillBehavior == FillBehavior.HoldEnd ? AnimationFillBehavior.HoldEnd : AnimationFillBehavior.Stop;
+
+    /// <summary>
     /// Gets the current animated value.
     /// </summary>
     public abstract object GetCurrentValue(object defaultOriginValue, object defaultDestinationValue, AnimationClock animationClock);
+
+    /// <summary>
+    /// Gets the current animated value using the interface clock type.
+    /// </summary>
+    object IAnimationTimeline.GetCurrentValue(object defaultOriginValue, object defaultDestinationValue, IAnimationClock clock)
+    {
+        if (clock is AnimationClock animClock)
+        {
+            return GetCurrentValue(defaultOriginValue, defaultDestinationValue, animClock);
+        }
+        throw new ArgumentException("Clock must be an AnimationClock", nameof(clock));
+    }
+
+    /// <summary>
+    /// Creates a clock for this timeline.
+    /// </summary>
+    public IAnimationClock CreateClock()
+    {
+        return new AnimationClock(this);
+    }
 
     /// <summary>
     /// Gets whether this animation is additive.
@@ -57,7 +85,7 @@ public abstract class AnimationTimeline<T> : AnimationTimeline
 /// <summary>
 /// Represents a clock that controls an animation timeline.
 /// </summary>
-public class AnimationClock
+public class AnimationClock : IAnimationClock
 {
     private readonly Timeline _timeline;
     private DateTime _startTime;
@@ -78,6 +106,11 @@ public class AnimationClock
     /// Gets the timeline associated with this clock.
     /// </summary>
     public Timeline Timeline => _timeline;
+
+    /// <summary>
+    /// Gets the timeline as the interface type.
+    /// </summary>
+    IAnimationTimeline? IAnimationClock.Timeline => _timeline as IAnimationTimeline;
 
     /// <summary>
     /// Gets the current progress of the animation (0.0 to 1.0).
@@ -147,7 +180,7 @@ public class AnimationClock
     /// <summary>
     /// Updates the animation progress.
     /// </summary>
-    internal void Tick()
+    public void Tick()
     {
         if (!_isRunning) return;
 

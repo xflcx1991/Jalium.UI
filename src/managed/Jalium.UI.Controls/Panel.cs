@@ -3,6 +3,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Base class for panel controls that host child elements.
 /// </summary>
+[ContentProperty("Children")]
 public abstract class Panel : FrameworkElement
 {
     /// <summary>

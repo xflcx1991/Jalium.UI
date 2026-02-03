@@ -1263,14 +1263,9 @@ public abstract class TextBoxBase : Control
         // Request a visual update for caret animation
         // This runs on a thread pool thread, so InvalidateVisual will
         // schedule the render on the appropriate thread
-        var hasFocus = IsKeyboardFocused;
-        if (hasFocus && !IsReadOnly)
+        if (IsKeyboardFocused && !IsReadOnly)
         {
             InvalidateVisual();
-        }
-        else if (!hasFocus)
-        {
-            Input.FocusDebugLog.Log($"[CaretTimer] Skipping InvalidateVisual - IsKeyboardFocused=false");
         }
     }
 

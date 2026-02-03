@@ -206,6 +206,14 @@ public class Slider : Control
 
     #endregion
 
+    #region Template Parts
+
+    private Border? _trackBorder;
+    private Border? _selectionRangeBorder;
+    private Border? _thumbBorder;
+
+    #endregion
+
     #region Constructor
 
     /// <summary>
@@ -221,6 +229,56 @@ public class Slider : Control
         AddHandler(MouseUpEvent, new RoutedEventHandler(OnMouseUpHandler));
         AddHandler(MouseMoveEvent, new RoutedEventHandler(OnMouseMoveHandler));
         AddHandler(KeyDownEvent, new RoutedEventHandler(OnKeyDownHandler));
+    }
+
+    #endregion
+
+    #region Template
+
+    /// <inheritdoc />
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+
+        _trackBorder = GetTemplateChild("PART_Track") as Border;
+        _selectionRangeBorder = GetTemplateChild("PART_SelectionRange") as Border;
+        _thumbBorder = GetTemplateChild("PART_Thumb") as Border;
+
+        UpdateSliderLayout();
+    }
+
+    private void UpdateSliderLayout()
+    {
+        if (_thumbBorder == null) return;
+
+        var range = Maximum - Minimum;
+        var percentage = range > 0 ? (Value - Minimum) / range : 0;
+
+        if (Orientation == Orientation.Horizontal)
+        {
+            var trackWidth = RenderSize.Width - ThumbSize;
+            var thumbX = percentage * trackWidth;
+
+            _thumbBorder.Margin = new Thickness(thumbX, 0, 0, 0);
+
+            if (_selectionRangeBorder != null)
+            {
+                _selectionRangeBorder.Width = thumbX + ThumbSize / 2;
+            }
+        }
+        else
+        {
+            var trackHeight = RenderSize.Height - ThumbSize;
+            var thumbY = (1 - percentage) * trackHeight;
+
+            _thumbBorder.Margin = new Thickness(0, thumbY, 0, 0);
+
+            if (_selectionRangeBorder != null)
+            {
+                _selectionRangeBorder.Height = (RenderSize.Height - thumbY - ThumbSize / 2);
+                _selectionRangeBorder.VerticalAlignment = VerticalAlignment.Bottom;
+            }
+        }
     }
 
     #endregion
@@ -405,6 +463,13 @@ public class Slider : Control
     /// <inheritdoc />
     protected override void OnRender(object drawingContext)
     {
+        // If using template, let the template handle rendering
+        if (_thumbBorder != null)
+        {
+            UpdateSliderLayout();
+            return;
+        }
+
         if (drawingContext is not DrawingContext dc)
             return;
 

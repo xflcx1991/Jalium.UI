@@ -141,6 +141,15 @@ public class ToggleSwitch : Control
 
     #endregion
 
+    #region Template Parts
+
+    private Border? _switchTrack;
+    private Border? _switchThumb;
+    private ContentPresenter? _contentPresenter;
+    private ContentPresenter? _headerPresenter;
+
+    #endregion
+
     #region Constructor
 
     /// <summary>
@@ -154,6 +163,35 @@ public class ToggleSwitch : Control
         // Register input handlers
         AddHandler(MouseDownEvent, new RoutedEventHandler(OnMouseDownHandler));
         AddHandler(KeyDownEvent, new RoutedEventHandler(OnKeyDownHandler));
+    }
+
+    #endregion
+
+    #region Template
+
+    /// <inheritdoc />
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+
+        _switchTrack = GetTemplateChild("PART_SwitchTrack") as Border;
+        _switchThumb = GetTemplateChild("PART_SwitchThumb") as Border;
+        _contentPresenter = GetTemplateChild("PART_ContentPresenter") as ContentPresenter;
+        _headerPresenter = GetTemplateChild("PART_Header") as ContentPresenter;
+
+        UpdateSwitchContent();
+    }
+
+    private void UpdateSwitchContent()
+    {
+        if (_contentPresenter != null)
+        {
+            _contentPresenter.Content = IsOn ? OnContent : OffContent;
+        }
+        if (_headerPresenter != null)
+        {
+            _headerPresenter.Visibility = Header != null ? Visibility.Visible : Visibility.Collapsed;
+        }
     }
 
     #endregion
@@ -230,6 +268,13 @@ public class ToggleSwitch : Control
     /// <inheritdoc />
     protected override void OnRender(object drawingContext)
     {
+        // If using template, let the template handle rendering
+        if (_switchTrack != null)
+        {
+            UpdateSwitchContent();
+            return;
+        }
+
         if (drawingContext is not DrawingContext dc)
             return;
 
@@ -266,7 +311,6 @@ public class ToggleSwitch : Control
             ? trackRect.X + trackRect.Width - ThumbMargin - ThumbSize
             : trackRect.X + ThumbMargin;
         var thumbY = trackRect.Y + (trackRect.Height - ThumbSize) / 2;
-        var thumbRect = new Rect(thumbX, thumbY, ThumbSize, ThumbSize);
         var thumbBrush = new SolidColorBrush(Color.White);
 
         dc.DrawEllipse(thumbBrush, null, new Point(thumbX + ThumbSize / 2, thumbY + ThumbSize / 2), ThumbSize / 2, ThumbSize / 2);

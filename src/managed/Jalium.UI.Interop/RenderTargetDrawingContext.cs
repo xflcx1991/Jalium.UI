@@ -7,7 +7,7 @@ namespace Jalium.UI.Interop;
 /// <summary>
 /// A DrawingContext implementation that renders to a RenderTarget.
 /// </summary>
-public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingContext
+public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingContext, IOpacityDrawingContext
 {
     private const int MaxBrushCacheSize = 256;
     private const int MaxTextFormatCacheSize = 64;
@@ -241,128 +241,118 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
 
     private void DrawPathGeometry(Brush? brush, Pen? pen, PathGeometry pathGeom)
     {
-        // Draw path figures by rendering each segment
-        // Note: This is a simplified implementation; full path rendering would require native path APIs
+        // Draw path figures using native polygon rendering for filled paths
         foreach (var figure in pathGeom.Figures)
         {
+            // Collect all points from the figure
+            var points = new List<Point> { figure.StartPoint };
             var currentPoint = figure.StartPoint;
 
             foreach (var segment in figure.Segments)
             {
-                if (!segment.IsStroked && pen != null) continue;
-
                 if (segment is LineSegment lineSeg)
                 {
-                    if (pen != null)
-                    {
-                        DrawLine(pen, currentPoint, lineSeg.Point);
-                    }
+                    points.Add(lineSeg.Point);
                     currentPoint = lineSeg.Point;
                 }
                 else if (segment is PolyLineSegment polyLine)
                 {
                     foreach (var point in polyLine.Points)
                     {
-                        if (pen != null)
-                        {
-                            DrawLine(pen, currentPoint, point);
-                        }
+                        points.Add(point);
                         currentPoint = point;
                     }
                 }
                 else if (segment is BezierSegment bezier)
                 {
                     // Approximate bezier with line segments
-                    if (pen != null)
-                    {
-                        DrawBezierApprox(pen, currentPoint, bezier.Point1, bezier.Point2, bezier.Point3);
-                    }
+                    var bezierPoints = GetBezierPoints(currentPoint, bezier.Point1, bezier.Point2, bezier.Point3);
+                    points.AddRange(bezierPoints);
                     currentPoint = bezier.Point3;
                 }
                 else if (segment is QuadraticBezierSegment quadBezier)
                 {
                     // Approximate quadratic bezier with line segments
-                    if (pen != null)
-                    {
-                        DrawQuadBezierApprox(pen, currentPoint, quadBezier.Point1, quadBezier.Point2);
-                    }
+                    var quadPoints = GetQuadBezierPoints(currentPoint, quadBezier.Point1, quadBezier.Point2);
+                    points.AddRange(quadPoints);
                     currentPoint = quadBezier.Point2;
                 }
                 else if (segment is ArcSegment arc)
                 {
                     // Approximate arc with line segments
-                    if (pen != null)
-                    {
-                        DrawArcApprox(pen, currentPoint, arc);
-                    }
+                    var arcPoints = GetArcPoints(currentPoint, arc);
+                    points.AddRange(arcPoints);
                     currentPoint = arc.Point;
                 }
             }
 
-            // Close the figure if needed
-            if (figure.IsClosed && pen != null)
+            // Convert points to float array for native call, applying offset
+            var pointArray = new float[points.Count * 2];
+            for (int i = 0; i < points.Count; i++)
             {
-                DrawLine(pen, currentPoint, figure.StartPoint);
+                pointArray[i * 2] = (float)Math.Round(points[i].X + Offset.X);
+                pointArray[i * 2 + 1] = (float)Math.Round(points[i].Y + Offset.Y);
+            }
+
+            // Fill the polygon if brush is provided
+            if (brush != null && figure.IsFilled && points.Count >= 3)
+            {
+                var fillRule = pathGeom.FillRule == FillRule.Nonzero ? 1 : 0;
+                var nativeBrush = GetNativeBrush(brush);
+                if (nativeBrush != null)
+                {
+                    _renderTarget.FillPolygon(pointArray, nativeBrush, fillRule);
+                }
+            }
+
+            // Draw the stroke if pen is provided
+            if (pen?.Brush != null && points.Count >= 2)
+            {
+                var strokeBrush = GetNativeBrush(pen.Brush);
+                if (strokeBrush != null)
+                {
+                    _renderTarget.DrawPolygon(pointArray, strokeBrush, (float)pen.Thickness, figure.IsClosed);
+                }
             }
         }
     }
 
-    private void DrawBezierApprox(Pen pen, Point p0, Point p1, Point p2, Point p3)
+    private List<Point> GetBezierPoints(Point p0, Point p1, Point p2, Point p3)
     {
         const int segments = 16;
-        var prevPoint = p0;
-
+        var points = new List<Point>();
         for (int i = 1; i <= segments; i++)
         {
             double t = i / (double)segments;
             double u = 1 - t;
-
-            // Cubic bezier formula
             double x = u * u * u * p0.X + 3 * u * u * t * p1.X + 3 * u * t * t * p2.X + t * t * t * p3.X;
             double y = u * u * u * p0.Y + 3 * u * u * t * p1.Y + 3 * u * t * t * p2.Y + t * t * t * p3.Y;
-
-            var point = new Point(x, y);
-            DrawLine(pen, prevPoint, point);
-            prevPoint = point;
+            points.Add(new Point(x, y));
         }
+        return points;
     }
 
-    private void DrawQuadBezierApprox(Pen pen, Point p0, Point p1, Point p2)
+    private List<Point> GetQuadBezierPoints(Point p0, Point p1, Point p2)
     {
         const int segments = 12;
-        var prevPoint = p0;
-
+        var points = new List<Point>();
         for (int i = 1; i <= segments; i++)
         {
             double t = i / (double)segments;
             double u = 1 - t;
-
-            // Quadratic bezier formula
             double x = u * u * p0.X + 2 * u * t * p1.X + t * t * p2.X;
             double y = u * u * p0.Y + 2 * u * t * p1.Y + t * t * p2.Y;
-
-            var point = new Point(x, y);
-            DrawLine(pen, prevPoint, point);
-            prevPoint = point;
+            points.Add(new Point(x, y));
         }
+        return points;
     }
 
-    private void DrawArcApprox(Pen pen, Point start, ArcSegment arc)
+    private List<Point> GetArcPoints(Point start, ArcSegment arc)
     {
-        // Simplified arc approximation using line segments
-        const int segments = 16;
-        var prevPoint = start;
-
-        var dx = arc.Point.X - start.X;
-        var dy = arc.Point.Y - start.Y;
-
-        for (int i = 1; i <= segments; i++)
-        {
-            double t = i / (double)segments;
-            var point = new Point(start.X + dx * t, start.Y + dy * t);
-            DrawLine(pen, prevPoint, point);
-            prevPoint = point;
-        }
+        // Simple approximation: connect with lines
+        // For full arc support, would need to compute arc points
+        var points = new List<Point> { arc.Point };
+        return points;
     }
 
     /// <inheritdoc />
@@ -523,6 +513,21 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
 
         _renderTarget.PushOpacity((float)opacity);
         _stateStack.Push(new DrawingState(DrawingStateType.Opacity, Point.Zero));
+    }
+
+    /// <summary>
+    /// Pops the most recent opacity from the opacity stack.
+    /// </summary>
+    public void PopOpacity()
+    {
+        if (_closed) return;
+
+        // Pop from our state stack if the top is opacity
+        if (_stateStack.Count > 0 && _stateStack.Peek().Type == DrawingStateType.Opacity)
+        {
+            _stateStack.Pop();
+        }
+        _renderTarget.PopOpacity();
     }
 
     /// <inheritdoc />

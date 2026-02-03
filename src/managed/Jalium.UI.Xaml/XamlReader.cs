@@ -1269,6 +1269,7 @@ internal class XamlParserContext : IAmbientResourceProvider
 
     /// <summary>
     /// Tries to find a resource by key in the ambient resource dictionaries (parent stack and parent dictionary).
+    /// Also falls back to Application resources for template parsing scenarios.
     /// </summary>
     public bool TryGetResource(object key, out object? value)
     {
@@ -1287,6 +1288,18 @@ internal class XamlParserContext : IAmbientResourceProvider
         if (ParentResourceDictionary != null && ParentResourceDictionary.TryGetValue(key, out value))
         {
             return true;
+        }
+
+        // Fall back to Application resources for template parsing scenarios
+        // When parsing ControlTemplate content, the parent stack is empty but
+        // Application resources should still be accessible
+        if (ResourceLookup.ApplicationResourceLookup != null)
+        {
+            value = ResourceLookup.ApplicationResourceLookup(key);
+            if (value != null)
+            {
+                return true;
+            }
         }
 
         value = null;
@@ -1347,13 +1360,16 @@ internal class XamlParserContext : IAmbientResourceProvider
         if (string.IsNullOrEmpty(propertyName) || targetType == null)
             return null;
 
-        // Search in target type and its base types
+        var fieldName = $"{propertyName}Property";
+
+        // Search in target type and its base types explicitly
+        // Using DeclaredOnly to search each type individually for reliability
         var currentType = targetType;
-        while (currentType != null)
+        while (currentType != null && currentType != typeof(object))
         {
-            var dpField = currentType.GetField($"{propertyName}Property",
-                BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy);
-            if (dpField != null)
+            var dpField = currentType.GetField(fieldName,
+                BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly);
+            if (dpField != null && dpField.FieldType == typeof(DependencyProperty))
             {
                 return dpField.GetValue(null) as DependencyProperty;
             }
@@ -1525,6 +1541,7 @@ public static class XamlTypeRegistry
         Register<TextBlock>(types);
         Register<TextBox>(types);
         Register<PasswordBox>(types);
+        Register<NumberBox>(types);
         Register<CheckBox>(types);
         Register<RadioButton>(types);
         Register<ComboBox>(types);
@@ -1562,6 +1579,7 @@ public static class XamlTypeRegistry
 
         // Jalium.UI.Controls.Primitives namespace
         Register<BulletDecorator>(types);
+        Register<ItemsPresenter>(types);
     }
 
     private static void RegisterMediaTypes(Dictionary<string, Type> types)

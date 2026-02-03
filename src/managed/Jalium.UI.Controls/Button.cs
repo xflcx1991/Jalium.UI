@@ -1,3 +1,6 @@
+using Jalium.UI.Automation;
+using Jalium.UI.Controls.Automation;
+
 namespace Jalium.UI.Controls;
 
 /// <summary>
@@ -6,6 +9,16 @@ namespace Jalium.UI.Controls;
 /// </summary>
 public class Button : ButtonBase
 {
+    #region Automation
+
+    /// <inheritdoc />
+    protected override AutomationPeer? OnCreateAutomationPeer()
+    {
+        return new ButtonAutomationPeer(this);
+    }
+
+    #endregion
+
     #region Dependency Properties
 
     /// <summary>

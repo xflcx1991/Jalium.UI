@@ -21,6 +21,15 @@ public class InputEventArgs : RoutedEventArgs
     }
 
     /// <summary>
+    /// Initializes a new instance of the <see cref="InputEventArgs"/> class with a timestamp.
+    /// </summary>
+    /// <param name="timestamp">The event timestamp.</param>
+    public InputEventArgs(int timestamp)
+    {
+        Timestamp = timestamp;
+    }
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="InputEventArgs"/> class.
     /// </summary>
     /// <param name="routedEvent">The routed event.</param>

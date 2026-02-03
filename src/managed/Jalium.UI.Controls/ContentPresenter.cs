@@ -183,44 +183,60 @@ public class ContentPresenter : FrameworkElement
         var parentType = TemplatedParent.GetType();
 
         // Try to find Content property and bind it
-        var contentPropInfo = parentType.GetProperty(contentSource);
-        if (contentPropInfo != null)
+        // Only apply if no explicit binding or local value is set
+        if (!HasLocalValue(ContentProperty) && GetBindingExpression(ContentProperty) == null)
         {
-            // Get the DependencyProperty
-            var dpField = parentType.GetField($"{contentSource}Property",
-                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.FlattenHierarchy);
-            if (dpField?.GetValue(null) is DependencyProperty contentDp)
+            var contentPropInfo = parentType.GetProperty(contentSource);
+            if (contentPropInfo != null)
             {
-                this.SetTemplateBinding(ContentProperty, contentDp);
+                // Get the DependencyProperty
+                var dpField = parentType.GetField($"{contentSource}Property",
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.FlattenHierarchy);
+                if (dpField?.GetValue(null) is DependencyProperty contentDp)
+                {
+                    this.SetTemplateBinding(ContentProperty, contentDp);
+                }
             }
         }
 
         // Try to find ContentTemplate property
-        var templatePropInfo = parentType.GetProperty($"{contentSource}Template");
-        if (templatePropInfo != null)
+        // Only apply if no explicit binding or local value is set
+        if (!HasLocalValue(ContentTemplateProperty) && GetBindingExpression(ContentTemplateProperty) == null)
         {
-            var dpField = parentType.GetField($"{contentSource}TemplateProperty",
-                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.FlattenHierarchy);
-            if (dpField?.GetValue(null) is DependencyProperty templateDp)
+            var templatePropInfo = parentType.GetProperty($"{contentSource}Template");
+            if (templatePropInfo != null)
             {
-                this.SetTemplateBinding(ContentTemplateProperty, templateDp);
+                var dpField = parentType.GetField($"{contentSource}TemplateProperty",
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.FlattenHierarchy);
+                if (dpField?.GetValue(null) is DependencyProperty templateDp)
+                {
+                    this.SetTemplateBinding(ContentTemplateProperty, templateDp);
+                }
             }
         }
 
         // Bind HorizontalContentAlignment -> HorizontalAlignment
-        var hcaDpField = parentType.GetField("HorizontalContentAlignmentProperty",
-            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.FlattenHierarchy);
-        if (hcaDpField?.GetValue(null) is DependencyProperty hcaDp)
+        // Only apply if no explicit binding or local value is set
+        if (!HasLocalValue(HorizontalAlignmentProperty) && GetBindingExpression(HorizontalAlignmentProperty) == null)
         {
-            this.SetTemplateBinding(HorizontalAlignmentProperty, hcaDp);
+            var hcaDpField = parentType.GetField("HorizontalContentAlignmentProperty",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.FlattenHierarchy);
+            if (hcaDpField?.GetValue(null) is DependencyProperty hcaDp)
+            {
+                this.SetTemplateBinding(HorizontalAlignmentProperty, hcaDp);
+            }
         }
 
         // Bind VerticalContentAlignment -> VerticalAlignment
-        var vcaDpField = parentType.GetField("VerticalContentAlignmentProperty",
-            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.FlattenHierarchy);
-        if (vcaDpField?.GetValue(null) is DependencyProperty vcaDp)
+        // Only apply if no explicit binding or local value is set
+        if (!HasLocalValue(VerticalAlignmentProperty) && GetBindingExpression(VerticalAlignmentProperty) == null)
         {
-            this.SetTemplateBinding(VerticalAlignmentProperty, vcaDp);
+            var vcaDpField = parentType.GetField("VerticalContentAlignmentProperty",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.FlattenHierarchy);
+            if (vcaDpField?.GetValue(null) is DependencyProperty vcaDp)
+            {
+                this.SetTemplateBinding(VerticalAlignmentProperty, vcaDp);
+            }
         }
     }
 
@@ -263,97 +279,4 @@ public class ContentPresenter : FrameworkElement
     }
 
     #endregion
-}
-
-/// <summary>
-/// Defines a template for data display.
-/// </summary>
-public class DataTemplate
-{
-    private Func<FrameworkElement>? _visualTree;
-    private bool _isSealed;
-
-    /// <summary>
-    /// Gets or sets the type of data for which this template is intended.
-    /// </summary>
-    public Type? DataType { get; set; }
-
-    /// <summary>
-    /// Gets a value indicating whether this template is read-only.
-    /// </summary>
-    public bool IsSealed => _isSealed;
-
-    /// <summary>
-    /// Gets or sets the raw XAML content for this template.
-    /// This is set by the XAML parser and used by LoadContent() to create the visual tree.
-    /// </summary>
-    internal string? VisualTreeXaml { get; set; }
-
-    /// <summary>
-    /// Gets or sets the assembly context for parsing the XAML content.
-    /// </summary>
-    internal System.Reflection.Assembly? SourceAssembly { get; set; }
-
-    /// <summary>
-    /// Gets or sets a callback used by LoadContent to parse XAML.
-    /// This allows the Controls assembly to remain independent of the Xaml assembly.
-    /// </summary>
-    public static Func<string, System.Reflection.Assembly?, FrameworkElement?>? XamlParser { get; set; }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="DataTemplate"/> class.
-    /// </summary>
-    public DataTemplate()
-    {
-    }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="DataTemplate"/> class with the specified data type.
-    /// </summary>
-    /// <param name="dataType">The type of data for which this template is intended.</param>
-    public DataTemplate(Type dataType)
-    {
-        DataType = dataType;
-    }
-
-    /// <summary>
-    /// Sets the visual tree factory for this template.
-    /// </summary>
-    /// <param name="visualTreeFactory">A function that creates the visual tree.</param>
-    public void SetVisualTree(Func<FrameworkElement> visualTreeFactory)
-    {
-        if (_isSealed)
-            throw new InvalidOperationException("Cannot modify a sealed DataTemplate.");
-
-        _visualTree = visualTreeFactory;
-    }
-
-    /// <summary>
-    /// Seals the template so that it can no longer be modified.
-    /// </summary>
-    public void Seal()
-    {
-        _isSealed = true;
-    }
-
-    /// <summary>
-    /// Creates the visual tree defined by this template.
-    /// </summary>
-    /// <returns>The root element of the visual tree.</returns>
-    public FrameworkElement? LoadContent()
-    {
-        // If we have a factory function, use it
-        if (_visualTree != null)
-        {
-            return _visualTree.Invoke();
-        }
-
-        // If we have stored XAML content, parse it
-        if (!string.IsNullOrEmpty(VisualTreeXaml) && XamlParser != null)
-        {
-            return XamlParser(VisualTreeXaml, SourceAssembly);
-        }
-
-        return null;
-    }
 }

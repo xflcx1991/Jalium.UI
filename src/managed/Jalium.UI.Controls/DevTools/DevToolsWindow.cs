@@ -159,7 +159,9 @@ public class DevToolsWindow : Window
         var item = new DevToolsTreeViewItem(visual);
 
         // Add children
-        for (int i = 0; i < visual.VisualChildrenCount; i++)
+        var childCount = visual.VisualChildrenCount;
+
+        for (int i = 0; i < childCount; i++)
         {
             var child = visual.GetVisualChild(i);
             if (child != null)

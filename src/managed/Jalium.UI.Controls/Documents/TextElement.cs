@@ -2,6 +2,8 @@ using Jalium.UI.Media;
 
 namespace Jalium.UI.Documents;
 
+using TextDecorationCollection = Jalium.UI.Media.TextDecorationCollection;
+
 /// <summary>
 /// Abstract base class for all elements in a FlowDocument.
 /// </summary>
@@ -49,6 +51,13 @@ public abstract class TextElement : DependencyObject
     /// </summary>
     public static readonly DependencyProperty BackgroundProperty =
         DependencyProperty.Register(nameof(Background), typeof(Brush), typeof(TextElement),
+            new PropertyMetadata(null));
+
+    /// <summary>
+    /// Identifies the TextDecorations dependency property.
+    /// </summary>
+    public static readonly DependencyProperty TextDecorationsProperty =
+        DependencyProperty.Register(nameof(TextDecorations), typeof(TextDecorationCollection), typeof(TextElement),
             new PropertyMetadata(null));
 
     #endregion
@@ -110,6 +119,15 @@ public abstract class TextElement : DependencyObject
     }
 
     /// <summary>
+    /// Gets or sets the text decorations.
+    /// </summary>
+    public TextDecorationCollection? TextDecorations
+    {
+        get => (TextDecorationCollection?)GetValue(TextDecorationsProperty);
+        set => SetValue(TextDecorationsProperty, value);
+    }
+
+    /// <summary>
     /// Gets the parent element.
     /// </summary>
     public TextElement? Parent { get; internal set; }
@@ -165,6 +183,11 @@ public abstract class TextElement : DependencyObject
     /// Gets the effective background brush.
     /// </summary>
     public Brush? GetEffectiveBackground() => GetEffectiveValue<Brush?>(BackgroundProperty, null);
+
+    /// <summary>
+    /// Gets the effective text decorations.
+    /// </summary>
+    public TextDecorationCollection? GetEffectiveTextDecorations() => GetEffectiveValue<TextDecorationCollection?>(TextDecorationsProperty, null);
 
     #endregion
 }

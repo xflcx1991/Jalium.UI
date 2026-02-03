@@ -352,12 +352,32 @@ public class FrameworkElement : UIElement
     private ResourceDictionary? _resources;
 
     /// <summary>
+    /// Occurs when the Resources property has changed.
+    /// </summary>
+    public event EventHandler? ResourcesChanged;
+
+    /// <summary>
     /// Gets or sets the locally-defined resource dictionary.
     /// </summary>
     public ResourceDictionary Resources
     {
         get => _resources ??= new ResourceDictionary();
-        set => _resources = value;
+        set
+        {
+            if (_resources != value)
+            {
+                _resources = value;
+                OnResourcesChanged();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Raises the ResourcesChanged event.
+    /// </summary>
+    protected virtual void OnResourcesChanged()
+    {
+        ResourcesChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>
@@ -859,6 +879,13 @@ public class FrameworkElement : UIElement
     {
         base.OnVisualParentChanged(oldParent);
         ApplyImplicitStyleIfNeeded();
+
+        // Reactivate bindings when visual parent changes
+        // This allows RelativeSource FindAncestor bindings to resolve after being added to the visual tree
+        if (VisualParent != null)
+        {
+            ReactivateBindings();
+        }
     }
 
     /// <summary>

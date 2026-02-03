@@ -9,6 +9,15 @@ public class DependencyObject : DispatcherObject
     private readonly Dictionary<DependencyProperty, object?> _values = new();
     private readonly Dictionary<DependencyProperty, object?> _localValues = new();
     private readonly Dictionary<DependencyProperty, BindingExpressionBase> _bindings = new();
+    private readonly Dictionary<DependencyProperty, AnimatedPropertyValue> _animatedValues = new();
+
+    /// <summary>
+    /// Internal record to track animated property values.
+    /// </summary>
+    internal record AnimatedPropertyValue(
+        object? BaseValue,       // Value before animation started
+        object? CurrentValue,    // Current animated value
+        bool HoldEndValue);      // Whether to hold the final value after animation ends
 
     /// <summary>
     /// Internal event for property change notification used by triggers.
@@ -17,6 +26,7 @@ public class DependencyObject : DispatcherObject
 
     /// <summary>
     /// Gets the current effective value of a dependency property.
+    /// Value precedence: Animation > Local > Binding > Default
     /// </summary>
     /// <param name="dp">The dependency property to get.</param>
     /// <returns>The current effective value.</returns>
@@ -24,11 +34,19 @@ public class DependencyObject : DispatcherObject
     {
         ArgumentNullException.ThrowIfNull(dp);
 
+        // 1. Animated values have highest precedence
+        if (_animatedValues.TryGetValue(dp, out var animated))
+        {
+            return animated.CurrentValue;
+        }
+
+        // 2. Local values and binding values (stored in _values)
         if (_values.TryGetValue(dp, out var value))
         {
             return value;
         }
 
+        // 3. Default value
         return dp.DefaultMetadata.DefaultValue;
     }
 
@@ -41,6 +59,21 @@ public class DependencyObject : DispatcherObject
     {
         ArgumentNullException.ThrowIfNull(dp);
         return _localValues.ContainsKey(dp);
+    }
+
+    /// <summary>
+    /// Returns the local value of a dependency property, if a local value is set.
+    /// </summary>
+    /// <param name="dp">The dependency property to read.</param>
+    /// <returns>The local value, or DependencyProperty.UnsetValue if no local value is set.</returns>
+    public object ReadLocalValue(DependencyProperty dp)
+    {
+        ArgumentNullException.ThrowIfNull(dp);
+        if (_localValues.TryGetValue(dp, out var value))
+        {
+            return value ?? DependencyProperty.UnsetValue;
+        }
+        return DependencyProperty.UnsetValue;
     }
 
     /// <summary>
@@ -206,6 +239,100 @@ public class DependencyObject : DispatcherObject
         // Notify internal listeners (triggers, etc.)
         PropertyChangedInternal?.Invoke(e.Property, e.OldValue, e.NewValue);
     }
+
+    #region Animation Value Support
+
+    /// <summary>
+    /// Sets an animated value for a dependency property. Called by the animation system.
+    /// </summary>
+    /// <param name="dp">The dependency property to animate.</param>
+    /// <param name="value">The current animated value.</param>
+    /// <param name="holdEndValue">Whether to hold the final value after animation ends (FillBehavior.HoldEnd).</param>
+    internal void SetAnimatedValue(DependencyProperty dp, object? value, bool holdEndValue)
+    {
+        ArgumentNullException.ThrowIfNull(dp);
+
+        var oldValue = GetValue(dp);
+
+        if (!_animatedValues.ContainsKey(dp))
+        {
+            // Store base value for restoration when animation ends
+            var baseValue = _localValues.TryGetValue(dp, out var local)
+                ? local
+                : dp.DefaultMetadata.DefaultValue;
+            _animatedValues[dp] = new AnimatedPropertyValue(baseValue, value, holdEndValue);
+        }
+        else
+        {
+            var existing = _animatedValues[dp];
+            _animatedValues[dp] = existing with { CurrentValue = value, HoldEndValue = holdEndValue };
+        }
+
+        if (!Equals(oldValue, value))
+        {
+            OnPropertyChanged(new DependencyPropertyChangedEventArgs(dp, oldValue, value));
+        }
+    }
+
+    /// <summary>
+    /// Clears the animated value for a dependency property, restoring the base value if not holding.
+    /// </summary>
+    /// <param name="dp">The dependency property to clear animation from.</param>
+    internal void ClearAnimatedValue(DependencyProperty dp)
+    {
+        ArgumentNullException.ThrowIfNull(dp);
+
+        if (_animatedValues.TryGetValue(dp, out var animated))
+        {
+            var oldValue = animated.CurrentValue;
+            _animatedValues.Remove(dp);
+
+            if (animated.HoldEndValue)
+            {
+                // HoldEnd: The animated value becomes the new effective value
+                // We store it in _values so GetValue() returns it
+                _values[dp] = oldValue;
+            }
+
+            // Get the new effective value after removing animation
+            var newValue = GetValue(dp);
+
+            if (!Equals(oldValue, newValue))
+            {
+                OnPropertyChanged(new DependencyPropertyChangedEventArgs(dp, oldValue, newValue));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Checks if a dependency property currently has an active animated value.
+    /// </summary>
+    /// <param name="dp">The dependency property to check.</param>
+    /// <returns>True if the property has an animated value; otherwise, false.</returns>
+    internal bool HasAnimatedValue(DependencyProperty dp)
+    {
+        ArgumentNullException.ThrowIfNull(dp);
+        return _animatedValues.ContainsKey(dp);
+    }
+
+    /// <summary>
+    /// Gets the base value (before animation) for a dependency property.
+    /// </summary>
+    /// <param name="dp">The dependency property.</param>
+    /// <returns>The base value, or the current effective value if not animated.</returns>
+    internal object? GetAnimationBaseValue(DependencyProperty dp)
+    {
+        ArgumentNullException.ThrowIfNull(dp);
+
+        if (_animatedValues.TryGetValue(dp, out var animated))
+        {
+            return animated.BaseValue;
+        }
+
+        return GetValue(dp);
+    }
+
+    #endregion
 }
 
 /// <summary>

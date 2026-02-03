@@ -155,6 +155,11 @@ public class BindingExtension : MarkupExtension
     public string? StringFormat { get; set; }
 
     /// <summary>
+    /// Gets or sets the relative source for the binding.
+    /// </summary>
+    public RelativeSource? RelativeSource { get; set; }
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="BindingExtension"/> class.
     /// </summary>
     public BindingExtension()
@@ -184,7 +189,8 @@ public class BindingExtension : MarkupExtension
             UpdateSourceTrigger = UpdateSourceTrigger,
             FallbackValue = FallbackValue,
             TargetNullValue = TargetNullValue,
-            StringFormat = StringFormat
+            StringFormat = StringFormat,
+            RelativeSource = RelativeSource
         };
 
         // If we have target information, set up the binding now
@@ -264,12 +270,272 @@ public class StaticResourceExtension : MarkupExtension
 }
 
 /// <summary>
+/// XAML markup extension for dynamic resources.
+/// Unlike StaticResource, DynamicResource updates when the resource changes.
+/// </summary>
+public class DynamicResourceExtension : MarkupExtension
+{
+    /// <summary>
+    /// Gets or sets the resource key.
+    /// </summary>
+    public object? ResourceKey { get; set; }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DynamicResourceExtension"/> class.
+    /// </summary>
+    public DynamicResourceExtension()
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DynamicResourceExtension"/> class with the specified key.
+    /// </summary>
+    /// <param name="resourceKey">The resource key.</param>
+    public DynamicResourceExtension(object resourceKey)
+    {
+        ResourceKey = resourceKey;
+    }
+
+    /// <inheritdoc />
+    public override object? ProvideValue(IServiceProvider serviceProvider)
+    {
+        if (ResourceKey == null)
+            return null;
+
+        var provideValueTarget = serviceProvider?.GetService(typeof(IProvideValueTarget)) as IProvideValueTarget;
+        var targetObject = provideValueTarget?.TargetObject as DependencyObject;
+        var targetProperty = provideValueTarget?.TargetProperty as DependencyProperty;
+
+        if (targetObject != null && targetProperty != null)
+        {
+            // Set up a dynamic resource reference
+            var reference = new DynamicResourceReference(ResourceKey);
+            targetObject.SetValue(targetProperty, reference);
+
+            // Register for resource changes
+            if (targetObject is FrameworkElement fe)
+            {
+                fe.ResourcesChanged += (s, e) =>
+                {
+                    var value = ResourceLookup.FindResource(fe, ResourceKey);
+                    if (value != null && value is not DynamicResourceReference)
+                    {
+                        targetObject.SetValue(targetProperty, value);
+                    }
+                };
+
+                // Try to resolve the initial value
+                var initialValue = ResourceLookup.FindResource(fe, ResourceKey);
+                if (initialValue != null)
+                {
+                    return initialValue;
+                }
+            }
+
+            return reference;
+        }
+
+        // If we can't set up dynamic binding, fall back to static lookup
+        if (provideValueTarget?.TargetObject is FrameworkElement element)
+        {
+            return ResourceLookup.FindResource(element, ResourceKey);
+        }
+
+        return null;
+    }
+}
+
+/// <summary>
+/// Represents a reference to a dynamic resource that will be resolved at runtime.
+/// </summary>
+public class DynamicResourceReference
+{
+    /// <summary>
+    /// Gets the resource key.
+    /// </summary>
+    public object ResourceKey { get; }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DynamicResourceReference"/> class.
+    /// </summary>
+    public DynamicResourceReference(object resourceKey)
+    {
+        ResourceKey = resourceKey;
+    }
+}
+
+/// <summary>
 /// XAML markup extension for x:Null.
 /// </summary>
 public class NullExtension : MarkupExtension
 {
     /// <inheritdoc />
     public override object? ProvideValue(IServiceProvider serviceProvider) => null;
+}
+
+/// <summary>
+/// XAML markup extension for x:Static.
+/// Retrieves static fields, properties, constants, or enum values.
+/// </summary>
+public class StaticExtension : MarkupExtension
+{
+    /// <summary>
+    /// Gets or sets the member name (in TypeName.MemberName format).
+    /// </summary>
+    public string? Member { get; set; }
+
+    /// <summary>
+    /// Gets or sets the member type (alternative to specifying in Member string).
+    /// </summary>
+    public Type? MemberType { get; set; }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="StaticExtension"/> class.
+    /// </summary>
+    public StaticExtension()
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="StaticExtension"/> class with the specified member.
+    /// </summary>
+    /// <param name="member">The member name in TypeName.MemberName format.</param>
+    public StaticExtension(string member)
+    {
+        Member = member;
+    }
+
+    /// <inheritdoc />
+    public override object? ProvideValue(IServiceProvider serviceProvider)
+    {
+        if (string.IsNullOrEmpty(Member))
+            return null;
+
+        // Parse TypeName.MemberName
+        var lastDot = Member.LastIndexOf('.');
+        if (lastDot < 0)
+        {
+            // Check if it's an enum value with MemberType specified
+            if (MemberType != null && MemberType.IsEnum)
+            {
+                return Enum.Parse(MemberType, Member);
+            }
+            return null;
+        }
+
+        var typeName = Member.Substring(0, lastDot);
+        var memberName = Member.Substring(lastDot + 1);
+
+        // Resolve the type
+        var type = MemberType ?? ResolveType(typeName);
+        if (type == null)
+            return null;
+
+        // Check for enum value
+        if (type.IsEnum)
+        {
+            return Enum.Parse(type, memberName);
+        }
+
+        // Check for static field
+        var field = type.GetField(memberName, BindingFlags.Public | BindingFlags.Static);
+        if (field != null)
+            return field.GetValue(null);
+
+        // Check for static property
+        var property = type.GetProperty(memberName, BindingFlags.Public | BindingFlags.Static);
+        if (property != null)
+            return property.GetValue(null);
+
+        return null;
+    }
+
+    private static Type? ResolveType(string typeName)
+    {
+        // Try to resolve the type from common namespaces
+        var namespaces = new[]
+        {
+            "Jalium.UI.Controls",
+            "Jalium.UI",
+            "Jalium.UI.Media",
+            "Jalium.UI.Input",
+            "System"
+        };
+
+        foreach (var ns in namespaces)
+        {
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                var type = assembly.GetType($"{ns}.{typeName}");
+                if (type != null) return type;
+            }
+        }
+
+        // Try fully qualified name
+        return Type.GetType(typeName);
+    }
+}
+
+/// <summary>
+/// XAML markup extension for x:Array.
+/// Creates an array of the specified type.
+/// </summary>
+public class ArrayExtension : MarkupExtension
+{
+    private readonly List<object?> _items = new();
+
+    /// <summary>
+    /// Gets or sets the type of the array elements.
+    /// </summary>
+    public Type? Type { get; set; }
+
+    /// <summary>
+    /// Gets the items collection.
+    /// </summary>
+    public IList<object?> Items => _items;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ArrayExtension"/> class.
+    /// </summary>
+    public ArrayExtension()
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ArrayExtension"/> class with the specified type.
+    /// </summary>
+    public ArrayExtension(Type type)
+    {
+        Type = type;
+    }
+
+    /// <summary>
+    /// Adds an item to the array.
+    /// </summary>
+    public void AddChild(object? item)
+    {
+        _items.Add(item);
+    }
+
+    /// <inheritdoc />
+    public override object? ProvideValue(IServiceProvider serviceProvider)
+    {
+        var elementType = Type ?? typeof(object);
+        var array = Array.CreateInstance(elementType, _items.Count);
+
+        for (int i = 0; i < _items.Count; i++)
+        {
+            var item = _items[i];
+            if (item != null && !elementType.IsAssignableFrom(item.GetType()))
+            {
+                // Try to convert
+                item = Convert.ChangeType(item, elementType);
+            }
+            array.SetValue(item, i);
+        }
+
+        return array;
+    }
 }
 
 /// <summary>
@@ -590,9 +856,12 @@ internal static class MarkupExtensionParser
         {
             "binding" => CreateBindingExtension(parameters),
             "staticresource" => CreateStaticResourceExtension(parameters),
+            "dynamicresource" => CreateDynamicResourceExtension(parameters),
             "templatebinding" => CreateTemplateBindingExtension(parameters),
             "null" => new NullExtension(),
             "type" => CreateTypeExtension(parameters),
+            "static" => CreateStaticExtension(parameters),
+            "array" => CreateArrayExtension(parameters),
             _ => null
         };
     }
@@ -656,13 +925,186 @@ internal static class MarkupExtensionParser
             case "converterparameter":
                 extension.ConverterParameter = value;
                 break;
+            case "relativesource":
+                extension.RelativeSource = ParseRelativeSource(value);
+                break;
         }
+    }
+
+    private static RelativeSource? ParseRelativeSource(string value)
+    {
+        // Handle nested markup extension: {RelativeSource AncestorType=ComboBox}
+        var trimmed = value.Trim();
+        if (trimmed.StartsWith('{') && trimmed.EndsWith('}'))
+        {
+            var content = trimmed.Substring(1, trimmed.Length - 2).Trim();
+
+            // Check for "RelativeSource" prefix
+            if (content.StartsWith("RelativeSource", StringComparison.OrdinalIgnoreCase))
+            {
+                var parameters = content.Substring("RelativeSource".Length).Trim();
+                return CreateRelativeSourceFromParameters(parameters);
+            }
+        }
+
+        // Handle simple values like "Self" or "TemplatedParent"
+        return CreateRelativeSourceFromParameters(value);
+    }
+
+    private static RelativeSource? CreateRelativeSourceFromParameters(string parameters)
+    {
+        if (string.IsNullOrWhiteSpace(parameters))
+            return null;
+
+        // Check for simple mode values
+        var trimmedParams = parameters.Trim();
+
+        // Handle "Self", "TemplatedParent", "FindAncestor"
+        if (Enum.TryParse<RelativeSourceMode>(trimmedParams, true, out var simpleMode))
+        {
+            return new RelativeSource(simpleMode);
+        }
+
+        // Parse named parameters: AncestorType=ComboBox, AncestorLevel=1
+        var parts = SplitParameters(parameters);
+        RelativeSourceMode mode = RelativeSourceMode.FindAncestor;
+        Type? ancestorType = null;
+        int ancestorLevel = 1;
+
+        foreach (var part in parts)
+        {
+            var equalsIndex = part.IndexOf('=');
+            if (equalsIndex < 0)
+            {
+                // Positional parameter - might be mode
+                if (Enum.TryParse<RelativeSourceMode>(part.Trim(), true, out var modeValue))
+                {
+                    mode = modeValue;
+                }
+                continue;
+            }
+
+            var paramName = part.Substring(0, equalsIndex).Trim();
+            var paramValue = part.Substring(equalsIndex + 1).Trim();
+
+            switch (paramName.ToLowerInvariant())
+            {
+                case "mode":
+                    if (Enum.TryParse<RelativeSourceMode>(paramValue, true, out var modeVal))
+                        mode = modeVal;
+                    break;
+                case "ancestortype":
+                    ancestorType = ResolveType(paramValue);
+                    break;
+                case "ancestorlevel":
+                    if (int.TryParse(paramValue, out var level))
+                        ancestorLevel = level;
+                    break;
+            }
+        }
+
+        // If AncestorType is specified, mode is FindAncestor
+        if (ancestorType != null)
+        {
+            mode = RelativeSourceMode.FindAncestor;
+        }
+
+        var relativeSource = new RelativeSource(mode)
+        {
+            AncestorType = ancestorType,
+            AncestorLevel = ancestorLevel
+        };
+
+        return relativeSource;
+    }
+
+    private static Type? ResolveType(string typeName)
+    {
+        // Remove quotes if present
+        var cleanName = typeName.Trim().Trim('"', '\'');
+
+        // Handle x:Type syntax
+        if (cleanName.StartsWith("{x:Type", StringComparison.OrdinalIgnoreCase))
+        {
+            var start = cleanName.IndexOf(' ') + 1;
+            var end = cleanName.IndexOf('}');
+            if (start > 0 && end > start)
+            {
+                cleanName = cleanName.Substring(start, end - start).Trim();
+            }
+        }
+
+        // Try to resolve the type from common namespaces
+        var controlsNamespace = "Jalium.UI.Controls";
+        var coreNamespace = "Jalium.UI";
+
+        // Try with Controls namespace first
+        var fullTypeName = $"{controlsNamespace}.{cleanName}, Jalium.UI.Controls";
+        var type = Type.GetType(fullTypeName);
+        if (type != null) return type;
+
+        // Try with Core namespace
+        fullTypeName = $"{coreNamespace}.{cleanName}, Jalium.UI.Core";
+        type = Type.GetType(fullTypeName);
+        if (type != null) return type;
+
+        // Try the type name as-is (might be fully qualified)
+        type = Type.GetType(cleanName);
+        if (type != null) return type;
+
+        // Search loaded assemblies
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            type = assembly.GetType($"{controlsNamespace}.{cleanName}");
+            if (type != null) return type;
+
+            type = assembly.GetType($"{coreNamespace}.{cleanName}");
+            if (type != null) return type;
+        }
+
+        return null;
     }
 
     private static StaticResourceExtension CreateStaticResourceExtension(string parameters)
     {
         var key = parameters.Trim();
         return new StaticResourceExtension(key);
+    }
+
+    private static DynamicResourceExtension CreateDynamicResourceExtension(string parameters)
+    {
+        var key = parameters.Trim();
+        return new DynamicResourceExtension(key);
+    }
+
+    private static StaticExtension CreateStaticExtension(string parameters)
+    {
+        var member = parameters.Trim();
+        return new StaticExtension(member);
+    }
+
+    private static ArrayExtension CreateArrayExtension(string parameters)
+    {
+        // Parse Type= parameter
+        var extension = new ArrayExtension();
+        var parts = SplitParameters(parameters);
+
+        foreach (var part in parts)
+        {
+            var equalsIndex = part.IndexOf('=');
+            if (equalsIndex >= 0)
+            {
+                var paramName = part.Substring(0, equalsIndex).Trim();
+                var paramValue = part.Substring(equalsIndex + 1).Trim();
+
+                if (paramName.Equals("Type", StringComparison.OrdinalIgnoreCase))
+                {
+                    extension.Type = ResolveType(paramValue);
+                }
+            }
+        }
+
+        return extension;
     }
 
     private static TypeExtension CreateTypeExtension(string parameters)

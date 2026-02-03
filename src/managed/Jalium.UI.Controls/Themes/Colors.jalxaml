@@ -80,4 +80,22 @@
     <SolidColorBrush x:Key="SelectionBackground" Color="#0078D4" />
     <SolidColorBrush x:Key="HighlightBackground" Color="#3C3C3C" />
 
+    <!-- Hyperlink Colors -->
+    <SolidColorBrush x:Key="HyperlinkForeground" Color="#0078D4" />
+    <SolidColorBrush x:Key="HyperlinkForegroundHover" Color="#1A91EB" />
+    <SolidColorBrush x:Key="HyperlinkForegroundPressed" Color="#005FAA" />
+
+    <!-- ToolTip Colors -->
+    <SolidColorBrush x:Key="TooltipBackground" Color="#2D2D2D" />
+    <SolidColorBrush x:Key="TooltipBorder" Color="#505050" />
+
+    <!-- Text Tertiary (for grip lines etc.) -->
+    <SolidColorBrush x:Key="TextTertiary" Color="#646464" />
+
+    <!-- InfoBar Colors -->
+    <SolidColorBrush x:Key="InfoBarInformationalBackground" Color="#2D4D6D" />
+    <SolidColorBrush x:Key="InfoBarSuccessBackground" Color="#2D6D3C" />
+    <SolidColorBrush x:Key="InfoBarWarningBackground" Color="#6D5A2D" />
+    <SolidColorBrush x:Key="InfoBarErrorBackground" Color="#6D2D2D" />
+
 </ResourceDictionary>

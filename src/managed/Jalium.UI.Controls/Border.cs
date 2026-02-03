@@ -5,6 +5,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Draws a border, background, or both around another element.
 /// </summary>
+[ContentProperty("Child")]
 public class Border : FrameworkElement
 {
     private UIElement? _child;

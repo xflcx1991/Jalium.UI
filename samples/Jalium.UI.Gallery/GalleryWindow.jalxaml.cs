@@ -68,7 +68,27 @@ public partial class GalleryWindow : Window
         { "shadereffects", () => new ShaderEffectsPage() },
         { "navigationdemo", () => new NavigationDemoPage() },
         { "printing", () => new PrintingPage() },
-        { "shellintegration", () => new ShellIntegrationPage() }
+        { "shellintegration", () => new ShellIntegrationPage() },
+        // New control pages
+        { "menu", () => new MenuPage() },
+        { "contextmenu", () => new ContextMenuPage() },
+        { "toolbar", () => new ToolBarPage() },
+        { "tooltip", () => new ToolTipPage() },
+        { "popup", () => new PopupPage() },
+        { "expander", () => new ExpanderPage() },
+        { "datepicker", () => new DatePickerPage() },
+        { "timepicker", () => new TimePickerPage() },
+        { "colorpicker", () => new ColorPickerPage() },
+        { "richtextbox", () => new RichTextBoxPage() },
+        { "shapes", () => new ShapesPage() },
+        { "frame", () => new FramePage() },
+        { "viewbox", () => new ViewboxPage() },
+        { "listview", () => new ListViewPage() },
+        { "mediaelement", () => new MediaElementPage() },
+        { "dialogs", () => new DialogsPage() },
+        { "toastnotification", () => new ToastNotificationPage() },
+        { "splitter", () => new SplitterPage() },
+        { "inkcanvas", () => new InkCanvasPage() }
     };
 
     public GalleryWindow()
@@ -117,6 +137,7 @@ public partial class GalleryWindow : Window
         var textGroup = AddGroupItem("Text", "text");
         AddChildItem(textGroup, "TextBlock", "textblock");
         AddChildItem(textGroup, "Label", "label");
+        AddChildItem(textGroup, "RichTextBox", "richtextbox");
 
         // Data (expandable group) - data binding features
         var dataGroup = AddGroupItem("Data");
@@ -134,18 +155,28 @@ public partial class GalleryWindow : Window
         AddChildItem(layoutGroup, "Expander", "expander");
         AddChildItem(layoutGroup, "GroupBox", "groupbox");
         AddChildItem(layoutGroup, "Separator", "separator");
+        AddChildItem(layoutGroup, "Viewbox", "viewbox");
+        AddChildItem(layoutGroup, "Splitter", "splitter");
 
         // Navigation (expandable group) - clicking group navigates to category overview
         var navigationGroup = AddGroupItem("Navigation", "navigation");
         AddChildItem(navigationGroup, "TabControl", "tabcontrol");
+        AddChildItem(navigationGroup, "Frame", "frame");
+        AddChildItem(navigationGroup, "Menu", "menu");
+        AddChildItem(navigationGroup, "ContextMenu", "contextmenu");
+        AddChildItem(navigationGroup, "ToolBar", "toolbar");
 
         // Media (expandable group) - clicking group navigates to category overview
         var mediaGroup = AddGroupItem("Media", "media");
         AddChildItem(mediaGroup, "Image", "image");
+        AddChildItem(mediaGroup, "MediaElement", "mediaelement");
+        AddChildItem(mediaGroup, "Shapes", "shapes");
+        AddChildItem(mediaGroup, "InkCanvas", "inkcanvas");
 
         // Collections (expandable group) - clicking group navigates to category overview
         var collectionsGroup = AddGroupItem("Collections", "collections");
         AddChildItem(collectionsGroup, "ListBox", "listbox");
+        AddChildItem(collectionsGroup, "ListView", "listview");
         AddChildItem(collectionsGroup, "TreeView", "treeview");
         AddChildItem(collectionsGroup, "DataGrid", "datagrid");
         AddChildItem(collectionsGroup, "Calendar", "calendar");
@@ -153,17 +184,28 @@ public partial class GalleryWindow : Window
         // Date & Time (expandable group)
         var dateTimeGroup = AddGroupItem("Date & Time");
         AddChildItem(dateTimeGroup, "DatePicker", "datepicker");
+        AddChildItem(dateTimeGroup, "TimePicker", "timepicker");
         AddChildItem(dateTimeGroup, "Calendar", "calendar");
 
         // Pickers (expandable group)
         var pickersGroup = AddGroupItem("Pickers");
         AddChildItem(pickersGroup, "ColorPicker", "colorpicker");
 
+        // Overlays (expandable group)
+        var overlaysGroup = AddGroupItem("Overlays");
+        AddChildItem(overlaysGroup, "Popup", "popup");
+        AddChildItem(overlaysGroup, "ToolTip", "tooltip");
+        AddChildItem(overlaysGroup, "ToastNotification", "toastnotification");
+
         // Status & Info (expandable group)
         var statusGroup = AddGroupItem("Status & Info");
         AddChildItem(statusGroup, "StatusBar", "statusbar");
         AddChildItem(statusGroup, "InfoBar", "infobar");
         AddChildItem(statusGroup, "Thumb", "thumb");
+
+        // Dialogs (expandable group)
+        var dialogsGroup = AddGroupItem("Dialogs");
+        AddChildItem(dialogsGroup, "File Dialogs", "dialogs");
 
         // Effects (expandable group)
         var effectsGroup = AddGroupItem("Effects");

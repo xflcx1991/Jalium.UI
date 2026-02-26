@@ -446,6 +446,33 @@ public class EditControlTests
     }
 
     [Fact]
+    public void DocumentContentWidth_SameLengthDifferentGlyphWidths_ShouldTrackMeasuredPixels()
+    {
+        var editor = new EditControl
+        {
+            ShowMinimap = false,
+            FontFamily = "Segoe UI",
+            FontSize = 14
+        };
+
+        editor.LoadText("iiiiiiiiiiii");
+        editor.Arrange(new Rect(0, 0, 520, 140));
+        editor.UpdateScrollBarsForTesting(new Size(520, 140));
+        double narrowMeasured = GetPrivateView(editor).GetLineTextWidth(1);
+        double narrowWidth = InvokePrivateMethod<double>(editor, "GetDocumentTextContentWidth");
+
+        editor.LoadText("WWWWWWWWWWWW");
+        editor.Arrange(new Rect(0, 0, 520, 140));
+        editor.UpdateScrollBarsForTesting(new Size(520, 140));
+        double wideMeasured = GetPrivateView(editor).GetLineTextWidth(1);
+        double wideWidth = InvokePrivateMethod<double>(editor, "GetDocumentTextContentWidth");
+
+        Assert.Equal(wideMeasured + 16, wideWidth, precision: 3);
+        if (wideMeasured > narrowMeasured + 0.5)
+            Assert.True(wideWidth > narrowWidth + 0.5);
+    }
+
+    [Fact]
     public void VerticalScrollBarThumb_Drag_ShouldChangeVerticalOffset()
     {
         var editor = new EditControl { ShowMinimap = false };
@@ -1104,6 +1131,15 @@ public class EditControlTests
         var method = typeof(EditControl).GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(method);
         method!.Invoke(editor, args);
+    }
+
+    private static T InvokePrivateMethod<T>(EditControl editor, string methodName, params object[] args)
+    {
+        var method = typeof(EditControl).GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+        object? result = method!.Invoke(editor, args);
+        Assert.NotNull(result);
+        return (T)result;
     }
 
     private static void AssertAtBottom(EditControl editor)

@@ -40,6 +40,26 @@ internal sealed class EditorViewLine
     /// </summary>
     public bool IsHighlightingDirty { get; set; } = true;
 
+    /// <summary>
+    /// Gets the cached prefix widths (column -> pixel width) for this line.
+    /// </summary>
+    public Dictionary<int, double> PrefixWidths { get; } = [];
+
+    /// <summary>
+    /// Gets the line text used for prefix-width cache generation.
+    /// </summary>
+    public string? GeometryText { get; private set; }
+
+    /// <summary>
+    /// Gets the font family used for prefix-width cache generation.
+    /// </summary>
+    public string? GeometryFontFamily { get; private set; }
+
+    /// <summary>
+    /// Gets the font size used for prefix-width cache generation.
+    /// </summary>
+    public double GeometryFontSize { get; private set; }
+
     public EditorViewLine(int lineNumber)
     {
         LineNumber = lineNumber;
@@ -52,5 +72,35 @@ internal sealed class EditorViewLine
     {
         Highlighting = null;
         IsHighlightingDirty = true;
+    }
+
+    /// <summary>
+    /// Invalidates cached text geometry for this line.
+    /// </summary>
+    public void InvalidateGeometry()
+    {
+        PrefixWidths.Clear();
+        GeometryText = null;
+        GeometryFontFamily = null;
+        GeometryFontSize = 0;
+    }
+
+    /// <summary>
+    /// Ensures the geometry cache context matches the current line text and font settings.
+    /// </summary>
+    public void EnsureGeometryContext(string lineText, string fontFamily, double fontSize)
+    {
+        if (string.Equals(GeometryText, lineText, StringComparison.Ordinal) &&
+            string.Equals(GeometryFontFamily, fontFamily, StringComparison.Ordinal) &&
+            Math.Abs(GeometryFontSize - fontSize) <= 0.001)
+        {
+            return;
+        }
+
+        InvalidateGeometry();
+        GeometryText = lineText;
+        GeometryFontFamily = fontFamily;
+        GeometryFontSize = fontSize;
+        PrefixWidths[0] = 0;
     }
 }

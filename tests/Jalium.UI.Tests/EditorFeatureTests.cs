@@ -367,6 +367,42 @@ public class EditorFeatureTests
     }
 
     [Fact]
+    public void EditorView_PointOffsetRoundTrip_WithMixedVariableWidthText_ShouldBeStable()
+    {
+        var doc = new TextDocument("iiii WWWW 中文😀\tTab");
+        var view = new EditorView { Document = doc };
+        view.UpdateLayout("Segoe UI", 14);
+
+        var line = doc.GetLineByNumber(1);
+        for (int column = 0; column <= line.Length; column++)
+        {
+            int offset = line.Offset + column;
+            Point p = view.GetPointFromOffset(offset, showLineNumbers: false);
+            int roundTrip = view.GetOffsetFromPoint(p, showLineNumbers: false);
+            Assert.Equal(offset, roundTrip);
+        }
+    }
+
+    [Fact]
+    public void EditorView_GetOffsetFromPoint_NearCharacterBoundary_ShouldPickNearestColumn()
+    {
+        var doc = new TextDocument("iW");
+        var view = new EditorView { Document = doc };
+        view.UpdateLayout("Segoe UI", 16);
+
+        Point p1 = view.GetPointFromOffset(1, showLineNumbers: false);
+        Point p2 = view.GetPointFromOffset(2, showLineNumbers: false);
+        double boundary = (p1.X + p2.X) * 0.5;
+        double epsilon = Math.Max(0.05, Math.Min(0.5, (p2.X - p1.X) * 0.25));
+
+        int left = view.GetOffsetFromPoint(new Point(boundary - epsilon, p1.Y), showLineNumbers: false);
+        int right = view.GetOffsetFromPoint(new Point(boundary + epsilon, p1.Y), showLineNumbers: false);
+
+        Assert.Equal(1, left);
+        Assert.Equal(2, right);
+    }
+
+    [Fact]
     public void EditorView_VisibleLineCount_WithoutDocument_ShouldBeOne()
     {
         var view = new EditorView();
@@ -527,6 +563,30 @@ public class EditorFeatureTests
         int nextVisibleLine = manager.GetFoldingAt(1)!.EndLine + 1;
         var nextVisiblePoint = view.GetPointFromOffset(doc.GetLineByNumber(nextVisibleLine).Offset, showLineNumbers: false);
         Assert.True(nextVisiblePoint.Y > hiddenPoint.Y);
+    }
+
+    [Fact]
+    public void EditorView_GetOffsetFromPoint_WhenLineHidden_ShouldMapToFoldHeaderAnchor()
+    {
+        var doc = new TextDocument("{\n  x\n}\nnext");
+        var manager = new FoldingManager { Document = doc };
+        manager.UpdateFoldings(new BraceFoldingStrategy());
+        Assert.True(manager.ToggleFold(1));
+
+        var view = new EditorView
+        {
+            Document = doc,
+            Folding = manager
+        };
+        view.UpdateLayout("Cascadia Code", 14);
+
+        var hiddenLine = doc.GetLineByNumber(2);
+        Point hiddenPoint = view.GetPointFromOffset(hiddenLine.Offset, showLineNumbers: false);
+        int mappedOffset = view.GetOffsetFromPoint(hiddenPoint, showLineNumbers: false);
+
+        var headerLine = doc.GetLineByNumber(1);
+        int expectedAnchorOffset = headerLine.Offset + headerLine.Length;
+        Assert.Equal(expectedAnchorOffset, mappedOffset);
     }
 
     [Fact]

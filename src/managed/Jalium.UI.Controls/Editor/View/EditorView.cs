@@ -128,6 +128,24 @@ internal sealed class EditorView
     public double TotalContentWidth => 2000; // Approximate; could be computed from longest line
 
     /// <summary>
+    /// Gets the measured text width of a line in document coordinates (independent of scroll offset).
+    /// </summary>
+    public double GetLineTextWidth(int lineNumber)
+    {
+        if (Document == null)
+            return 0;
+
+        int clampedLine = Math.Clamp(lineNumber, 1, Document.LineCount);
+        var line = Document.GetLineByNumber(clampedLine);
+        if (line.Length <= 0)
+            return 0;
+
+        var cachedLine = GetOrCreateLineCacheEntry(clampedLine, line);
+        string lineText = Document.GetLineText(clampedLine);
+        return GetPrefixWidth(cachedLine, lineText, lineText.Length);
+    }
+
+    /// <summary>
     /// Updates layout metrics based on font settings.
     /// </summary>
     public void UpdateLayout(string fontFamily, double fontSize)
@@ -137,6 +155,12 @@ internal sealed class EditorView
 
         _cachedFontFamily = fontFamily;
         _cachedFontSize = fontSize;
+
+        if (_lineCache.Count > 0)
+        {
+            foreach (var cachedLine in _lineCache.Values)
+                cachedLine.InvalidateGeometry();
+        }
 
         // Get font metrics from native measurement
         var metrics = TextMeasurement.GetFontMetrics(fontFamily, fontSize, 400, 0);
@@ -490,6 +514,7 @@ internal sealed class EditorView
 
             var docLine = Document.GetLineByNumber(lineNum);
             var cachedLine = GetOrCreateLineCacheEntry(lineNum, docLine);
+            string lineText = Document.GetLineText(lineNum);
             cachedLine.Y = y;
 
             // Current line highlight
@@ -503,10 +528,11 @@ internal sealed class EditorView
             var selRange = selection.GetSelectionOnLine(docLine);
             if (selRange.HasValue)
             {
-                double selStartX = textAreaLeft + selRange.Value.startColumn * _charWidth - HorizontalOffset;
+                int selStartColumn = Math.Clamp(selRange.Value.startColumn, 0, lineText.Length);
+                double selStartX = GetColumnX(cachedLine, lineText, selStartColumn, textAreaLeft);
                 double selEndX = selRange.Value.endColumn > docLine.Length
                     ? textAreaLeft + textAreaWidth // Selection extends to end of line
-                    : textAreaLeft + selRange.Value.endColumn * _charWidth - HorizontalOffset;
+                    : GetColumnX(cachedLine, lineText, Math.Clamp(selRange.Value.endColumn, 0, lineText.Length), textAreaLeft);
 
                 dc.DrawRectangle(selectionBrush, null,
                     new Rect(Math.Max(textAreaLeft, selStartX), y,
@@ -534,13 +560,17 @@ internal sealed class EditorView
             }
 
             // Line text with syntax highlighting
-            RenderLineText(dc, docLine, cachedLine, lineNum, y, textAreaLeft, fontFamily, fontSize, fontWeight, fontStyle, foreground);
+            RenderLineText(dc, docLine, cachedLine, lineNum, lineText, y, textAreaLeft, fontFamily, fontSize, fontWeight, fontStyle, foreground);
         }
 
         // Render caret
         if (!suppressCaret && caret.IsVisible && caret.Opacity > 0)
         {
-            double caretX = textAreaLeft + caretColumn * _charWidth - HorizontalOffset;
+            var caretDocLine = Document.GetLineByNumber(caretLine);
+            var caretCachedLine = GetOrCreateLineCacheEntry(caretLine, caretDocLine);
+            string caretLineText = Document.GetLineText(caretLine);
+            int clampedCaretColumn = Math.Clamp(caretColumn, 0, caretLineText.Length);
+            double caretX = GetColumnX(caretCachedLine, caretLineText, clampedCaretColumn, textAreaLeft);
             double caretY = GetLineTop(caretLine);
 
             if (caretX >= textAreaLeft && caretY >= 0 && caretY < renderSize.Height)
@@ -596,13 +626,12 @@ internal sealed class EditorView
         }
     }
 
-    private void RenderLineText(DrawingContext dc, DocumentLine docLine, EditorViewLine cachedLine, int lineNum,
+    private void RenderLineText(DrawingContext dc, DocumentLine docLine, EditorViewLine cachedLine, int lineNum, string lineText,
         double y, double textAreaLeft, string fontFamily, double fontSize,
         FontWeight fontWeight, FontStyle fontStyle, Brush defaultForeground)
     {
         if (docLine.Length == 0) return;
 
-        var lineText = Document!.GetLineText(lineNum);
         int visibleColumnLimit = lineText.Length;
         if (Folding?.GetFoldingAt(lineNum) is { IsFolded: true } foldedSection)
         {
@@ -617,7 +646,6 @@ internal sealed class EditorView
         {
             var highlighted = GetOrComputeHighlightedLine(cachedLine, lineNum, lineText);
 
-            double x = textAreaLeft - HorizontalOffset;
             foreach (var token in highlighted.Tokens)
             {
                 if (token.Length == 0) continue;
@@ -634,8 +662,8 @@ internal sealed class EditorView
 
                 var brush = ResolveBrushForClassification(token.Classification, defaultForeground);
                 var formatted = new FormattedText(tokenText, fontFamily, fontSize) { Foreground = brush };
-                dc.DrawText(formatted, new Point(x, y));
-                x += tokenLength * _charWidth;
+                double tokenX = GetColumnX(cachedLine, lineText, tokenStart, textAreaLeft);
+                dc.DrawText(formatted, new Point(tokenX, y));
             }
         }
         else
@@ -656,7 +684,10 @@ internal sealed class EditorView
         }
 
         if (cached.DocumentOffset != line.Offset || cached.Length != line.Length)
+        {
             cached.InvalidateHighlighting();
+            cached.InvalidateGeometry();
+        }
 
         cached.DocumentOffset = line.Offset;
         cached.Length = line.Length;
@@ -855,6 +886,87 @@ internal sealed class EditorView
         return false;
     }
 
+    private double GetColumnX(EditorViewLine cachedLine, string lineText, int column, double textAreaLeft)
+    {
+        int clampedColumn = Math.Clamp(column, 0, lineText.Length);
+        double prefixWidth = GetPrefixWidth(cachedLine, lineText, clampedColumn);
+        return textAreaLeft + prefixWidth - HorizontalOffset;
+    }
+
+    private int GetColumnFromRelativeX(EditorViewLine cachedLine, string lineText, double relativeX)
+    {
+        int length = lineText.Length;
+        if (length <= 0 || relativeX <= 0)
+            return 0;
+
+        double lineWidth = GetPrefixWidth(cachedLine, lineText, length);
+        if (relativeX >= lineWidth)
+            return length;
+
+        int low = 0;
+        int high = length;
+        while (low < high)
+        {
+            int mid = (low + high) / 2;
+            double midX = GetPrefixWidth(cachedLine, lineText, mid);
+            if (midX < relativeX)
+                low = mid + 1;
+            else
+                high = mid;
+        }
+
+        int rightColumn = Math.Clamp(low, 0, length);
+        int leftColumn = Math.Clamp(rightColumn - 1, 0, length);
+        double leftX = GetPrefixWidth(cachedLine, lineText, leftColumn);
+        double rightX = GetPrefixWidth(cachedLine, lineText, rightColumn);
+        return relativeX - leftX <= rightX - relativeX ? leftColumn : rightColumn;
+    }
+
+    private double GetPrefixWidth(EditorViewLine cachedLine, string lineText, int column)
+    {
+        int clampedColumn = Math.Clamp(column, 0, lineText.Length);
+        if (clampedColumn <= 0)
+            return 0;
+
+        string fontFamily = GetMeasurementFontFamily();
+        double fontSize = GetMeasurementFontSize();
+        cachedLine.EnsureGeometryContext(lineText, fontFamily, fontSize);
+        if (cachedLine.PrefixWidths.TryGetValue(clampedColumn, out double cachedWidth))
+            return cachedWidth;
+
+        double measured = MeasurePrefixWidth(lineText, clampedColumn, fontFamily, fontSize);
+        cachedLine.PrefixWidths[clampedColumn] = measured;
+        return measured;
+    }
+
+    private static double MeasurePrefixWidth(string lineText, int column, string fontFamily, double fontSize)
+    {
+        if (string.IsNullOrEmpty(lineText) || column <= 0)
+            return 0;
+
+        int clampedColumn = Math.Clamp(column, 0, lineText.Length);
+        if (clampedColumn <= 0)
+            return 0;
+
+        var prefixText = lineText[..clampedColumn];
+        if (prefixText.Length == 0)
+            return 0;
+
+        var formatted = new FormattedText(prefixText, fontFamily, fontSize);
+        TextMeasurement.MeasureText(formatted);
+        return formatted.Width > 0 ? formatted.Width : 0;
+    }
+
+    private string GetMeasurementFontFamily()
+    {
+        return string.IsNullOrWhiteSpace(_cachedFontFamily) ? "Cascadia Code" : _cachedFontFamily;
+    }
+
+    private double GetMeasurementFontSize()
+    {
+        return _cachedFontSize > 0 ? _cachedFontSize : 14;
+    }
+
     /// <summary>
     /// Converts a mouse point to a document offset.
     /// </summary>
@@ -866,10 +978,12 @@ internal sealed class EditorView
 
         int lineNum = GetLineNumberFromY(point.Y);
         var line = Document.GetLineByNumber(lineNum);
+        var cachedLine = GetOrCreateLineCacheEntry(lineNum, line);
+        string lineText = Document.GetLineText(lineNum);
 
         // Calculate column from X position
         double relativeX = point.X - textAreaLeft + HorizontalOffset;
-        int column = (int)Math.Round(relativeX / _charWidth);
+        int column = GetColumnFromRelativeX(cachedLine, lineText, relativeX);
         column = Math.Clamp(column, 0, line.Length);
 
         return line.Offset + column;
@@ -898,7 +1012,9 @@ internal sealed class EditorView
         }
 
         double textAreaLeft = showLineNumbers ? TextAreaLeft : 0;
-        double x = textAreaLeft + column * _charWidth - HorizontalOffset;
+        string anchorLineText = Document.GetLineText(anchorLineNumber);
+        var anchorCachedLine = GetOrCreateLineCacheEntry(anchorLineNumber, anchorLine);
+        double x = GetColumnX(anchorCachedLine, anchorLineText, column, textAreaLeft);
         double y = GetLineTop(anchorLineNumber);
 
         return new Point(x, y);

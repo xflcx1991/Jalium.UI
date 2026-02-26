@@ -139,7 +139,7 @@ public class EditControl : Control, IImeSupport
     private double _scrollBarDragStartOffset;
     private double _effectiveViewportHeight;
     private double _effectiveTextViewportWidth;
-    private int _cachedMaxLineLength = -1;
+    private double _cachedMaxLineWidth = -1;
     private int _cachedMaxLineLengthVersion = -1;
     private const int MaxSemanticHighlightMatches = 1024;
     private const int LargeDocumentFoldingThrottleLineCount = 2000;
@@ -3560,7 +3560,7 @@ public class EditControl : Control, IImeSupport
 
     private void DrawBracketHighlights(DrawingContext dc)
     {
-        if (!_activeBracketPair.HasValue || _view.LineHeight <= 0 || _view.CharWidth <= 0)
+        if (!_activeBracketPair.HasValue || _view.LineHeight <= 0)
             return;
 
         DrawSingleCharacterHighlight(dc, _activeBracketPair.Value.bracketOffset);
@@ -3580,17 +3580,22 @@ public class EditControl : Control, IImeSupport
             return;
 
         var point = _view.GetPointFromOffset(offset, ShowLineNumbers);
+        int nextOffset = Math.Clamp(offset + 1, 0, _document.TextLength);
+        var nextPoint = _view.GetPointFromOffset(nextOffset, ShowLineNumbers);
         double textAreaLeft = ShowLineNumbers ? _view.TextAreaLeft : 0;
         double x = Math.Max(textAreaLeft, point.X);
         if (x > RenderSize.Width)
             return;
 
-        dc.DrawRectangle(s_defaultBracketHighlightBrush, s_defaultBracketHighlightPen, new Rect(x, y, _view.CharWidth, _view.LineHeight));
+        double charWidth = Math.Abs(nextPoint.Y - point.Y) <= 0.1
+            ? Math.Max(1, nextPoint.X - point.X)
+            : Math.Max(1, _view.CharWidth);
+        dc.DrawRectangle(s_defaultBracketHighlightBrush, s_defaultBracketHighlightPen, new Rect(x, y, charWidth, _view.LineHeight));
     }
 
     private void DrawScopeGuides(DrawingContext dc, double contentWidth, double contentHeight)
     {
-        if (_foldingManager.Foldings.Count == 0 || _view.LineHeight <= 0 || _view.CharWidth <= 0 ||
+        if (_foldingManager.Foldings.Count == 0 || _view.LineHeight <= 0 ||
             contentWidth <= 0 || contentHeight <= 0)
         {
             return;
@@ -3649,7 +3654,7 @@ public class EditControl : Control, IImeSupport
 
     private FoldingSection? FindScopeGuideAt(Point pointerPosition, double contentWidth, double contentHeight)
     {
-        if (_foldingManager.Foldings.Count == 0 || _view.LineHeight <= 0 || _view.CharWidth <= 0 ||
+        if (_foldingManager.Foldings.Count == 0 || _view.LineHeight <= 0 ||
             contentWidth <= 0 || contentHeight <= 0)
         {
             return null;
@@ -3724,7 +3729,7 @@ public class EditControl : Control, IImeSupport
         guideStartY = 0;
         guideEndY = 0;
 
-        if (_view.LineHeight <= 0 || _view.CharWidth <= 0)
+        if (_view.LineHeight <= 0)
             return false;
 
         GetScopeGuideLineRange(section, out int scopeStartLine, out int scopeEndLine);
@@ -3738,7 +3743,17 @@ public class EditControl : Control, IImeSupport
 
         int guideColumn = ResolveScopeGuideColumn(section);
         double textAreaLeft = ShowLineNumbers ? _view.TextAreaLeft : 0;
-        guideX = textAreaLeft + (guideColumn + 0.5) * _view.CharWidth - _view.HorizontalOffset;
+        var guideLine = _document.GetLineByNumber(scopeStartLine);
+        int startColumn = Math.Clamp(guideColumn, 0, guideLine.Length);
+        int endColumn = Math.Clamp(startColumn + 1, 0, guideLine.Length);
+        int startOffset = guideLine.Offset + startColumn;
+        int endOffset = guideLine.Offset + endColumn;
+        var p0 = _view.GetPointFromOffset(startOffset, ShowLineNumbers);
+        var p1 = _view.GetPointFromOffset(endOffset, ShowLineNumbers);
+        double guideWidth = Math.Abs(p1.Y - p0.Y) <= 0.1
+            ? Math.Max(1, p1.X - p0.X)
+            : Math.Max(1, _view.CharWidth);
+        guideX = p0.X + guideWidth * 0.5;
         if (guideX < textAreaLeft - ScopeGuideHoverTolerance || guideX > contentWidth + ScopeGuideHoverTolerance)
             return false;
 
@@ -4076,7 +4091,7 @@ public class EditControl : Control, IImeSupport
 
     private void DrawFoldedSectionHints(DrawingContext dc, double contentWidth, double contentHeight, string fontFamily, double fontSize)
     {
-        if (_foldingManager.Foldings.Count == 0 || _view.LineHeight <= 0 || _view.CharWidth <= 0 ||
+        if (_foldingManager.Foldings.Count == 0 || _view.LineHeight <= 0 ||
             contentWidth <= 0 || contentHeight <= 0)
         {
             return;
@@ -4126,7 +4141,7 @@ public class EditControl : Control, IImeSupport
     private bool TryGetFoldedSectionHintRect(FoldingSection section, FormattedText hintLayout, double contentWidth, double contentHeight, out Rect hintRect)
     {
         hintRect = Rect.Empty;
-        if (!section.IsFolded || _view.LineHeight <= 0 || _view.CharWidth <= 0)
+        if (!section.IsFolded || _view.LineHeight <= 0)
             return false;
 
         if (!_view.TryGetLineTop(section.StartLine, out double lineTop))
@@ -4138,14 +4153,20 @@ public class EditControl : Control, IImeSupport
         var lineText = _document.GetLineText(section.StartLine);
         int previewColumn = GetCollapsedPreviewColumn(section, lineText);
         double textAreaLeft = ShowLineNumbers ? _view.TextAreaLeft : 0;
-        double anchorX = textAreaLeft + previewColumn * _view.CharWidth - _view.HorizontalOffset;
-        double x = Math.Max(textAreaLeft + 1, anchorX + Math.Max(2, _view.CharWidth * 0.3));
+        var line = _document.GetLineByNumber(section.StartLine);
+        int previewOffset = line.Offset + Math.Clamp(previewColumn, 0, line.Length);
+        var previewPoint = _view.GetPointFromOffset(previewOffset, ShowLineNumbers);
+        double anchorX = previewPoint.X;
+        double x = Math.Max(textAreaLeft + 1, anchorX + 2);
         if (x >= contentWidth)
             return false;
 
-        double measuredWidth = hintLayout.IsMeasured
+        if (!hintLayout.IsMeasured)
+            TextMeasurement.MeasureText(hintLayout);
+
+        double measuredWidth = hintLayout.Width > 0
             ? hintLayout.Width
-            : Math.Max(3, hintLayout.Text.Length) * _view.CharWidth;
+            : Math.Max(18, hintLayout.Text.Length * 6.5);
         double width = Math.Max(14, Math.Ceiling(measuredWidth + FoldedHintHorizontalPadding * 2));
         if (x + width > contentWidth - 1)
             width = Math.Max(0, contentWidth - x - 1);
@@ -4222,7 +4243,7 @@ public class EditControl : Control, IImeSupport
 
     private void DrawImeComposition(DrawingContext dc, string fontFamily, double fontSize)
     {
-        if (!_isImeComposing || string.IsNullOrEmpty(_imeCompositionString) || _view.LineHeight <= 0 || _view.CharWidth <= 0)
+        if (!_isImeComposing || string.IsNullOrEmpty(_imeCompositionString) || _view.LineHeight <= 0)
             return;
 
         int startOffset = Math.Clamp(_imeCompositionStart, 0, _document.TextLength);
@@ -4236,13 +4257,17 @@ public class EditControl : Control, IImeSupport
         var point = _view.GetPointFromOffset(startOffset, ShowLineNumbers);
         double textAreaLeft = ShowLineNumbers ? _view.TextAreaLeft : 0;
         double x = Math.Max(textAreaLeft, point.X);
-        double width = Math.Max(_view.CharWidth, _imeCompositionString.Length * _view.CharWidth);
-
-        dc.DrawRectangle(s_imeCompositionBackgroundBrush, null, new Rect(x, y, width, _view.LineHeight));
         var text = new FormattedText(_imeCompositionString, fontFamily, fontSize)
         {
             Foreground = s_imeCompositionTextBrush
         };
+        TextMeasurement.MeasureText(text);
+        double measuredWidth = text.Width > 0
+            ? text.Width
+            : _imeCompositionString.Length * Math.Max(1, _view.CharWidth);
+        double width = Math.Max(1, measuredWidth);
+
+        dc.DrawRectangle(s_imeCompositionBackgroundBrush, null, new Rect(x, y, width, _view.LineHeight));
         dc.DrawText(text, new Point(x, y));
         dc.DrawLine(s_imeCompositionUnderlinePen, new Point(x, y + _view.LineHeight - 1), new Point(x + width, y + _view.LineHeight - 1));
     }
@@ -4601,7 +4626,7 @@ public class EditControl : Control, IImeSupport
         _view.ViewportWidth = Math.Max(0, viewportSize.Width);
         _view.ViewportHeight = Math.Max(0, viewportSize.Height);
 
-        if (viewportSize.Width <= 0 || viewportSize.Height <= 0 || _view.LineHeight <= 0 || _view.CharWidth <= 0)
+        if (viewportSize.Width <= 0 || viewportSize.Height <= 0 || _view.LineHeight <= 0)
             return;
 
         double minimapReservedWidth = GetMinimapReservedWidth(viewportSize.Width);
@@ -4717,24 +4742,24 @@ public class EditControl : Control, IImeSupport
 
     private double GetDocumentTextContentWidth()
     {
-        if (_view.CharWidth <= 0 || _document.LineCount <= 0)
+        if (_document.LineCount <= 0)
             return 0;
 
         if (_cachedMaxLineLengthVersion != _document.Version)
         {
-            int maxLength = 0;
+            double maxWidth = 0;
             for (int lineNumber = 1; lineNumber <= _document.LineCount; lineNumber++)
             {
-                var line = _document.GetLineByNumber(lineNumber);
-                if (line.Length > maxLength)
-                    maxLength = line.Length;
+                double lineWidth = _view.GetLineTextWidth(lineNumber);
+                if (lineWidth > maxWidth)
+                    maxWidth = lineWidth;
             }
 
-            _cachedMaxLineLength = maxLength;
+            _cachedMaxLineWidth = maxWidth;
             _cachedMaxLineLengthVersion = _document.Version;
         }
 
-        return _cachedMaxLineLength * _view.CharWidth + 16;
+        return _cachedMaxLineWidth + 16;
     }
 
     private double GetMaxVerticalOffset(double viewportHeight)

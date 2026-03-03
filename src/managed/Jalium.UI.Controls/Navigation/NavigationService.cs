@@ -1,5 +1,3 @@
-using System.Collections.ObjectModel;
-
 namespace Jalium.UI.Controls.Navigation;
 
 /// <summary>
@@ -67,6 +65,16 @@ public sealed class NavigationService
     /// Gets or sets the URI of the current content, or the URI of the content that is being navigated to.
     /// </summary>
     public Uri? CurrentSource => _currentSource;
+
+    /// <summary>
+    /// Gets or sets the per-instance content loader used to resolve URI navigation.
+    /// </summary>
+    public Func<Uri, object?>? ContentLoader { get; set; }
+
+    /// <summary>
+    /// Gets or sets the global fallback content loader used when <see cref="ContentLoader"/> is not provided.
+    /// </summary>
+    public static Func<Uri, object?>? DefaultContentLoader { get; set; }
 
     /// <summary>
     /// Gets a value indicating whether there is at least one entry in back navigation history.
@@ -139,10 +147,9 @@ public sealed class NavigationService
         try
         {
             // Save current to back stack if we have content
-            if (_content != null && _currentSource != null)
+            if (_content != null)
             {
-                var journalEntry = new JournalEntry(_currentSource, _content?.ToString());
-                journalEntry.CustomContentState = GetCustomContentState();
+                var journalEntry = CreateJournalEntry(_currentSource, _content);
                 _backStack.Push(journalEntry);
             }
 
@@ -224,8 +231,7 @@ public sealed class NavigationService
             // Save current to back stack if we have content
             if (_content != null)
             {
-                var journalEntry = new JournalEntry(_currentSource, _content?.ToString());
-                journalEntry.CustomContentState = GetCustomContentState();
+                var journalEntry = CreateJournalEntry(_currentSource, _content);
                 _backStack.Push(journalEntry);
             }
 
@@ -289,39 +295,60 @@ public sealed class NavigationService
             return;
         }
 
-        // Save current to forward stack
-        if (_content != null)
+        var previousSource = _currentSource;
+        var previousContent = _content;
+        JournalEntry? forwardEntry = null;
+
+        try
         {
-            var forwardEntry = new JournalEntry(_currentSource, _content?.ToString());
-            forwardEntry.CustomContentState = GetCustomContentState();
-            _forwardStack.Push(forwardEntry);
+            // Save current to forward stack
+            if (_content != null)
+            {
+                forwardEntry = CreateJournalEntry(_currentSource, _content);
+                _forwardStack.Push(forwardEntry);
+            }
+
+            var restoredContent = RestoreJournalContent(entry);
+            if (restoredContent == null)
+            {
+                throw new InvalidOperationException("Failed to load content for back navigation.");
+            }
+
+            _currentSource = entry.Source;
+            _content = restoredContent;
+
+            // Restore custom state
+            entry.CustomContentState?.Replay(restoredContent, NavigationMode.Back);
+
+            // Update frame if attached
+            if (_frame != null)
+            {
+                _frame.Content = _content;
+            }
+
+            // Raise Navigated event
+            var navigatedArgs = new NavigationEventArgs(
+                _content,
+                null,
+                NavigationMode.Back,
+                _content?.GetType());
+
+            Navigated?.Invoke(this, navigatedArgs);
+            LoadCompleted?.Invoke(this, navigatedArgs);
         }
-
-        // Load content from entry
-        _currentSource = entry.Source;
-        _content = LoadContent(entry.Source);
-
-        // Restore custom state
-        if (entry.CustomContentState != null && _content is Page page)
+        catch (Exception ex)
         {
-            entry.CustomContentState.Replay(page, NavigationMode.Back);
+            // Restore previous state and history if replay fails.
+            if (forwardEntry != null && _forwardStack.Count > 0 && ReferenceEquals(_forwardStack.Peek(), forwardEntry))
+            {
+                _forwardStack.Pop();
+            }
+
+            _backStack.Push(entry);
+            _currentSource = previousSource;
+            _content = previousContent;
+            RaiseNavigationFailed(entry.Source, ex);
         }
-
-        // Update frame if attached
-        if (_frame != null)
-        {
-            _frame.Content = _content;
-        }
-
-        // Raise Navigated event
-        var navigatedArgs = new NavigationEventArgs(
-            _content,
-            null,
-            NavigationMode.Back,
-            _content?.GetType());
-
-        Navigated?.Invoke(this, navigatedArgs);
-        LoadCompleted?.Invoke(this, navigatedArgs);
     }
 
     /// <summary>
@@ -351,39 +378,60 @@ public sealed class NavigationService
             return;
         }
 
-        // Save current to back stack
-        if (_content != null)
+        var previousSource = _currentSource;
+        var previousContent = _content;
+        JournalEntry? backEntry = null;
+
+        try
         {
-            var backEntry = new JournalEntry(_currentSource, _content?.ToString());
-            backEntry.CustomContentState = GetCustomContentState();
-            _backStack.Push(backEntry);
+            // Save current to back stack
+            if (_content != null)
+            {
+                backEntry = CreateJournalEntry(_currentSource, _content);
+                _backStack.Push(backEntry);
+            }
+
+            var restoredContent = RestoreJournalContent(entry);
+            if (restoredContent == null)
+            {
+                throw new InvalidOperationException("Failed to load content for forward navigation.");
+            }
+
+            _currentSource = entry.Source;
+            _content = restoredContent;
+
+            // Restore custom state
+            entry.CustomContentState?.Replay(restoredContent, NavigationMode.Forward);
+
+            // Update frame if attached
+            if (_frame != null)
+            {
+                _frame.Content = _content;
+            }
+
+            // Raise Navigated event
+            var navigatedArgs = new NavigationEventArgs(
+                _content,
+                null,
+                NavigationMode.Forward,
+                _content?.GetType());
+
+            Navigated?.Invoke(this, navigatedArgs);
+            LoadCompleted?.Invoke(this, navigatedArgs);
         }
-
-        // Load content from entry
-        _currentSource = entry.Source;
-        _content = LoadContent(entry.Source);
-
-        // Restore custom state
-        if (entry.CustomContentState != null && _content is Page page)
+        catch (Exception ex)
         {
-            entry.CustomContentState.Replay(page, NavigationMode.Forward);
+            // Restore previous state and history if replay fails.
+            if (backEntry != null && _backStack.Count > 0 && ReferenceEquals(_backStack.Peek(), backEntry))
+            {
+                _backStack.Pop();
+            }
+
+            _forwardStack.Push(entry);
+            _currentSource = previousSource;
+            _content = previousContent;
+            RaiseNavigationFailed(entry.Source, ex);
         }
-
-        // Update frame if attached
-        if (_frame != null)
-        {
-            _frame.Content = _content;
-        }
-
-        // Raise Navigated event
-        var navigatedArgs = new NavigationEventArgs(
-            _content,
-            null,
-            NavigationMode.Forward,
-            _content?.GetType());
-
-        Navigated?.Invoke(this, navigatedArgs);
-        LoadCompleted?.Invoke(this, navigatedArgs);
     }
 
     /// <summary>
@@ -413,7 +461,14 @@ public sealed class NavigationService
         // Reload content
         if (_currentSource != null)
         {
-            _content = LoadContent(_currentSource);
+            var refreshedContent = LoadContent(_currentSource);
+            if (refreshedContent == null)
+            {
+                RaiseNavigationFailed(_currentSource, new InvalidOperationException("Failed to refresh content."));
+                return;
+            }
+
+            _content = refreshedContent;
         }
 
         // Update frame if attached
@@ -466,10 +521,8 @@ public sealed class NavigationService
     /// <param name="state">The custom content state to add.</param>
     public void AddBackEntry(CustomContentState state)
     {
-        var entry = new JournalEntry(_currentSource, _content?.ToString())
-        {
-            CustomContentState = state
-        };
+        var entry = CreateJournalEntry(_currentSource, _content);
+        entry.CustomContentState = state;
         _backStack.Push(entry);
     }
 
@@ -516,6 +569,27 @@ public sealed class NavigationService
 
     #region Private Methods
 
+    private JournalEntry CreateJournalEntry(Uri? source, object? content)
+    {
+        var entry = new JournalEntry(source, content?.ToString())
+        {
+            Content = content,
+            CustomContentState = GetCustomContentState()
+        };
+
+        return entry;
+    }
+
+    private object? RestoreJournalContent(JournalEntry entry)
+    {
+        if (entry.Content != null)
+        {
+            return entry.Content;
+        }
+
+        return LoadContent(entry.Source);
+    }
+
     private object? LoadContent(Uri? source)
     {
         if (source == null)
@@ -523,8 +597,24 @@ public sealed class NavigationService
             return null;
         }
 
-        // For now, return null - actual implementation would load XAML content
-        // This is a placeholder for future XAML loading support
+        if (ContentLoader != null)
+        {
+            return ContentLoader(source);
+        }
+
+        if (DefaultContentLoader != null)
+        {
+            return DefaultContentLoader(source);
+        }
+
+        var startupLoader = Application.StartupObjectLoader;
+        var app = Application.Current;
+        if (startupLoader != null && app != null)
+        {
+            var uriValue = source.IsAbsoluteUri ? source.AbsoluteUri : source.OriginalString;
+            return startupLoader(app, uriValue);
+        }
+
         return null;
     }
 

@@ -35,7 +35,7 @@ public abstract class Selector : ItemsControl
     /// </summary>
     public static readonly DependencyProperty SelectedValuePathProperty =
         DependencyProperty.Register(nameof(SelectedValuePath), typeof(string), typeof(Selector),
-            new PropertyMetadata(string.Empty));
+            new PropertyMetadata(string.Empty, OnSelectedValuePathChanged));
 
     /// <summary>
     /// Identifies the IsSynchronizedWithCurrentItem dependency property.
@@ -245,6 +245,7 @@ public abstract class Selector : ItemsControl
                 {
                     var oldItem = selector.SelectedItem;
                     selector.SelectedItem = newItem;
+                    selector.UpdateSelectedValueFromSelection(newItem);
                     selector.UpdateContainerSelection();
                     selector.RaiseSelectionChanged(oldItem, newItem);
                 }
@@ -271,6 +272,7 @@ public abstract class Selector : ItemsControl
                 {
                     selector.SelectedItem = null;
                     selector.SelectedIndex = -1;
+                    selector.UpdateSelectedValueFromSelection(null);
                     selector.UpdateContainerSelection();
                     return;
                 }
@@ -280,6 +282,7 @@ public abstract class Selector : ItemsControl
                     selector.SelectedIndex = newIndex;
                 }
 
+                selector.UpdateSelectedValueFromSelection(newItem);
                 selector.UpdateContainerSelection();
                 selector.RaiseSelectionChanged(e.OldValue, e.NewValue);
             }
@@ -292,8 +295,160 @@ public abstract class Selector : ItemsControl
 
     private static void OnSelectedValueChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        // SelectedValue is typically derived from SelectedItem using SelectedValuePath
-        // For now, we'll leave this as a placeholder for future implementation
+        if (d is Selector selector && !selector._isUpdatingSelection)
+        {
+            selector._isUpdatingSelection = true;
+            try
+            {
+                var oldItem = selector.SelectedItem;
+                var (matchedIndex, matchedItem) = selector.FindItemBySelectedValue(e.NewValue);
+
+                if (selector.SelectedItem != matchedItem)
+                {
+                    selector.SelectedItem = matchedItem;
+                }
+
+                if (selector.SelectedIndex != matchedIndex)
+                {
+                    selector.SelectedIndex = matchedIndex;
+                }
+
+                selector.UpdateContainerSelection();
+                if (!Equals(oldItem, matchedItem))
+                {
+                    selector.RaiseSelectionChanged(oldItem, matchedItem);
+                }
+            }
+            finally
+            {
+                selector._isUpdatingSelection = false;
+            }
+        }
+    }
+
+    private static void OnSelectedValuePathChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is Selector selector && !selector._isUpdatingSelection)
+        {
+            selector._isUpdatingSelection = true;
+            try
+            {
+                selector.UpdateSelectedValueFromSelection(selector.SelectedItem);
+            }
+            finally
+            {
+                selector._isUpdatingSelection = false;
+            }
+        }
+    }
+
+    #endregion
+
+    #region Selected Value Helpers
+
+    private void UpdateSelectedValueFromSelection(object? selectedItem)
+    {
+        var newValue = GetSelectedValueForItem(selectedItem);
+        if (!Equals(SelectedValue, newValue))
+        {
+            SelectedValue = newValue;
+        }
+    }
+
+    private (int index, object? item) FindItemBySelectedValue(object? selectedValue)
+    {
+        if (selectedValue == null)
+        {
+            return (-1, null);
+        }
+
+        var count = GetItemCount();
+        for (var i = 0; i < count; i++)
+        {
+            var item = GetItemAt(i);
+            var itemValue = GetSelectedValueForItem(item);
+            if (Equals(itemValue, selectedValue))
+            {
+                return (i, item);
+            }
+        }
+
+        return (-1, null);
+    }
+
+    private object? GetSelectedValueForItem(object? item)
+    {
+        if (item == null)
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(SelectedValuePath))
+        {
+            return item;
+        }
+
+        return TryResolvePathValue(item, SelectedValuePath, out var value) ? value : null;
+    }
+
+    private static bool TryResolvePathValue(object? source, string path, out object? value)
+    {
+        value = source;
+        if (source == null)
+        {
+            return false;
+        }
+
+        var segments = path.Split('.');
+        object? current = source;
+
+        foreach (var rawSegment in segments)
+        {
+            var segment = rawSegment.Trim();
+            if (segment.Length == 0)
+            {
+                continue;
+            }
+
+            if (current == null)
+            {
+                value = null;
+                return false;
+            }
+
+            if (current is System.Collections.IDictionary dictionary)
+            {
+                if (!dictionary.Contains(segment))
+                {
+                    value = null;
+                    return false;
+                }
+
+                current = dictionary[segment];
+                continue;
+            }
+
+            var currentType = current.GetType();
+            var property = currentType.GetProperty(segment, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.IgnoreCase);
+            if (property != null)
+            {
+                current = property.GetValue(current);
+                continue;
+            }
+
+            var field = currentType.GetField(segment, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.IgnoreCase);
+            if (field != null)
+            {
+                current = field.GetValue(current);
+                continue;
+            }
+
+            value = null;
+            return false;
+        }
+
+        value = current;
+        return true;
     }
 
     #endregion

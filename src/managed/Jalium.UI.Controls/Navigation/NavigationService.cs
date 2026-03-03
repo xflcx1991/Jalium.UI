@@ -611,8 +611,7 @@ public sealed class NavigationService
         var app = Jalium.UI.Application.Current;
         if (startupLoader != null && app != null)
         {
-            var uriValue = source.IsAbsoluteUri ? source.AbsoluteUri : source.OriginalString;
-            return startupLoader(app, uriValue);
+            return startupLoader(app, source);
         }
 
         return null;

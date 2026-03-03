@@ -321,6 +321,38 @@ public sealed class TypeTypeConverter : TypeConverter
 }
 
 /// <summary>
+/// Converts strings to Uri values.
+/// </summary>
+public sealed class UriValueConverter : TypeConverter
+{
+    public override object? ConvertFrom(object? value)
+    {
+        if (value is Uri uri)
+        {
+            return uri;
+        }
+
+        if (value is not string str)
+        {
+            return null;
+        }
+
+        str = str.Trim();
+        if (string.IsNullOrEmpty(str))
+        {
+            return null;
+        }
+
+        if (Uri.TryCreate(str, UriKind.RelativeOrAbsolute, out var parsed))
+        {
+            return parsed;
+        }
+
+        throw new FormatException($"Invalid Uri format: {str}");
+    }
+}
+
+/// <summary>
 /// Converts strings to IconElement values.
 /// Supports Symbol names (for example "Save" or "Symbol.Save") and raw glyph strings.
 /// </summary>
@@ -361,6 +393,7 @@ public static class TypeConverterRegistry
         [typeof(HorizontalAlignment)] = new HorizontalAlignmentConverter(),
         [typeof(VerticalAlignment)] = new VerticalAlignmentConverter(),
         [typeof(Orientation)] = new OrientationConverter(),
+        [typeof(Uri)] = new UriValueConverter(),
         [typeof(Type)] = new TypeTypeConverter(),
         [typeof(IconElement)] = new IconElementConverter(),
     };

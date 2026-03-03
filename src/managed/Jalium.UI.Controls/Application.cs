@@ -19,7 +19,7 @@ public partial class Application
     /// <summary>
     /// Framework-internal startup object loader registered by Jalium.UI.Xaml.
     /// </summary>
-    internal static Func<Application, string, object?>? StartupObjectLoader { get; set; }
+    internal static Func<Application, Uri, object?>? StartupObjectLoader { get; set; }
 
     /// <summary>
     /// Gets the current application instance.
@@ -35,7 +35,7 @@ public partial class Application
     /// Gets or sets the startup URI used to load the initial window or visual root.
     /// Supports relative paths and pack-style paths (e.g. /Assembly;component/Path/File.xaml).
     /// </summary>
-    public string? StartupUri { get; set; }
+    public Uri? StartupUri { get; set; }
 
     /// <summary>
     /// Gets or sets the shutdown mode of the application.
@@ -180,7 +180,7 @@ public partial class Application
     /// <summary>
     /// Starts the application message loop.
     /// </summary>
-    public void Run()
+    public int Run()
     {
         Startup?.Invoke(this, EventArgs.Empty);
 
@@ -190,11 +190,24 @@ public partial class Application
             startupWindow.Show();
         }
 
+        var exitCode = 0;
         try
         {
             // Message loop
-            while (GetMessage(out var msg, nint.Zero, 0, 0))
+            while (true)
             {
+                var messageResult = GetMessage(out var msg, nint.Zero, 0, 0);
+                if (messageResult == 0)
+                {
+                    exitCode = unchecked((int)msg.wParam);
+                    break;
+                }
+
+                if (messageResult < 0)
+                {
+                    throw new InvalidOperationException("The application message loop failed while retrieving a window message.");
+                }
+
                 TranslateMessage(ref msg);
                 DispatchMessage(ref msg);
             }
@@ -205,6 +218,8 @@ public partial class Application
             Exit?.Invoke(this, EventArgs.Empty);
             Cleanup();
         }
+
+        return exitCode;
     }
 
     private void Cleanup()
@@ -231,10 +246,10 @@ public partial class Application
     /// Starts the application with the specified main window.
     /// </summary>
     /// <param name="mainWindow">The main window.</param>
-    public void Run(Window mainWindow)
+    public int Run(Window mainWindow)
     {
         MainWindow = mainWindow;
-        Run();
+        return Run();
     }
 
     /// <summary>
@@ -248,20 +263,20 @@ public partial class Application
         if (MainWindow != null)
             return MainWindow;
 
-        if (string.IsNullOrWhiteSpace(StartupUri))
+        if (StartupUri == null)
             return null;
 
         if (StartupObjectLoader == null)
         {
             throw new InvalidOperationException(
-                $"StartupUri '{StartupUri}' cannot be resolved because no startup loader is registered.");
+                $"StartupUri '{StartupUri.OriginalString}' cannot be resolved because no startup loader is registered.");
         }
 
         var startupObject = StartupObjectLoader(this, StartupUri);
         if (startupObject == null)
         {
             throw new InvalidOperationException(
-                $"StartupUri '{StartupUri}' resolved to null.");
+                $"StartupUri '{StartupUri.OriginalString}' resolved to null.");
         }
 
         if (startupObject is Window startupWindow)
@@ -280,7 +295,7 @@ public partial class Application
         }
 
         throw new InvalidOperationException(
-            $"StartupUri '{StartupUri}' resolved to unsupported startup object type '{startupObject.GetType().FullName}'.");
+            $"StartupUri '{StartupUri.OriginalString}' resolved to unsupported startup object type '{startupObject.GetType().FullName}'.");
     }
 
     /// <summary>
@@ -288,7 +303,16 @@ public partial class Application
     /// </summary>
     public void Shutdown()
     {
-        PostQuitMessage(0);
+        Shutdown(0);
+    }
+
+    /// <summary>
+    /// Shuts down the application with the specified exit code.
+    /// </summary>
+    /// <param name="exitCode">The process exit code returned by <see cref="Run()"/>.</param>
+    public void Shutdown(int exitCode)
+    {
+        PostQuitMessage(exitCode);
     }
 
     /// <summary>
@@ -332,8 +356,7 @@ public partial class Application
     }
 
     [LibraryImport("user32.dll", EntryPoint = "GetMessageW")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool GetMessage(out MSG lpMsg, nint hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
+    private static partial int GetMessage(out MSG lpMsg, nint hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

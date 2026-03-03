@@ -86,6 +86,12 @@ public sealed class JournalEntry : DependencyObject
     /// </summary>
     public CustomContentState? CustomContentState { get; set; }
 
+    /// <summary>
+    /// Gets or sets the content instance captured for this journal entry.
+    /// When available, navigation replay can restore the original object without reloading from <see cref="Source"/>.
+    /// </summary>
+    public object? Content { get; set; }
+
     #endregion
 
     #region Attached Property Methods

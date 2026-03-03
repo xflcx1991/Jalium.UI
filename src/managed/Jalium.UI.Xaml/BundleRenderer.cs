@@ -1,5 +1,7 @@
 using Jalium.UI.Gpu;
 using Jalium.UI.Media;
+using System.Diagnostics;
+using System.IO;
 
 // Type aliases to distinguish between Gpu and Core types (both define Rect, Point, etc.)
 using GpuRect = Jalium.UI.Gpu.Rect;
@@ -29,6 +31,19 @@ public sealed class BundleRenderer
     private readonly CompiledUIBundle _bundle;
     private readonly Dictionary<uint, Brush> _brushCache = new();
     private readonly Dictionary<uint, Pen> _penCache = new();
+    private readonly Dictionary<string, ImageSource?> _imageCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<ulong> _missingTextDiagnostics = new();
+    private readonly HashSet<uint> _missingPathDiagnostics = new();
+
+    /// <summary>
+    /// Optional text resolver used to recover text content from <see cref="TextNode.TextHash"/>.
+    /// </summary>
+    public Func<ulong, string?>? TextResolver { get; set; }
+
+    /// <summary>
+    /// Optional diagnostic sink. If not set, diagnostics go to <see cref="Trace"/>.
+    /// </summary>
+    public Action<string>? DiagnosticSink { get; set; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="BundleRenderer"/> class.
@@ -217,11 +232,25 @@ public sealed class BundleRenderer
 
     private void ExecuteDrawPath(DrawingContext dc, DrawPathCommand cmd)
     {
-        // Path rendering from PathCache
-        if (cmd.PathCacheIndex < _bundle.PathCaches.Length)
+        // Path rendering from PathCache.
+        // Current bundle schema doesn't expose tessellated vertex/index arrays for reconstruction,
+        // so we render matching PathNode bounds as a visible fallback and log diagnostics.
+        var rendered = false;
+        foreach (var node in _bundle.Nodes.OfType<PathNode>())
         {
-            var pathCache = _bundle.PathCaches[cmd.PathCacheIndex];
-            // TODO: Reconstruct geometry from tessellated path data
+            if (!node.IsVisible || node.PathCacheIndex != cmd.PathCacheIndex)
+            {
+                continue;
+            }
+
+            RenderPathNode(dc, node);
+            rendered = true;
+        }
+
+        if (!rendered)
+        {
+            ReportPathFallback(cmd.PathCacheIndex,
+                "DrawPathCommand has no visible PathNode fallback; skipping path draw.");
         }
     }
 
@@ -390,8 +419,40 @@ public sealed class BundleRenderer
 
     private void RenderTextNode(DrawingContext dc, TextNode node)
     {
-        // TODO: Text rendering requires glyph atlas or text content lookup
-        // The bundle stores TextHash - need text string recovery mechanism
+        if (!TryGetMaterial(node.MaterialIndex, out var material))
+            return;
+
+        var text = ResolveText(node.TextHash);
+        if (string.IsNullOrEmpty(text))
+        {
+            ReportMissingText(node.TextHash);
+            text = $"[text:{node.TextHash:X}]";
+        }
+
+        var fontFamily = "Segoe UI";
+        var fontSize = 12.0;
+        if (node.GlyphAtlasIndex < _bundle.GlyphAtlases.Length)
+        {
+            var atlas = _bundle.GlyphAtlases[node.GlyphAtlasIndex];
+            if (!string.IsNullOrWhiteSpace(atlas.FontId))
+            {
+                fontFamily = atlas.FontId;
+            }
+
+            if (atlas.FontSize > 0)
+            {
+                fontSize = atlas.FontSize;
+            }
+        }
+
+        var brushColor = material.ForegroundColor != 0 ? material.ForegroundColor : material.BackgroundColor;
+        var formattedText = new FormattedText(text, fontFamily, fontSize)
+        {
+            Foreground = GetBrush(brushColor != 0 ? brushColor : 0xFF000000)
+        };
+
+        var bounds = ConvertRect(node.Bounds);
+        dc.DrawText(formattedText, new CorePoint(bounds.X, bounds.Y));
     }
 
     private void RenderImageNode(DrawingContext dc, ImageNode node)
@@ -400,15 +461,51 @@ public sealed class BundleRenderer
             return;
 
         var texture = _bundle.Textures[node.TextureIndex];
-        // TODO: Load image from texture.Path and draw
-        // var imageSource = LoadImageSource(texture.Path);
-        // var bounds = ConvertRect(node.Bounds);
-        // dc.DrawImage(imageSource, bounds);
+        var bounds = ConvertRect(node.Bounds);
+        var imageSource = LoadImageSource(texture.Path);
+
+        if (imageSource != null)
+        {
+            dc.DrawImage(imageSource, bounds);
+            return;
+        }
+
+        ReportDiagnostic($"BundleRenderer image fallback: failed to load texture '{texture.Path}'.");
+        if (TryGetMaterial(node.MaterialIndex, out var material) && material.BackgroundColor != 0)
+        {
+            dc.DrawRectangle(GetBrush(material.BackgroundColor), null, bounds);
+        }
+        else
+        {
+            dc.DrawRectangle(null, GetPen(0xFFFF0000, 1f), bounds);
+        }
     }
 
     private void RenderPathNode(DrawingContext dc, PathNode node)
     {
-        // TODO: Reconstruct geometry from PathCache
+        if (!TryGetMaterial(node.MaterialIndex, out var material))
+            return;
+
+        var fill = material.BackgroundColor != 0 ? GetBrush(material.BackgroundColor) : null;
+        var stroke = material.BorderColor != 0 ? GetPen(material.BorderColor, 1f) : null;
+        if (fill == null && stroke == null)
+        {
+            stroke = GetPen(0xFF808080, 1f);
+        }
+
+        if (node.PathCacheIndex < _bundle.PathCaches.Length)
+        {
+            ReportPathFallback(node.PathCacheIndex,
+                "PathCache geometry reconstruction is unavailable; rendering bounds fallback.");
+        }
+        else
+        {
+            ReportPathFallback(node.PathCacheIndex,
+                "PathCache index is out of range; rendering bounds fallback.");
+        }
+
+        var bounds = ConvertRect(node.Bounds);
+        dc.DrawRectangle(fill, stroke, bounds);
     }
 
     private void RenderBackdropFilterNode(DrawingContext dc, BackdropFilterNode node)
@@ -451,6 +548,89 @@ public sealed class BundleRenderer
             _penCache[key] = pen;
         }
         return pen;
+    }
+
+    private bool TryGetMaterial(uint materialIndex, out Material material)
+    {
+        if (materialIndex < _bundle.Materials.Length)
+        {
+            material = _bundle.Materials[materialIndex];
+            return true;
+        }
+
+        material = default;
+        return false;
+    }
+
+    private ImageSource? LoadImageSource(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        if (_imageCache.TryGetValue(path, out var cached))
+        {
+            return cached;
+        }
+
+        ImageSource? loaded = null;
+        try
+        {
+            if (File.Exists(path))
+            {
+                loaded = BitmapImage.FromFile(path);
+            }
+            else if (Uri.TryCreate(path, UriKind.RelativeOrAbsolute, out var uri))
+            {
+                loaded = new BitmapImage(uri);
+            }
+        }
+        catch (Exception ex)
+        {
+            ReportDiagnostic($"BundleRenderer image load exception for '{path}': {ex.Message}");
+        }
+
+        _imageCache[path] = loaded;
+        return loaded;
+    }
+
+    private string? ResolveText(ulong textHash)
+    {
+        if (textHash == 0)
+        {
+            return null;
+        }
+
+        return TextResolver?.Invoke(textHash);
+    }
+
+    private void ReportMissingText(ulong textHash)
+    {
+        if (_missingTextDiagnostics.Add(textHash))
+        {
+            ReportDiagnostic(
+                $"BundleRenderer text fallback: missing text for hash 0x{textHash:X}; rendering hash placeholder.");
+        }
+    }
+
+    private void ReportPathFallback(uint pathCacheIndex, string reason)
+    {
+        if (_missingPathDiagnostics.Add(pathCacheIndex))
+        {
+            ReportDiagnostic($"BundleRenderer path fallback (PathCacheIndex={pathCacheIndex}): {reason}");
+        }
+    }
+
+    private void ReportDiagnostic(string message)
+    {
+        if (DiagnosticSink != null)
+        {
+            DiagnosticSink(message);
+            return;
+        }
+
+        Trace.WriteLine(message);
     }
 
     private static Color UnpackColor(uint argb)

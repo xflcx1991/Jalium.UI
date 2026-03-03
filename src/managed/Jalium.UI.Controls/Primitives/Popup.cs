@@ -849,7 +849,7 @@ public sealed partial class Popup : FrameworkElement
         // Fallback: use Application.Current.MainWindow
         // This handles cases where the visual tree is not fully connected
         // (e.g., programmatically created Popups for ToolTips)
-        return Application.Current?.MainWindow;
+        return Jalium.UI.Application.Current?.MainWindow;
     }
 
     #endregion

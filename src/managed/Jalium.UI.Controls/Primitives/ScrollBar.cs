@@ -420,7 +420,7 @@ public sealed class ScrollBar : RangeBase
             return localStyle;
         }
 
-        var app = Jalium.UI.Controls.Application.Current;
+        var app = Jalium.UI.Application.Current;
         if (app?.Resources != null &&
             app.Resources.TryGetValue(resourceKey, out var resource) &&
             resource is Style appStyle)
@@ -438,7 +438,7 @@ public sealed class ScrollBar : RangeBase
             return localBrush;
         }
 
-        var app = Jalium.UI.Controls.Application.Current;
+        var app = Jalium.UI.Application.Current;
         if (app?.Resources != null &&
             app.Resources.TryGetValue(resourceKey, out var resource) &&
             resource is Brush appBrush)

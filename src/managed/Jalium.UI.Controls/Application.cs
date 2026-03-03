@@ -1,11 +1,12 @@
 using System.Runtime.InteropServices;
+using Jalium.UI.Controls;
 using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Controls.Themes;
 using Jalium.UI.Input;
 using Jalium.UI.Interop;
 using Jalium.UI.Media.Animation;
 
-namespace Jalium.UI.Controls;
+namespace Jalium.UI;
 
 /// <summary>
 /// Encapsulates a Jalium.UI application.

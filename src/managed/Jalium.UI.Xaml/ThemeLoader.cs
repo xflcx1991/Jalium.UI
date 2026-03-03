@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Xml;
+using Jalium.UI;
 using Jalium.UI.Controls;
 using Jalium.UI.Controls.Themes;
 

@@ -135,7 +135,7 @@ public sealed class AppBarButton : Button, ICommandBarElement
         if (TryGetTemplateFromStyle(activeStyle, out _))
             return;
 
-        var appResources = Application.Current?.Resources;
+        var appResources = Jalium.UI.Application.Current?.Resources;
         if (appResources == null)
             return;
 

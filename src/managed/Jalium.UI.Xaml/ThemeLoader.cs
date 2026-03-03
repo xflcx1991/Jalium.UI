@@ -83,47 +83,49 @@ public static class ThemeLoader
         return LoadResourceDictionary(stream);
     }
 
-    private static object? LoadStartupObjectFromUri(Application app, string startupUri)
+    private static object? LoadStartupObjectFromUri(Application app, Uri startupUri)
     {
         ArgumentNullException.ThrowIfNull(app);
+        ArgumentNullException.ThrowIfNull(startupUri);
 
-        if (string.IsNullOrWhiteSpace(startupUri))
+        var startupUriText = startupUri.IsAbsoluteUri ? startupUri.AbsoluteUri : startupUri.OriginalString;
+        if (string.IsNullOrWhiteSpace(startupUriText))
             return null;
 
         var appAssembly = app.GetType().Assembly;
         var assembly = appAssembly;
         var pathCandidates = new List<string>();
 
-        if (TryParsePackComponentUri(startupUri, out var packAssemblyName, out var componentPath))
+        if (TryParsePackComponentUri(startupUriText, out var packAssemblyName, out var componentPath))
         {
             assembly = ResolveAssembly(packAssemblyName)
                 ?? throw new InvalidOperationException(
-                    $"StartupUri '{startupUri}' references assembly '{packAssemblyName}', but it could not be loaded.");
+                    $"StartupUri '{startupUriText}' references assembly '{packAssemblyName}', but it could not be loaded.");
 
             pathCandidates.AddRange(BuildPathCandidates(componentPath));
         }
-        else if (Uri.TryCreate(startupUri, UriKind.Absolute, out var absoluteUri) &&
-                 absoluteUri.Scheme.Equals("resource", StringComparison.OrdinalIgnoreCase))
+        else if (startupUri.IsAbsoluteUri &&
+                 startupUri.Scheme.Equals("resource", StringComparison.OrdinalIgnoreCase))
         {
-            var (resourceAssembly, resourcePath) = ParseResourceUri(absoluteUri.ToString());
+            var (resourceAssembly, resourcePath) = ParseResourceUri(startupUri.AbsoluteUri);
             assembly = ResolveAssembly(resourceAssembly)
                 ?? throw new InvalidOperationException(
-                    $"StartupUri '{startupUri}' references assembly '{resourceAssembly}', but it could not be loaded.");
+                    $"StartupUri '{startupUriText}' references assembly '{resourceAssembly}', but it could not be loaded.");
 
             pathCandidates.AddRange(BuildPathCandidates(resourcePath));
         }
-        else if (startupUri.StartsWith("/", StringComparison.Ordinal))
+        else if (startupUriText.StartsWith("/", StringComparison.Ordinal))
         {
-            pathCandidates.AddRange(BuildPathCandidates(startupUri.TrimStart('/')));
+            pathCandidates.AddRange(BuildPathCandidates(startupUriText.TrimStart('/')));
         }
         else
         {
-            pathCandidates.AddRange(BuildPathCandidates(startupUri));
+            pathCandidates.AddRange(BuildPathCandidates(startupUriText));
         }
 
         if (pathCandidates.Count == 0)
         {
-            throw new InvalidOperationException($"StartupUri '{startupUri}' is not a valid startup path.");
+            throw new InvalidOperationException($"StartupUri '{startupUriText}' is not a valid startup path.");
         }
 
         var attemptedResourceNames = new List<string>();
@@ -131,7 +133,7 @@ public static class ThemeLoader
         if (stream == null || string.IsNullOrEmpty(resolvedResourceName))
         {
             throw new XamlParseException(
-                $"Cannot resolve StartupUri '{startupUri}' in assembly '{assembly.GetName().Name}'. " +
+                $"Cannot resolve StartupUri '{startupUriText}' in assembly '{assembly.GetName().Name}'. " +
                 $"Candidates=[{string.Join(", ", attemptedResourceNames)}].");
         }
 
@@ -148,7 +150,7 @@ public static class ThemeLoader
                 if (startupType == null)
                 {
                     throw new InvalidOperationException(
-                        $"StartupUri '{startupUri}' declares x:Class '{className}', but the type could not be resolved.");
+                        $"StartupUri '{startupUriText}' declares x:Class '{className}', but the type could not be resolved.");
                 }
 
                 object instance;
@@ -160,7 +162,7 @@ public static class ThemeLoader
                 catch (Exception ex)
                 {
                     throw new InvalidOperationException(
-                        $"StartupUri '{startupUri}' failed to instantiate startup type '{startupType.FullName}'.", ex);
+                        $"StartupUri '{startupUriText}' failed to instantiate startup type '{startupType.FullName}'.", ex);
                 }
 
                 XamlReader.LoadComponent(instance, resolvedResourceName, assembly);

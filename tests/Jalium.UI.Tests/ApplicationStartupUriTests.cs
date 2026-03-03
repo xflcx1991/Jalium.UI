@@ -33,7 +33,7 @@ public class ApplicationStartupUriTests
             var expectedWindow = new Window();
             var app = new TestStartupApplication
             {
-                StartupUri = "MainWindow.xaml"
+                StartupUri = new Uri("MainWindow.xaml", UriKind.Relative)
             };
 
             Application.StartupObjectLoader = (_, _) => expectedWindow;
@@ -58,7 +58,7 @@ public class ApplicationStartupUriTests
         {
             var app = new TestStartupApplication
             {
-                StartupUri = "TestAssets/StartupStackRoot.xaml"
+                StartupUri = new Uri("TestAssets/StartupStackRoot.xaml", UriKind.Relative)
             };
 
             Application.StartupObjectLoader = static (_, _) => new StackPanel();
@@ -82,7 +82,7 @@ public class ApplicationStartupUriTests
         {
             var app = new TestStartupApplication
             {
-                StartupUri = "MainWindow.xaml"
+                StartupUri = new Uri("MainWindow.xaml", UriKind.Relative)
             };
 
             Application.StartupObjectLoader = static (_, _) => new object();
@@ -108,7 +108,7 @@ public class ApplicationStartupUriTests
 
             var app = new TestStartupApplication
             {
-                StartupUri = "/Jalium.UI.Tests;component/TestAssets/StartupXClassWindow.xaml"
+                StartupUri = new Uri("/Jalium.UI.Tests;component/TestAssets/StartupXClassWindow.xaml", UriKind.Relative)
             };
 
             var resolved = app.ResolveStartupWindow();
@@ -134,7 +134,7 @@ public class ApplicationStartupUriTests
 
             var app = new TestStartupApplication
             {
-                StartupUri = "TestAssets/StartupStackRoot.xaml"
+                StartupUri = new Uri("TestAssets/StartupStackRoot.xaml", UriKind.Relative)
             };
 
             var resolved = app.ResolveStartupWindow();
@@ -158,7 +158,7 @@ public class ApplicationStartupUriTests
 
             var app = new TestStartupApplication
             {
-                StartupUri = "TestAssets/DoesNotExist.xaml"
+                StartupUri = new Uri("TestAssets/DoesNotExist.xaml", UriKind.Relative)
             };
 
             var ex = Assert.ThrowsAny<Exception>(() => app.ResolveStartupWindow());
@@ -191,7 +191,8 @@ public class ApplicationStartupUriTests
                 """;
 
             var app = Assert.IsType<Application>(XamlReader.Parse(xaml));
-            Assert.Equal("MainWindow.xaml", app.StartupUri);
+            Assert.NotNull(app.StartupUri);
+            Assert.Equal("MainWindow.xaml", app.StartupUri.OriginalString);
             var brush = Assert.IsType<SolidColorBrush>(app.Resources["AppBrush"]);
             Assert.Equal(Color.FromArgb(0xFF, 0x11, 0x22, 0x33), brush.Color);
         }

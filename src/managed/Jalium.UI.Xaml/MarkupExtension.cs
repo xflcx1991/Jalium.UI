@@ -276,8 +276,8 @@ public sealed class StaticResourceExtension : MarkupExtension
         }
 
         // Fall back to application resources
-        if (Controls.Application.Current?.Resources != null &&
-            Controls.Application.Current.Resources.TryGetValue(ResourceKey, out var appValue))
+        if (Jalium.UI.Application.Current?.Resources != null &&
+            Jalium.UI.Application.Current.Resources.TryGetValue(ResourceKey, out var appValue))
         {
             return appValue;
         }

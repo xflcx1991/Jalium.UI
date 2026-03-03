@@ -607,8 +607,8 @@ public sealed class NavigationService
             return DefaultContentLoader(source);
         }
 
-        var startupLoader = Application.StartupObjectLoader;
-        var app = Application.Current;
+        var startupLoader = Jalium.UI.Application.StartupObjectLoader;
+        var app = Jalium.UI.Application.Current;
         if (startupLoader != null && app != null)
         {
             var uriValue = source.IsAbsoluteUri ? source.AbsoluteUri : source.OriginalString;

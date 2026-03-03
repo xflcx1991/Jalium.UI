@@ -2,9 +2,9 @@ using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Xml;
+using Jalium.UI;
 using Jalium.UI.Controls;
 using Jalium.UI.Controls.Themes;
-using ControlsApplication = Jalium.UI.Controls.Application;
 
 namespace Jalium.UI.Markup;
 
@@ -28,15 +28,15 @@ public static class ThemeLoader
     {
         // Register XamlReader.Load as the theme loader callback
         ThemeManager.XamlLoader = LoadResourceDictionaryFromStream;
-        ControlsApplication.StartupObjectLoader = LoadStartupObjectFromUri;
+        Application.StartupObjectLoader = LoadStartupObjectFromUri;
 
         // Register AOT-safe type resolver for PropertyPath and other Core types
         TypeResolver.ResolveTypeByName = XamlTypeRegistry.GetType;
 
         // If Application was already created but theme not yet loaded, load now
-        if (ControlsApplication.Current != null && !ThemeManager.IsInitialized)
+        if (Application.Current != null && !ThemeManager.IsInitialized)
         {
-            ThemeManager.Initialize(ControlsApplication.Current);
+            ThemeManager.Initialize(Application.Current);
         }
     }
 
@@ -83,7 +83,7 @@ public static class ThemeLoader
         return LoadResourceDictionary(stream);
     }
 
-    private static object? LoadStartupObjectFromUri(ControlsApplication app, string startupUri)
+    private static object? LoadStartupObjectFromUri(Application app, string startupUri)
     {
         ArgumentNullException.ThrowIfNull(app);
 

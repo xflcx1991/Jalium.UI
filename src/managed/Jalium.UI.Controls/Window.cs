@@ -1538,7 +1538,7 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost
             _ = DestroyWindow(handle);
 
             // Let Application decide whether to shut down based on ShutdownMode
-            if (Application.Current is { } app)
+            if (Jalium.UI.Application.Current is { } app)
             {
                 app.OnWindowClosed(this, _windows.Count);
             }

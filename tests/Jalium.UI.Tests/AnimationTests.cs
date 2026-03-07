@@ -309,6 +309,89 @@ public class AnimationTests
     }
 
     [Fact]
+    public void AnimationFactory_CreatesRectAnimation()
+    {
+        var animation = AnimationFactory.CreateAnimation(
+            typeof(Rect),
+            new Rect(0, 0, 10, 10),
+            new Rect(10, 10, 20, 20),
+            TimeSpan.FromSeconds(1));
+
+        Assert.NotNull(animation);
+        Assert.IsType<RectAnimation>(animation);
+    }
+
+    [Fact]
+    public void AnimationFactory_CreatesCornerRadiusAnimation()
+    {
+        var animation = AnimationFactory.CreateAnimation(
+            typeof(CornerRadius),
+            new CornerRadius(2),
+            new CornerRadius(8),
+            TimeSpan.FromSeconds(1));
+
+        Assert.NotNull(animation);
+        Assert.IsType<CornerRadiusAnimation>(animation);
+    }
+
+    [Fact]
+    public void AnimationFactory_CreatesBrushAnimation_ForSolidColorBrushes()
+    {
+        var animation = AnimationFactory.CreateAnimation(
+            typeof(Brush),
+            new SolidColorBrush(Color.FromRgb(0, 0, 0)),
+            new SolidColorBrush(Color.FromRgb(255, 255, 255)),
+            TimeSpan.FromSeconds(1));
+
+        Assert.NotNull(animation);
+        Assert.IsType<BrushAnimation>(animation);
+    }
+
+    [Fact]
+    public void AnimationFactory_ReturnsNull_ForNonSolidBrushTransition()
+    {
+        var animation = AnimationFactory.CreateAnimation(
+            typeof(Brush),
+            new LinearGradientBrush(Color.Red, Color.Blue, 45),
+            new SolidColorBrush(Color.White),
+            TimeSpan.FromSeconds(1));
+
+        Assert.Null(animation);
+    }
+
+    [Fact]
+    public void BrushAnimation_InterpolatesNullToSolidBrush_WithTransparentSameHueStart()
+    {
+        var animation = new BrushAnimation
+        {
+            From = null,
+            To = new SolidColorBrush(Color.FromArgb(255, 30, 60, 90)),
+            Duration = TimeSpan.FromSeconds(1)
+        };
+
+        var result = (SolidColorBrush)((IAnimationTimeline)animation).GetCurrentValue(
+            null!,
+            animation.To!,
+            CreateAnimationClock(animation, 0.5));
+
+        Assert.Equal(Color.FromArgb(128, 30, 60, 90), result.Color);
+    }
+
+    [Fact]
+    public void CreateTransitionAnimation_UsesStopFillBehavior()
+    {
+        var animation = AnimationFactory.CreateTransitionAnimation(
+            typeof(double),
+            0.0,
+            1.0,
+            TimeSpan.FromSeconds(1),
+            TransitionTimingFunction.Recommended);
+
+        Assert.NotNull(animation);
+        Assert.Equal(AnimationFillBehavior.Stop, animation!.AnimationFillBehavior);
+    }
+
+    [Fact]
     public void AnimationFactory_ReturnsNull_ForUnsupportedType()
     {
         // Act
@@ -333,6 +416,20 @@ public class AnimationTests
             get => (double)(GetValue(TestDoubleProperty) ?? 0.0);
             set => SetValue(TestDoubleProperty, value);
         }
+    }
+
+    private static AnimationClock CreateAnimationClock(Timeline timeline, double progress)
+    {
+        var clock = new AnimationClock(timeline);
+        clock.Begin();
+
+        var progressField = typeof(AnimationClock).GetField(
+            "_currentProgress",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+        Assert.NotNull(progressField);
+        progressField!.SetValue(clock, progress);
+        return clock;
     }
 
     #endregion

@@ -79,9 +79,6 @@ public sealed class Separator : Control
         // Separators are not focusable
         Focusable = false;
         IsHitTestVisible = false;
-
-        // Default margin
-        Margin = new Thickness(0, 4, 0, 4);
     }
 
     #endregion

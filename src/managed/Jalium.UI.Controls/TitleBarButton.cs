@@ -36,6 +36,11 @@ public sealed class TitleBarButton : ButtonBase
 {
     private const double DefaultButtonWidth = 46;
     private const double DefaultButtonHeight = 32;
+    private static readonly SolidColorBrush s_fallbackTitleBarButtonHoverBrush = new(Themes.ThemeColors.TitleBarButtonHover);
+    private static readonly SolidColorBrush s_fallbackTitleBarButtonPressedBrush = new(Themes.ThemeColors.TitleBarButtonPressed);
+    private static readonly SolidColorBrush s_fallbackTitleBarCloseButtonHoverBrush = new(Themes.ThemeColors.TitleBarCloseButtonHover);
+    private static readonly SolidColorBrush s_fallbackTitleBarCloseButtonPressedBrush = new(Themes.ThemeColors.TitleBarCloseButtonPressed);
+    private static readonly SolidColorBrush s_fallbackTitleBarGlyphBrush = new(Color.White);
 
     #region Dependency Properties
 
@@ -205,17 +210,17 @@ public sealed class TitleBarButton : ButtonBase
         {
             // Close button: red hover/pressed colors
             if (IsPressed)
-                return new SolidColorBrush(Themes.ThemeColors.TitleBarCloseButtonPressed);
+                return ResolveClosePressedBackgroundBrush();
             if (IsMouseOver)
-                return new SolidColorBrush(Themes.ThemeColors.TitleBarCloseButtonHover);
+                return ResolveCloseHoverBackgroundBrush();
         }
         else
         {
             // Other buttons: gray hover/pressed colors
             if (IsPressed)
-                return new SolidColorBrush(Themes.ThemeColors.TitleBarButtonPressed);
+                return ResolvePressedBackgroundBrush();
             if (IsMouseOver)
-                return new SolidColorBrush(Themes.ThemeColors.TitleBarButtonHover);
+                return ResolveHoverBackgroundBrush();
         }
 
         // Default: use Background property (usually transparent)
@@ -224,7 +229,7 @@ public sealed class TitleBarButton : ButtonBase
 
     private void DrawGlyph(DrawingContext dc, Rect rect)
     {
-        var glyphBrush = Foreground ?? new SolidColorBrush(Color.White);
+        var glyphBrush = ResolveGlyphBrush();
         var glyphSize = GlyphSize;
         var centerX = rect.Width / 2;
         var centerY = rect.Height / 2;
@@ -270,6 +275,38 @@ public sealed class TitleBarButton : ButtonBase
                     new Point(centerX - halfSize, centerY + halfSize));
                 break;
         }
+    }
+
+    private Brush ResolveHoverBackgroundBrush()
+    {
+        return TryFindResource("TitleBarButtonHover") as Brush ?? s_fallbackTitleBarButtonHoverBrush;
+    }
+
+    private Brush ResolvePressedBackgroundBrush()
+    {
+        return TryFindResource("TitleBarButtonPressed") as Brush ?? s_fallbackTitleBarButtonPressedBrush;
+    }
+
+    private Brush ResolveCloseHoverBackgroundBrush()
+    {
+        return TryFindResource("TitleBarCloseButtonHover") as Brush ?? s_fallbackTitleBarCloseButtonHoverBrush;
+    }
+
+    private Brush ResolveClosePressedBackgroundBrush()
+    {
+        return TryFindResource("TitleBarCloseButtonPressed") as Brush ?? s_fallbackTitleBarCloseButtonPressedBrush;
+    }
+
+    private Brush ResolveGlyphBrush()
+    {
+        if (HasLocalValue(Control.ForegroundProperty) && Foreground != null)
+        {
+            return Foreground;
+        }
+
+        return TryFindResource("TitleBarGlyph") as Brush
+            ?? Foreground
+            ?? s_fallbackTitleBarGlyphBrush;
     }
 
     #endregion

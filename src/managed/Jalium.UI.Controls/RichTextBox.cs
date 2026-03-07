@@ -366,12 +366,6 @@ public sealed class RichTextBox : Control
         _lastCaretBlink = DateTime.Now;
         _lastClickTime = DateTime.MinValue;
 
-        // Set default styles
-        Background = new SolidColorBrush(Color.FromArgb(255, 30, 30, 30));
-        BorderBrush = new SolidColorBrush(Color.FromArgb(255, 70, 70, 70));
-        BorderThickness = new Thickness(1);
-        Padding = new Thickness(4);
-
         // Register input event handlers
         AddHandler(MouseDownEvent, new RoutedEventHandler(OnMouseDownHandler));
         AddHandler(MouseUpEvent, new RoutedEventHandler(OnMouseUpHandler));

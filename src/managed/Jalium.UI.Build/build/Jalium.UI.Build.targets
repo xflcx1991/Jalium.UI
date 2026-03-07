@@ -1,54 +1,40 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 
-  <!-- 瀹氫箟 JALXAML 鏂囦欢椤圭被鍨?-->
+  <!-- Declare custom item types. -->
   <ItemGroup>
     <AvailableItemName Include="JalxamlPage" />
     <AvailableItemName Include="JalxamlApplicationDefinition" />
   </ItemGroup>
 
-  <!-- 榛樿灞炴€?-->
+  <!-- Default task and compiler paths. -->
   <PropertyGroup>
-    <!-- MSBuild 浠诲姟 DLL 璺緞锛堝彲閫氳繃棰勮鍊艰鐩栵紝鐢ㄤ簬椤圭洰寮曠敤寮€鍙戞ā寮忥級 -->
     <_JalxamlTasksPath Condition="'$(_JalxamlTasksPath)' == ''">$(MSBuildThisFileDirectory)..\tasks\net10.0\Jalium.UI.Build.dll</_JalxamlTasksPath>
-    <!-- jalxamlc 缂栬瘧鍣ㄨ矾寰?-->
     <JalxamlCompilerPath Condition="'$(JalxamlCompilerPath)' == ''">$(MSBuildThisFileDirectory)..\tools\jalxamlc.exe</JalxamlCompilerPath>
     <EnableJalxamlOptimization Condition="'$(EnableJalxamlOptimization)' == ''">true</EnableJalxamlOptimization>
     <JalxamlDebugInfo Condition="'$(JalxamlDebugInfo)' == ''">false</JalxamlDebugInfo>
     <JalxamlIntermediateOutputPath Condition="'$(JalxamlIntermediateOutputPath)' == ''">$(IntermediateOutputPath)Jalxaml\</JalxamlIntermediateOutputPath>
-    <!-- 鏄惁鐢熸垚浠ｇ爜闅愯棌鏂囦欢锛堝鏋滀娇鐢?Source Generator 鍒欒缃负 false锛?-->
     <EnableJalxamlCodeGeneration Condition="'$(EnableJalxamlCodeGeneration)' == ''">true</EnableJalxamlCodeGeneration>
   </PropertyGroup>
 
-  <!-- 鑷姩鍙戠幇 .jalxaml 鏂囦欢 -->
+  <!-- Discover .jalxaml files by default. -->
   <ItemGroup Condition="'$(EnableDefaultJalxamlItems)' != 'false'">
     <JalxamlPage Include="**\*.jalxaml" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
   </ItemGroup>
 
-  <!-- 鏂囦欢宓屽閰嶇疆 - .jalxaml.cs 宓屽鍦?.jalxaml 涓?-->
+  <!-- Nest .jalxaml.cs files under the matching .jalxaml file in Solution Explorer. -->
   <ItemGroup>
     <Compile Update="**\*.jalxaml.cs" DependentUpon="%(Filename)" />
   </ItemGroup>
 
-  <!--
-    娉ㄦ剰锛欰dditionalFiles 鐨勬坊鍔犲凡绉昏嚦 Target 涓?(PrepareJalxamlForSourceGenerator)
-    杩欐牱 VS 灞炴€ч潰鏉夸細姝ｇ‘鏄剧ず鐢熸垚鎿嶄綔涓?"JalxamlPage" 鑰屼笉鏄?"C# 鍒嗘瀽鍣ㄥ叾浠栨枃浠?
-  -->
-
-
-  <!-- 瀵煎叆 MSBuild 浠诲姟 -->
+  <!-- Load custom build tasks. -->
   <UsingTask TaskName="Jalium.UI.Build.CompileJalxamlTask" AssemblyFile="$(_JalxamlTasksPath)" />
   <UsingTask TaskName="Jalium.UI.Build.GenerateJalxamlCodeBehindTask" AssemblyFile="$(_JalxamlTasksPath)" />
   <UsingTask TaskName="Jalium.UI.Build.TransformJalxamlRazorTask" AssemblyFile="$(_JalxamlTasksPath)" />
   <UsingTask TaskName="Jalium.UI.Build.CompileHlslShadersTask" AssemblyFile="$(_JalxamlTasksPath)" />
   <UsingTask TaskName="Jalium.UI.Build.ExtractHlslShadersTask" AssemblyFile="$(_JalxamlTasksPath)" />
 
-  <!--
-    寮€鍙戞ā寮忥細绉婚櫎 NuGet 浼犻€掍緷璧栫殑 Source Generator 鍒嗘瀽鍣?
-    褰撻」鐩悓鏃堕€氳繃 ProjectReference锛堝紑鍙戞ā寮忥級鍜?NuGet 浼犻€掍緷璧栵紙濡?Jalium.UI 鍏冨寘锛?
-    寮曠敤 Source Generator 鏃讹紝Roslyn 浼氬姞杞戒袱浠藉垎鏋愬櫒 DLL锛屽鑷?CS0102 閲嶅瀹氫箟閿欒銆?
-    姝ょ洰鏍囧湪缂栬瘧鍓嶇Щ闄?NuGet 缂撳瓨涓殑鍓湰锛屼粎淇濈暀 ProjectReference 鐗堟湰銆?
-  -->
+  <!-- Remove duplicate source generator analyzers when a local ProjectReference is also present. -->
   <Target Name="DeduplicateJalxamlSourceGenerator"
           BeforeTargets="CoreCompile"
           Condition="'$(EnableJalxamlCodeGeneration)' == 'false'">
@@ -64,29 +50,25 @@
     </ItemGroup>
   </Target>
 
-  <!--
-    涓?Source Generator 鍑嗗 AdditionalFiles
-    鍦?Target 涓坊鍔狅紝杩欐牱 VS 灞炴€ч潰鏉夸笉浼氬皢鍏舵樉绀轰负涓昏鐢熸垚鎿嶄綔
-    蹇呴』鍦?CoreCompile 涔嬪墠杩愯锛屼互渚?Source Generator 鍙互璁块棶杩欎簺鏂囦欢
-  -->
+  <!-- Register source files for the source generator. -->
   <Target Name="PrepareJalxamlForSourceGenerator"
           BeforeTargets="CoreCompile"
-          Condition="'$(EnableJalxamlCodeGeneration)' == 'false' And ('@(JalxamlPage)' != '' Or '@(JalxamlApplicationDefinition)' != '')">
+          Condition="'$(EnableJalxamlCodeGeneration)' == 'false' and ('@(JalxamlPage)' != '' or '@(JalxamlApplicationDefinition)' != '')">
     <ItemGroup>
       <AdditionalFiles Include="@(JalxamlPage)" />
       <AdditionalFiles Include="@(JalxamlApplicationDefinition)" />
-      <!-- 鍖呭惈宸茬紪璇戠殑 .uic.base64 鏂囦欢锛堟潵鑷笂娆℃瀯寤猴級 -->
       <AdditionalFiles Include="$(IntermediateOutputPath)Jalxaml\*.uic.base64" />
     </ItemGroup>
-    <Message Text="宸叉坊鍔?JALXAML 鏂囦欢涓?AdditionalFiles (渚?Source Generator 浣跨敤)" Importance="low" />
+    <Message Text="Added JALXAML files to AdditionalFiles for the source generator." Importance="low" />
   </Target>
 
+  <!-- Transform Razor-style JALXAML before compilation and embedding. -->
   <Target Name="TransformJalxamlRazor"
           BeforeTargets="CompileJalxaml;EmbedJalxamlSources"
           DependsOnTargets="PrepareForBuild"
           Inputs="@(JalxamlPage);@(JalxamlApplicationDefinition)"
           Outputs="@(JalxamlPage->'$(JalxamlRazorIntermediateOutputPath)%(RecursiveDir)%(Filename)%(Extension)');@(JalxamlApplicationDefinition->'$(JalxamlRazorIntermediateOutputPath)%(RecursiveDir)%(Filename)%(Extension)');$(JalxamlRazorIntermediateOutputPath)Jalxaml.RazorMetadata.g.cs"
-          Condition="'$(EnableJalxamlRazorTransform)' == 'true' And ('@(JalxamlPage)' != '' Or '@(JalxamlApplicationDefinition)' != '')">
+          Condition="'$(EnableJalxamlRazorTransform)' == 'true' and ('@(JalxamlPage)' != '' or '@(JalxamlApplicationDefinition)' != '')">
 
     <MakeDir Directories="$(JalxamlRazorIntermediateOutputPath)" />
 
@@ -103,27 +85,29 @@
       <FileWrites Include="@(_JalxamlRazorGeneratedCodeFiles)" />
     </ItemGroup>
 
-    <Message Text="宸茶浆璇?JALXAML Razor: @(_JalxamlRazorTransformedFiles)" Importance="normal" />
+    <Message Text="Transformed JALXAML Razor sources: @(_JalxamlRazorTransformedFiles)" Importance="normal" />
     <Message Condition="'@(_JalxamlRazorGeneratedCodeFiles)' != ''"
-             Text="宸茬敓鎴?JALXAML Razor 鍏冩暟鎹唬鐮? @(_JalxamlRazorGeneratedCodeFiles)" Importance="normal" />
+             Text="Generated JALXAML Razor metadata code: @(_JalxamlRazorGeneratedCodeFiles)" Importance="normal" />
   </Target>
 
+  <!-- Choose the final source set used by downstream targets. -->
   <Target Name="ResolveEffectiveJalxamlSources"
           DependsOnTargets="TransformJalxamlRazor"
-          Condition="'@(JalxamlPage)' != '' Or '@(JalxamlApplicationDefinition)' != ''">
+          Condition="'@(JalxamlPage)' != '' or '@(JalxamlApplicationDefinition)' != ''">
     <ItemGroup>
       <_EffectiveJalxamlSources Remove="@(_EffectiveJalxamlSources)" />
       <_EffectiveJalxamlSources Include="@(_JalxamlRazorTransformedFiles)"
-                                Condition="'$(EnableJalxamlRazorTransform)' == 'true' And '@(_JalxamlRazorTransformedFiles)' != ''" />
+                                Condition="'$(EnableJalxamlRazorTransform)' == 'true' and '@(_JalxamlRazorTransformedFiles)' != ''" />
       <_EffectiveJalxamlSources Include="@(JalxamlPage);@(JalxamlApplicationDefinition)"
                                 Condition="'@(_EffectiveJalxamlSources)' == ''" />
     </ItemGroup>
   </Target>
 
+  <!-- Include Razor-generated code in the compile set. -->
   <Target Name="IncludeJalxamlRazorGeneratedCode"
           BeforeTargets="CoreCompile"
           DependsOnTargets="TransformJalxamlRazor"
-          Condition="'$(EnableJalxamlRazorTransform)' == 'true' And '@(_JalxamlRazorGeneratedCodeFiles)' != ''">
+          Condition="'$(EnableJalxamlRazorTransform)' == 'true' and '@(_JalxamlRazorGeneratedCodeFiles)' != ''">
     <ItemGroup>
       <Compile Remove="@(_JalxamlRazorGeneratedCodeFiles)" />
       <Compile Include="@(_JalxamlRazorGeneratedCodeFiles)" Condition="Exists('%(Identity)')" />
@@ -131,17 +115,13 @@
     </ItemGroup>
   </Target>
 
-  <!--
-    缂栬瘧鍓嶇洰鏍囷細鐢熸垚浠ｇ爜闅愯棌鏂囦欢
-    鍦?CoreCompile 涔嬪墠杩愯
-    娉ㄦ剰锛氬鏋滀娇鐢?Source Generator锛岃璁剧疆 EnableJalxamlCodeGeneration=false
-  -->
+  <!-- Generate code-behind files when the source generator is disabled. -->
   <Target Name="GenerateJalxamlCodeBehind"
           BeforeTargets="CoreCompile"
           DependsOnTargets="PrepareForBuild"
           Inputs="@(JalxamlPage);@(JalxamlApplicationDefinition)"
           Outputs="@(JalxamlPage->'$(JalxamlIntermediateOutputPath)%(Filename).g.cs');@(JalxamlApplicationDefinition->'$(JalxamlIntermediateOutputPath)%(Filename).g.cs');$(JalxamlIntermediateOutputPath)Jalxaml.ViewAliases.g.cs"
-          Condition="'$(EnableJalxamlCodeGeneration)' == 'true' And ('@(JalxamlPage)' != '' Or '@(JalxamlApplicationDefinition)' != '')">
+          Condition="'$(EnableJalxamlCodeGeneration)' == 'true' and ('@(JalxamlPage)' != '' or '@(JalxamlApplicationDefinition)' != '')">
 
     <MakeDir Directories="$(JalxamlIntermediateOutputPath)" />
 
@@ -154,23 +134,19 @@
       <Output TaskParameter="GeneratedFiles" ItemName="_JalxamlGeneratedFiles" />
     </GenerateJalxamlCodeBehindTask>
 
-    <!-- 灏嗙敓鎴愮殑鏂囦欢娣诲姞鍒扮紪璇?-->
     <ItemGroup>
       <Compile Include="@(_JalxamlGeneratedFiles)" />
       <FileWrites Include="@(_JalxamlGeneratedFiles)" />
     </ItemGroup>
 
-    <Message Text="宸茬敓鎴?JALXAML 浠ｇ爜闅愯棌: @(_JalxamlGeneratedFiles)" Importance="normal" />
+    <Message Text="Generated JALXAML code-behind files: @(_JalxamlGeneratedFiles)" Importance="normal" />
   </Target>
 
-  <!--
-    Always register expected generated code-behind files into Compile/FileWrites before CoreCompile.
-    This must run even when GenerateJalxamlCodeBehind is skipped by incremental build.
-  -->
+  <!-- Always register expected generated files, even when generation is skipped incrementally. -->
   <Target Name="IncludeJalxamlGeneratedCodeBehind"
           BeforeTargets="CoreCompile"
           DependsOnTargets="GenerateJalxamlCodeBehind"
-          Condition="'$(EnableJalxamlCodeGeneration)' == 'true' And ('@(JalxamlPage)' != '' Or '@(JalxamlApplicationDefinition)' != '')">
+          Condition="'$(EnableJalxamlCodeGeneration)' == 'true' and ('@(JalxamlPage)' != '' or '@(JalxamlApplicationDefinition)' != '')">
     <ItemGroup>
       <_ExpectedJalxamlGeneratedFiles Include="@(JalxamlPage->'$(JalxamlIntermediateOutputPath)%(Filename).g.cs')" />
       <_ExpectedJalxamlGeneratedFiles Include="@(JalxamlApplicationDefinition->'$(JalxamlIntermediateOutputPath)%(Filename).g.cs')" />
@@ -181,19 +157,13 @@
     </ItemGroup>
   </Target>
 
-  <!--
-    缂栬瘧鐩爣锛氬皢 JALXAML 缂栬瘧涓?.uic 鍖?
-    鍦?CoreCompile 涔嬪墠杩愯锛屼互渚垮祵鍏ュ埌绋嬪簭闆嗕腑鎴栦紶閫掔粰 Source Generator
-
-    閲嶈锛氫娇鐢?BeforeTargets="BeforeBuild;CoreCompile" 纭繚灏芥棭杩愯
-    杩欐牱 Source Generator 鍙互閫氳繃闈欐€?glob 妯″紡鎵惧埌 .uic.base64 鏂囦欢
-  -->
+  <!-- Compile JALXAML sources to .uic files. -->
   <Target Name="CompileJalxaml"
           BeforeTargets="PrepareResources;BeforeBuild;CoreCompile"
           DependsOnTargets="PrepareForBuild;ResolveEffectiveJalxamlSources"
           Inputs="@(_EffectiveJalxamlSources)"
           Outputs="$(JalxamlIntermediateOutputPath)%(Filename).uic"
-          Condition="'@(JalxamlPage)' != '' Or '@(JalxamlApplicationDefinition)' != ''">
+          Condition="'@(JalxamlPage)' != '' or '@(JalxamlApplicationDefinition)' != ''">
 
     <CompileJalxamlTask
         SourceFiles="@(_EffectiveJalxamlSources)"
@@ -208,109 +178,64 @@
 
     <ItemGroup>
       <FileWrites Include="@(_CompiledJalxamlFiles)" />
-      <!-- Also track the .base64 files for cleanup -->
       <FileWrites Include="@(_CompiledJalxamlFiles->'%(Identity).base64')" />
     </ItemGroup>
 
-    <!--
-      褰撲娇鐢?Source Generator 鏃讹紝灏?.uic.base64 鏂囦欢浣滀负 AdditionalFiles 浼犻€?
-      Source Generator 閫氳繃 AdditionalText.GetText() 璇诲彇 Base64 鍐呭锛岀劧鍚庤В鐮佷负浜岃繘鍒?
-      锛圫ource Generator 涓嶅厑璁哥洿鎺ヤ娇鐢?File IO锛?
-    -->
     <ItemGroup Condition="'$(EnableJalxamlCodeGeneration)' == 'false'">
       <AdditionalFiles Include="@(_CompiledJalxamlFiles->'%(Identity).base64')">
         <SourceJalxaml>%(Identity)</SourceJalxaml>
       </AdditionalFiles>
     </ItemGroup>
 
-    <Message Text="宸茬紪璇?JALXAML: @(_CompiledJalxamlFiles)" Importance="normal" />
+    <Message Text="Compiled JALXAML sources: @(_CompiledJalxamlFiles)" Importance="normal" />
   </Target>
 
-  <!--
-    宓屽叆 .uic 璧勬簮鐩爣
-    杩欎釜鐩爣蹇呴』鍦?AssignTargetPaths 涔嬪墠杩愯锛屼互渚?EmbeddedResource 琚纭鐞?
-    DependsOnTargets="CompileJalxaml" 纭繚 .uic 鏂囦欢宸茬粡缂栬瘧瀹屾垚
-  -->
+  <!-- Embed compiled .uic files as resources. -->
   <Target Name="EmbedCompiledJalxaml"
           BeforeTargets="AssignTargetPaths;PrepareResources"
           DependsOnTargets="CompileJalxaml"
-          Condition="'@(JalxamlPage)' != '' Or '@(JalxamlApplicationDefinition)' != ''">
+          Condition="'@(JalxamlPage)' != '' or '@(JalxamlApplicationDefinition)' != ''">
 
-    <!-- 鏌ユ壘鎵€鏈夊凡缂栬瘧鐨?.uic 鏂囦欢 -->
     <ItemGroup>
       <_UicFilesToEmbed Include="$(JalxamlIntermediateOutputPath)*.uic" />
     </ItemGroup>
 
-    <!-- 灏?.uic 鏂囦欢娣诲姞涓哄祵鍏ヨ祫婧?-->
     <ItemGroup>
       <EmbeddedResource Include="@(_UicFilesToEmbed)">
         <LogicalName>$(RootNamespace).%(Filename).uic</LogicalName>
       </EmbeddedResource>
     </ItemGroup>
 
-    <Message Text="宸插祵鍏?.uic 璧勬簮: @(_UicFilesToEmbed -> '$(RootNamespace).%(Filename).uic')" Importance="normal" />
+    <Message Text="Embedded compiled JALXAML resources: @(_UicFilesToEmbed -> '$(RootNamespace).%(Filename).uic')" Importance="normal" />
   </Target>
 
-  <!--
-    宓屽叆鍘熷 JALXAML 鏂囦欢
-    鐢ㄤ簬 XamlReader.LoadComponent 鐨?XML 瑙ｆ瀽鏂瑰紡
-    LogicalName 鏍煎紡锛歊ootNamespace.RelativePath.Filename.jalxaml
-    渚嬪锛欽alium.UI.Gallery.Views.BorderPage.jalxaml
-
-    閲嶈锛氭棤璁烘槸鍚︿娇鐢?Source Generator锛岄兘闇€瑕佸祵鍏?.jalxaml 婧愭枃浠?
-    鍥犱负浠ｇ爜闅愯棌鍦烘櫙闇€瑕佽繍琛屾椂瑙ｆ瀽 XAML 鏉ュ垱寤烘帶浠跺疄渚?
-    锛?uic 浜岃繘鍒跺寘鍙寘鍚覆鏌撳師璇紝涓嶅寘鍚帶浠跺厓鏁版嵁锛?
-
-    閲嶈锛氬繀椤诲湪 AssignTargetPaths 涔嬪墠杩愯锛屽惁鍒?EmbeddedResource 涓嶄細琚寘鍚?
-  -->
+  <!-- Embed original JALXAML sources for runtime XAML parsing. -->
   <Target Name="EmbedJalxamlSources"
           BeforeTargets="AssignTargetPaths;CoreCompile"
           DependsOnTargets="ResolveEffectiveJalxamlSources"
-          Condition="'@(JalxamlPage)' != '' Or '@(JalxamlApplicationDefinition)' != ''">
+          Condition="'@(JalxamlPage)' != '' or '@(JalxamlApplicationDefinition)' != ''">
 
     <ItemGroup>
-      <!--
-        %(RecursiveDir) 鍖呭惈鐩稿浜?glob 鏍圭殑鐩綍璺緞锛堝 Views\锛?
-        %(Filename) 鏄枃浠跺悕涓嶅惈鎵╁睍鍚?
-        灏嗚矾寰勫垎闅旂鏇挎崲涓虹偣锛屽舰鎴愬畬鏁寸殑璧勬簮鍚嶇О
-      -->
-      <EmbeddedResource Include="@(_EffectiveJalxamlSources)">
-        <LogicalName Condition="'%(RazorRelativeLogicalPath)' != ''">$(RootNamespace).%(RazorRelativeLogicalPath).jalxaml</LogicalName>
-        <LogicalName Condition="'%(RazorRelativeLogicalPath)' == ''">$(RootNamespace).$([System.String]::Copy('%(RecursiveDir)%(Filename)').Replace('\','.').Replace('/','.').TrimStart('.')).jalxaml</LogicalName>
+      <_JalxamlSourcesToEmbed Include="@(_EffectiveJalxamlSources)">
+        <JalxamlLogicalName Condition="'%(RazorRelativeLogicalPath)' != ''">$(RootNamespace).%(RazorRelativeLogicalPath).jalxaml</JalxamlLogicalName>
+        <JalxamlLogicalName Condition="'%(RazorRelativeLogicalPath)' == ''">$(RootNamespace).$([System.String]::Copy('%(RelativeDir)%(Filename)').Replace('\','.').Replace('/','.').TrimStart('.')).jalxaml</JalxamlLogicalName>
+      </_JalxamlSourcesToEmbed>
+      <EmbeddedResource Include="@(_JalxamlSourcesToEmbed)">
+        <ManifestResourceName>%(_JalxamlSourcesToEmbed.JalxamlLogicalName)</ManifestResourceName>
+        <LogicalName>%(_JalxamlSourcesToEmbed.JalxamlLogicalName)</LogicalName>
       </EmbeddedResource>
     </ItemGroup>
 
-    <Message Text="宸插祵鍏?JALXAML 婧愭枃浠? @(_EffectiveJalxamlSources)" Importance="normal" />
+    <Message Text="Embedded original JALXAML sources: @(_EffectiveJalxamlSources)" Importance="normal" />
   </Target>
 
-  <!--
-    ============================================================
-    HLSL 鐫€鑹插櫒缂栬瘧绠＄嚎
-    灏?.hlsl 鐫€鑹插櫒鏂囦欢棰勭紪璇戜负 .cso (Compiled Shader Object)
-    宓屽叆涓虹▼搴忛泦璧勬簮锛岃繍琛屾椂 ShaderCompiler 浼樺厛浠庤祫婧愬姞杞?
-    ============================================================
-  -->
-
-  <!--
-    缂栬瘧 HLSL 鐫€鑹插櫒
-    娑堣垂椤圭洰鍙互鍦?.csproj 涓０鏄?HlslShader 椤癸細
-      <ItemGroup>
-        <HlslShader Include="Shaders\CustomEffect.hlsl">
-          <EntryPoint>CSMain</EntryPoint>
-          <ShaderModel>cs_5_1</ShaderModel>
-          <ShaderType>CustomEffect</ShaderType>
-        </HlslShader>
-      </ItemGroup>
-
-    鎴栬€呭鏋滃紩鐢ㄤ簡 Jalium.UI.Gpu锛屽彲浠ヨ缃?EnableBuiltInShaderPrecompilation=true
-    鑷姩鎻愬彇骞堕缂栬瘧鎵€鏈夊唴缃潃鑹插櫒
-  -->
+  <!-- Compile project-defined HLSL shaders. -->
   <Target Name="CompileHlslShaders"
           BeforeTargets="PrepareResources;CoreCompile"
           DependsOnTargets="PrepareForBuild;ResolveAssemblyReferences"
           Inputs="@(HlslShader)"
           Outputs="$(HlslShaderIntermediateOutputPath)%(HlslShader.ShaderType).cso"
-          Condition="'$(EnableHlslShaderPrecompilation)' == 'true' And '@(HlslShader)' != ''">
+          Condition="'$(EnableHlslShaderPrecompilation)' == 'true' and '@(HlslShader)' != ''">
 
     <MakeDir Directories="$(HlslShaderIntermediateOutputPath)" />
 
@@ -328,22 +253,17 @@
       <FileWrites Include="@(_CompiledHlslShaders)" />
     </ItemGroup>
 
-    <Message Text="宸茬紪璇?HLSL 鐫€鑹插櫒: @(_CompiledHlslShaders)" Importance="normal" />
+    <Message Text="Compiled HLSL shaders: @(_CompiledHlslShaders)" Importance="normal" />
   </Target>
 
-  <!--
-    鎻愬彇鍐呯疆鐫€鑹插櫒锛堜粠 Jalium.UI.Gpu 鐨?ShaderLibrary锛?
-    璁剧疆 EnableBuiltInShaderPrecompilation=true 鍚敤
-    杩欎釜鐩爣鍦?CompileHlslShaders 涔嬪墠杩愯锛岀敓鎴?.hlsl 鏂囦欢渚涚紪璇?
-  -->
+  <!-- Extract built-in HLSL shaders from Jalium.UI.Gpu when enabled. -->
   <Target Name="ExtractBuiltInHlslShaders"
           BeforeTargets="CompileHlslShaders"
           DependsOnTargets="ResolveAssemblyReferences"
-          Condition="'$(EnableBuiltInShaderPrecompilation)' == 'true' And '$(EnableHlslShaderPrecompilation)' == 'true'">
+          Condition="'$(EnableBuiltInShaderPrecompilation)' == 'true' and '$(EnableHlslShaderPrecompilation)' == 'true'">
 
     <MakeDir Directories="$(HlslShaderIntermediateOutputPath)" />
 
-    <!-- 鏌ユ壘 Jalium.UI.Gpu 绋嬪簭闆嗚矾寰?-->
     <PropertyGroup>
       <_GpuAssemblyPath>@(ReferencePath->WithMetadataValue('NuGetPackageId','Jalium.UI.Gpu')->'%(Identity)')</_GpuAssemblyPath>
       <_GpuAssemblyPath Condition="'$(_GpuAssemblyPath)' == ''">@(ReferencePath->WithMetadataValue('Filename','Jalium.UI.Gpu')->'%(Identity)')</_GpuAssemblyPath>
@@ -357,16 +277,12 @@
     </ExtractHlslShadersTask>
 
     <Message Condition="'$(_GpuAssemblyPath)' != ''"
-             Text="宸叉彁鍙栧唴缃潃鑹插櫒鍒? $(HlslShaderIntermediateOutputPath)" Importance="normal" />
+             Text="Extracted built-in HLSL shaders to $(HlslShaderIntermediateOutputPath)" Importance="normal" />
     <Message Condition="'$(_GpuAssemblyPath)' == ''"
-             Text="鏈壘鍒?Jalium.UI.Gpu 寮曠敤锛岃烦杩囧唴缃潃鑹插櫒鎻愬彇" Importance="normal" />
+             Text="Skipped built-in HLSL shader extraction because Jalium.UI.Gpu was not resolved." Importance="normal" />
   </Target>
 
-  <!--
-    宓屽叆缂栬瘧鍚庣殑鐫€鑹插櫒涓虹▼搴忛泦璧勬簮
-    璧勬簮鍚嶇О鏍煎紡: $(RootNamespace).Shaders.%(ShaderType).cso
-    杩愯鏃堕€氳繃 Assembly.GetManifestResourceStream 鍔犺浇
-  -->
+  <!-- Embed compiled shader blobs as resources. -->
   <Target Name="EmbedCompiledShaders"
           BeforeTargets="AssignTargetPaths;PrepareResources"
           DependsOnTargets="CompileHlslShaders"
@@ -383,10 +299,10 @@
     </ItemGroup>
 
     <Message Condition="'@(_CsoFilesToEmbed)' != ''"
-             Text="宸插祵鍏ョ紪璇戠潃鑹插櫒: @(_CsoFilesToEmbed -> '$(RootNamespace).Shaders.%(Filename).cso')" Importance="normal" />
+             Text="Embedded compiled shaders: @(_CsoFilesToEmbed -> '$(RootNamespace).Shaders.%(Filename).cso')" Importance="normal" />
   </Target>
 
-  <!-- 娓呯悊鐩爣 -->
+  <!-- Remove generated artifacts on Clean. -->
   <Target Name="CleanJalxaml" AfterTargets="Clean">
     <Delete Files="$(JalxamlIntermediateOutputPath)**\*.g.cs" />
     <Delete Files="$(JalxamlIntermediateOutputPath)**\*.uic" />
@@ -400,4 +316,3 @@
   </Target>
 
 </Project>
-

@@ -13,8 +13,6 @@ public sealed class ColorPicker : Control
     // Cached brushes and pens for OnRender
     private static readonly SolidColorBrush s_whiteBrush = new(Color.White);
     private static readonly SolidColorBrush s_grayBorderBrush = new(Color.FromRgb(100, 100, 100));
-    private static readonly Pen s_grayBorderPen = new(s_grayBorderBrush, 1);
-    private static readonly Pen s_whiteSelectorPen = new(s_whiteBrush, 2);
     private static readonly SolidColorBrush s_checkerLightBrush = new(Color.FromRgb(200, 200, 200));
     private static readonly SolidColorBrush s_checkerDarkBrush = new(Color.FromRgb(150, 150, 150));
 
@@ -210,8 +208,6 @@ public sealed class ColorPicker : Control
     public ColorPicker()
     {
         Focusable = true;
-        Background = new SolidColorBrush(Color.FromRgb(45, 45, 45));
-        Padding = new Thickness(8);
 
         AddHandler(MouseDownEvent, new RoutedEventHandler(OnMouseDownHandler));
         AddHandler(MouseUpEvent, new RoutedEventHandler(OnMouseUpHandler));
@@ -494,7 +490,7 @@ public sealed class ColorPicker : Control
                 var hexText = $"#{_alpha:X2}{Color.R:X2}{Color.G:X2}{Color.B:X2}";
                 var formattedText = new FormattedText(hexText, FontFamily ?? "Segoe UI", FontSize > 0 ? FontSize : 14)
                 {
-                    Foreground = Foreground ?? s_whiteBrush
+                    Foreground = ResolveForegroundBrush()
                 };
                 TextMeasurement.MeasureText(formattedText);
 
@@ -522,12 +518,12 @@ public sealed class ColorPicker : Control
         dc.DrawRectangle(valGradient, null, rect);
 
         // Draw border
-        dc.DrawRectangle(null, s_grayBorderPen, rect);
+        dc.DrawRectangle(null, GetBorderPen(), rect);
 
         // Draw selector
         var selectorX = rect.X + _saturation * rect.Width;
         var selectorY = rect.Y + (1 - _value) * rect.Height;
-        dc.DrawEllipse(null, s_whiteSelectorPen, new Point(selectorX, selectorY), 6, 6);
+        dc.DrawEllipse(null, GetSelectorPen(), new Point(selectorX, selectorY), 6, 6);
     }
 
     private void DrawHueSlider(DrawingContext dc, Rect rect)
@@ -553,12 +549,12 @@ public sealed class ColorPicker : Control
         }
 
         // Draw border
-        dc.DrawRoundedRectangle(null, s_grayBorderPen, rect, 2, 2);
+        dc.DrawRoundedRectangle(null, GetBorderPen(), rect, 2, 2);
 
         // Draw selector
         var selectorX = rect.X + (_hue / 360) * rect.Width;
         var selectorRect = new Rect(selectorX - 2, rect.Y - 2, 4, rect.Height + 4);
-        dc.DrawRoundedRectangle(s_whiteBrush, null, selectorRect, 2, 2);
+        dc.DrawRoundedRectangle(ResolveForegroundBrush(), null, selectorRect, 2, 2);
     }
 
     private void DrawAlphaSlider(DrawingContext dc, Rect rect)
@@ -574,12 +570,12 @@ public sealed class ColorPicker : Control
         dc.DrawRectangle(gradient, null, rect);
 
         // Draw border
-        dc.DrawRoundedRectangle(null, s_grayBorderPen, rect, 2, 2);
+        dc.DrawRoundedRectangle(null, GetBorderPen(), rect, 2, 2);
 
         // Draw selector
         var selectorX = rect.X + (_alpha / 255.0) * rect.Width;
         var selectorRect = new Rect(selectorX - 2, rect.Y - 2, 4, rect.Height + 4);
-        dc.DrawRoundedRectangle(s_whiteBrush, null, selectorRect, 2, 2);
+        dc.DrawRoundedRectangle(ResolveForegroundBrush(), null, selectorRect, 2, 2);
     }
 
     private void DrawCheckerboard(DrawingContext dc, Rect rect)
@@ -609,7 +605,43 @@ public sealed class ColorPicker : Control
         dc.DrawRectangle(colorBrush, null, rect);
 
         // Draw border
-        dc.DrawRectangle(null, s_grayBorderPen, rect);
+        dc.DrawRectangle(null, GetBorderPen(), rect);
+    }
+
+    private Pen GetBorderPen()
+    {
+        var borderBrush = ResolveBorderBrush();
+        var thickness = BorderThickness.Left > 0 ? BorderThickness.Left : 1;
+        return new Pen(borderBrush, thickness);
+    }
+
+    private Pen GetSelectorPen()
+    {
+        return new Pen(ResolveForegroundBrush(), 2);
+    }
+
+    private Brush ResolveForegroundBrush()
+    {
+        if (HasLocalValue(Control.ForegroundProperty) && Foreground != null)
+        {
+            return Foreground;
+        }
+
+        return TryFindResource("TextPrimary") as Brush
+            ?? Foreground
+            ?? s_whiteBrush;
+    }
+
+    private Brush ResolveBorderBrush()
+    {
+        if (HasLocalValue(Control.BorderBrushProperty) && BorderBrush != null)
+        {
+            return BorderBrush;
+        }
+
+        return TryFindResource("ControlBorder") as Brush
+            ?? BorderBrush
+            ?? s_grayBorderBrush;
     }
 
     #endregion

@@ -6,8 +6,8 @@
     <!-- TitleBar Style -->
     <!-- ============================================== -->
     <Style TargetType="TitleBar">
-        <Setter Property="Background" Value="{StaticResource TitleBarBackground}" />
-        <Setter Property="Foreground" Value="{StaticResource TitleBarText}" />
+        <Setter Property="Background" Value="{DynamicResource TitleBarBackground}" />
+        <Setter Property="Foreground" Value="{DynamicResource TitleBarText}" />
         <Setter Property="FontSize" Value="12" />
         <Setter Property="FontFamily" Value="Segoe UI" />
         <Setter Property="Height" Value="32" />
@@ -71,8 +71,8 @@
     <!-- TitleBarButton Style -->
     <!-- ============================================== -->
     <Style TargetType="TitleBarButton">
-        <Setter Property="Background" Value="{StaticResource TitleBarButtonBackground}" />
-        <Setter Property="Foreground" Value="{StaticResource TitleBarGlyph}" />
+        <Setter Property="Background" Value="{DynamicResource TitleBarButtonBackground}" />
+        <Setter Property="Foreground" Value="{DynamicResource TitleBarGlyph}" />
         <Setter Property="Width" Value="46" />
         <Setter Property="Height" Value="32" />
         <Setter Property="GlyphSize" Value="10" />
@@ -156,21 +156,21 @@
                             <Condition Property="IsMouseOver" Value="True" />
                             <Condition Property="Kind" Value="Minimize" />
                         </MultiTrigger.Conditions>
-                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{StaticResource TitleBarButtonHover}" />
+                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{DynamicResource TitleBarButtonHover}" />
                     </MultiTrigger>
                     <MultiTrigger>
                         <MultiTrigger.Conditions>
                             <Condition Property="IsMouseOver" Value="True" />
                             <Condition Property="Kind" Value="Maximize" />
                         </MultiTrigger.Conditions>
-                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{StaticResource TitleBarButtonHover}" />
+                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{DynamicResource TitleBarButtonHover}" />
                     </MultiTrigger>
                     <MultiTrigger>
                         <MultiTrigger.Conditions>
                             <Condition Property="IsMouseOver" Value="True" />
                             <Condition Property="Kind" Value="Restore" />
                         </MultiTrigger.Conditions>
-                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{StaticResource TitleBarButtonHover}" />
+                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{DynamicResource TitleBarButtonHover}" />
                     </MultiTrigger>
 
                     <!-- Hover state for close button (red) -->
@@ -179,7 +179,7 @@
                             <Condition Property="IsMouseOver" Value="True" />
                             <Condition Property="Kind" Value="Close" />
                         </MultiTrigger.Conditions>
-                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{StaticResource TitleBarCloseButtonHover}" />
+                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{DynamicResource TitleBarCloseButtonHover}" />
                     </MultiTrigger>
 
                     <!-- Pressed state for non-close buttons (requires mouse over to allow cancel by dragging outside) -->
@@ -189,7 +189,7 @@
                             <Condition Property="IsPressed" Value="True" />
                             <Condition Property="Kind" Value="Minimize" />
                         </MultiTrigger.Conditions>
-                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{StaticResource TitleBarButtonPressed}" />
+                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{DynamicResource TitleBarButtonPressed}" />
                     </MultiTrigger>
                     <MultiTrigger>
                         <MultiTrigger.Conditions>
@@ -197,7 +197,7 @@
                             <Condition Property="IsPressed" Value="True" />
                             <Condition Property="Kind" Value="Maximize" />
                         </MultiTrigger.Conditions>
-                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{StaticResource TitleBarButtonPressed}" />
+                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{DynamicResource TitleBarButtonPressed}" />
                     </MultiTrigger>
                     <MultiTrigger>
                         <MultiTrigger.Conditions>
@@ -205,7 +205,7 @@
                             <Condition Property="IsPressed" Value="True" />
                             <Condition Property="Kind" Value="Restore" />
                         </MultiTrigger.Conditions>
-                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{StaticResource TitleBarButtonPressed}" />
+                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{DynamicResource TitleBarButtonPressed}" />
                     </MultiTrigger>
 
                     <!-- Pressed state for close button (requires mouse over to allow cancel by dragging outside) -->
@@ -215,7 +215,7 @@
                             <Condition Property="IsPressed" Value="True" />
                             <Condition Property="Kind" Value="Close" />
                         </MultiTrigger.Conditions>
-                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{StaticResource TitleBarCloseButtonPressed}" />
+                        <Setter TargetName="PART_RootBorder" Property="Background" Value="{DynamicResource TitleBarCloseButtonPressed}" />
                     </MultiTrigger>
                 </ControlTemplate.Triggers>
             </ControlTemplate>

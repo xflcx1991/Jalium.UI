@@ -48,6 +48,7 @@
         <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}" />
         <Setter Property="MinHeight" Value="24" />
+        <Setter Property="Height" Value="24" />
         <Setter Property="Template">
             <ControlTemplate TargetType="Slider">
                 <Grid>

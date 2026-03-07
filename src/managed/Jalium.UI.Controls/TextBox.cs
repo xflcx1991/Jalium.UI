@@ -55,7 +55,6 @@ public class TextBox : TextBoxBase, IImeSupport
 
     // Static brushes & pens for rendering
     private static readonly SolidColorBrush s_focusBorderBrush = new(Color.FromRgb(0, 120, 212));
-    private static readonly Pen s_focusPen = new(s_focusBorderBrush, 1);
     private static readonly SolidColorBrush s_placeholderTextBrush = new(Color.FromRgb(128, 128, 128));
     private static readonly SolidColorBrush s_whiteBrush = new(Color.White);
     private static readonly SolidColorBrush s_spellErrorBrush = new(Color.FromRgb(255, 0, 0));
@@ -810,7 +809,7 @@ public class TextBox : TextBoxBase, IImeSupport
         // Draw focus indicator
         if (IsKeyboardFocused)
         {
-            var focusPen = s_focusPen;
+            var focusPen = new Pen(ResolveFocusedBorderBrush(), 1);
             dc.DrawRoundedRectangle(null, focusPen, bounds, cornerRadius);
         }
     }
@@ -850,7 +849,7 @@ public class TextBox : TextBoxBase, IImeSupport
         {
             if (!string.IsNullOrEmpty(PlaceholderText))
             {
-                var placeholderBrush = s_placeholderTextBrush;
+                var placeholderBrush = ResolvePlaceholderBrush();
                 var roundedHorizontalOffset = Math.Round(_horizontalOffset);
                 var roundedVerticalOffset = Math.Round(_verticalOffset);
                 var formattedPlaceholder = new FormattedText(PlaceholderText, FontFamily ?? "Segoe UI", FontSize)
@@ -887,6 +886,16 @@ public class TextBox : TextBoxBase, IImeSupport
         }
 
         dc.Pop(); // Pop clip
+    }
+
+    private Brush ResolveFocusedBorderBrush()
+    {
+        return TryFindResource("ControlBorderFocused") as Brush ?? s_focusBorderBrush;
+    }
+
+    private Brush ResolvePlaceholderBrush()
+    {
+        return TryFindResource("TextPlaceholder") as Brush ?? s_placeholderTextBrush;
     }
 
     private void DrawText(DrawingContext dc, Rect contentRect, double lineHeight)

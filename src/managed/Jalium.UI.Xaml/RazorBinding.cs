@@ -4,6 +4,9 @@ using System.Reflection;
 using System.Text;
 using System.Xml;
 using Jalium.UI;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.CSharp.Scripting;
 using Microsoft.CodeAnalysis.Scripting;
 
@@ -13,7 +16,8 @@ internal enum RazorSegmentKind
 {
     Literal,
     Path,
-    Expression
+    Expression,
+    Code
 }
 
 internal sealed record RazorExpressionPlan(
@@ -21,10 +25,17 @@ internal sealed record RazorExpressionPlan(
     IReadOnlyList<string> Dependencies,
     IReadOnlyList<string> RootIdentifiers);
 
+internal sealed record RazorCodeBlockPlan(
+    string Code,
+    IReadOnlyList<string> Dependencies,
+    IReadOnlyList<string> RootIdentifiers,
+    IReadOnlyList<string> DeclaredIdentifiers);
+
 internal sealed record RazorSegment(
     RazorSegmentKind Kind,
     string Text,
-    RazorExpressionPlan? ExpressionPlan = null);
+    RazorExpressionPlan? ExpressionPlan = null,
+    RazorCodeBlockPlan? CodeBlockPlan = null);
 
 internal sealed class RazorTemplate
 {
@@ -33,27 +44,78 @@ internal sealed class RazorTemplate
         Segments = segments;
 
         var dependencies = new HashSet<string>(StringComparer.Ordinal);
+        var rootIdentifiers = new HashSet<string>(StringComparer.Ordinal);
+        var knownLocals = new HashSet<string>(StringComparer.Ordinal);
+        var outputSegments = new List<RazorSegment>();
+        var renderedSegmentCount = 0;
+        var hasRenderableLiteral = false;
+        var hasCodeBlocks = false;
+
         foreach (var segment in segments)
         {
-            if (segment.Kind == RazorSegmentKind.Path)
+            switch (segment.Kind)
             {
-                dependencies.Add(segment.Text);
-            }
-            else if (segment.Kind == RazorSegmentKind.Expression && segment.ExpressionPlan != null)
-            {
-                foreach (var dependency in segment.ExpressionPlan.Dependencies)
-                {
-                    dependencies.Add(dependency);
-                }
+                case RazorSegmentKind.Literal:
+                    if (!string.IsNullOrEmpty(segment.Text))
+                    {
+                        renderedSegmentCount++;
+                        hasRenderableLiteral = true;
+                    }
+                    break;
+
+                case RazorSegmentKind.Path:
+                    renderedSegmentCount++;
+                    outputSegments.Add(segment);
+                    AddExternalDependency(segment.Text, knownLocals, dependencies, rootIdentifiers);
+                    break;
+
+                case RazorSegmentKind.Expression:
+                    renderedSegmentCount++;
+                    outputSegments.Add(segment);
+                    if (segment.ExpressionPlan != null)
+                    {
+                        AddExternalDependencies(segment.ExpressionPlan.Dependencies, knownLocals, dependencies, rootIdentifiers);
+                    }
+                    break;
+
+                case RazorSegmentKind.Code:
+                    hasCodeBlocks = true;
+                    if (segment.CodeBlockPlan != null)
+                    {
+                        AddExternalDependencies(segment.CodeBlockPlan.Dependencies, knownLocals, dependencies, rootIdentifiers);
+                        foreach (var declaredIdentifier in segment.CodeBlockPlan.DeclaredIdentifiers)
+                        {
+                            if (!string.IsNullOrWhiteSpace(declaredIdentifier))
+                            {
+                                knownLocals.Add(declaredIdentifier);
+                            }
+                        }
+                    }
+                    break;
             }
         }
 
-        Dependencies = dependencies.ToArray();
+        Dependencies = dependencies.OrderBy(static x => x, StringComparer.Ordinal).ToArray();
+        RootIdentifiers = rootIdentifiers.OrderBy(static x => x, StringComparer.Ordinal).ToArray();
+        HasCodeBlocks = hasCodeBlocks;
+        HasRenderableLiteral = hasRenderableLiteral;
+        RenderedSegmentCount = renderedSegmentCount;
+        SingleOutputSegment = !hasRenderableLiteral && outputSegments.Count == 1 ? outputSegments[0] : null;
     }
 
     public IReadOnlyList<RazorSegment> Segments { get; }
 
     public IReadOnlyList<string> Dependencies { get; }
+
+    public IReadOnlyList<string> RootIdentifiers { get; }
+
+    public bool HasCodeBlocks { get; }
+
+    public bool HasRenderableLiteral { get; }
+
+    public int RenderedSegmentCount { get; }
+
+    public RazorSegment? SingleOutputSegment { get; }
 
     public bool HasDynamicSegments => Segments.Any(static s => s.Kind != RazorSegmentKind.Literal);
 
@@ -64,12 +126,58 @@ internal sealed class RazorTemplate
         Segments.Count == 1 && Segments[0].Kind == RazorSegmentKind.Expression;
 
     public bool IsMixed =>
-        Segments.Count > 1 && HasDynamicSegments;
+        HasDynamicSegments && RenderedSegmentCount > 1;
+
+    public bool IsSingleComputedValue =>
+        !HasRenderableLiteral && SingleOutputSegment != null;
 
     public string? SinglePath => IsSinglePath ? Segments[0].Text : null;
 
     public RazorExpressionPlan? SingleExpressionPlan =>
         IsSingleExpression ? Segments[0].ExpressionPlan : null;
+
+    private static void AddExternalDependencies(
+        IEnumerable<string> candidateDependencies,
+        HashSet<string> knownLocals,
+        HashSet<string> dependencies,
+        HashSet<string> rootIdentifiers)
+    {
+        foreach (var candidate in candidateDependencies)
+        {
+            AddExternalDependency(candidate, knownLocals, dependencies, rootIdentifiers);
+        }
+    }
+
+    private static void AddExternalDependency(
+        string candidateDependency,
+        HashSet<string> knownLocals,
+        HashSet<string> dependencies,
+        HashSet<string> rootIdentifiers)
+    {
+        if (string.IsNullOrWhiteSpace(candidateDependency))
+            return;
+
+        var rootIdentifier = GetRootIdentifier(candidateDependency);
+        if (string.IsNullOrWhiteSpace(rootIdentifier) || knownLocals.Contains(rootIdentifier))
+            return;
+
+        dependencies.Add(candidateDependency);
+        rootIdentifiers.Add(rootIdentifier);
+    }
+
+    internal static string GetRootIdentifier(string path)
+    {
+        var dotIndex = path.IndexOf('.');
+        var bracketIndex = path.IndexOf('[');
+        if (dotIndex < 0)
+            return bracketIndex < 0 ? path : path[..bracketIndex];
+
+        if (bracketIndex < 0)
+            return path[..dotIndex];
+
+        var endIndex = Math.Min(dotIndex, bracketIndex);
+        return path[..endIndex];
+    }
 }
 
 internal static class RazorTemplateParser
@@ -112,6 +220,14 @@ internal static class RazorTemplateParser
                     var expression = ParseExpression(value, ref i);
                     var plan = RazorExpressionAnalyzer.GetPlan(expression);
                     segments.Add(new RazorSegment(RazorSegmentKind.Expression, expression, plan));
+                    continue;
+                }
+
+                if (i + 1 < value.Length && value[i + 1] == '{')
+                {
+                    var code = ParseCodeBlock(value, ref i);
+                    var plan = RazorCodeBlockAnalyzer.GetPlan(code);
+                    segments.Add(new RazorSegment(RazorSegmentKind.Code, code, null, plan));
                     continue;
                 }
 
@@ -176,33 +292,87 @@ internal static class RazorTemplateParser
 
     private static string ParseExpression(string input, ref int i)
     {
-        var pos = i + 2;
+        return ParseDelimitedCSharp(input, ref i, i + 2, '(', ')', "Unclosed Razor expression. Expected closing ')'.");
+    }
+
+    private static string ParseCodeBlock(string input, ref int i)
+    {
+        return ParseDelimitedCSharp(input, ref i, i + 2, '{', '}', "Unclosed Razor code block. Expected closing '}'.");
+    }
+
+    private static string ParseDelimitedCSharp(
+        string input,
+        ref int i,
+        int start,
+        char openChar,
+        char closeChar,
+        string errorMessage)
+    {
+        var pos = start;
         var depth = 1;
         var inString = false;
-        char stringQuote = '\0';
+        var inChar = false;
+        var inLineComment = false;
+        var inBlockComment = false;
         var escaped = false;
-        var start = pos;
+        var verbatimString = false;
+        char stringQuote = '\0';
 
         while (pos < input.Length)
         {
-            var c = input[pos];
+            var current = input[pos];
+            var next = pos + 1 < input.Length ? input[pos + 1] : '\0';
 
-            if (escaped)
+            if (inLineComment)
             {
-                escaped = false;
+                if (current == '\r' || current == '\n')
+                {
+                    inLineComment = false;
+                }
+
+                pos++;
+                continue;
+            }
+
+            if (inBlockComment)
+            {
+                if (current == '*' && next == '/')
+                {
+                    inBlockComment = false;
+                    pos += 2;
+                    continue;
+                }
+
                 pos++;
                 continue;
             }
 
             if (inString)
             {
-                if (c == '\\')
+                if (!verbatimString && escaped)
+                {
+                    escaped = false;
+                    pos++;
+                    continue;
+                }
+
+                if (!verbatimString && current == '\\')
                 {
                     escaped = true;
+                    pos++;
+                    continue;
                 }
-                else if (c == stringQuote)
+
+                if (current == stringQuote)
                 {
+                    if (verbatimString && next == stringQuote)
+                    {
+                        pos += 2;
+                        continue;
+                    }
+
                     inString = false;
+                    verbatimString = false;
                     stringQuote = '\0';
                 }
 
@@ -210,29 +380,78 @@ internal static class RazorTemplateParser
                 continue;
             }
 
-            if (c == '"' || c == '\'')
+            if (inChar)
             {
-                inString = true;
-                stringQuote = c;
+                if (escaped)
+                {
+                    escaped = false;
+                    pos++;
+                    continue;
+                }
+
+                if (current == '\\')
+                {
+                    escaped = true;
+                    pos++;
+                    continue;
+                }
+
+                if (current == '\'')
+                {
+                    inChar = false;
+                }
+
                 pos++;
                 continue;
             }
 
-            if (c == '(')
+            if (current == '/' && next == '/')
+            {
+                inLineComment = true;
+                pos += 2;
+                continue;
+            }
+
+            if (current == '/' && next == '*')
+            {
+                inBlockComment = true;
+                pos += 2;
+                continue;
+            }
+
+            if (current == '\'')
+            {
+                inChar = true;
+                pos++;
+                continue;
+            }
+
+            if (current == '"')
+            {
+                inString = true;
+                verbatimString =
+                    (pos > 0 && input[pos - 1] == '@')
+                    || (pos > 1 && ((input[pos - 1] == '$' && input[pos - 2] == '@') || (input[pos - 1] == '@' && input[pos - 2] == '$')));
+                stringQuote = current;
+                pos++;
+                continue;
+            }
+
+            if (current == openChar)
             {
                 depth++;
                 pos++;
                 continue;
             }
 
-            if (c == ')')
+            if (current == closeChar)
             {
                 depth--;
                 if (depth == 0)
                 {
-                    var expression = input[start..pos].Trim();
+                    var result = input[start..pos].Trim();
                     i = pos + 1;
-                    return expression;
+                    return result;
                 }
 
                 pos++;
@@ -242,7 +461,20 @@ internal static class RazorTemplateParser
             pos++;
         }
 
-        throw new XamlParseException("Unclosed Razor expression. Expected closing ')'.");
+        throw new XamlParseException(errorMessage);
+    }
+}
+
+internal static class RazorCodeBlockAnalyzer
+{
+    public static RazorCodeBlockPlan GetPlan(string code)
+    {
+        var analysis = RazorCSharpDependencyAnalyzer.AnalyzeCodeBlock(code);
+        return new RazorCodeBlockPlan(
+            code,
+            analysis.Dependencies,
+            analysis.RootIdentifiers,
+            analysis.DeclaredIdentifiers);
     }
 }
 
@@ -253,7 +485,7 @@ internal static class RazorExpressionAnalyzer
         if (RazorExpressionRegistry.TryGetMetadata(expression, out var metadata))
         {
             var rootsFromMetadata = metadata.Dependencies
-                .Select(GetRootIdentifier)
+                .Select(RazorCSharpDependencyAnalyzer.GetRootIdentifier)
                 .Where(static id => !string.IsNullOrWhiteSpace(id))
                 .Distinct(StringComparer.Ordinal)
                 .ToArray();
@@ -264,117 +496,240 @@ internal static class RazorExpressionAnalyzer
                 rootsFromMetadata);
         }
 
-        var dependencies = ExtractDependencies(expression);
-        var roots = dependencies
-            .Select(GetRootIdentifier)
-            .Where(static r => !string.IsNullOrWhiteSpace(r))
-            .Distinct(StringComparer.Ordinal)
-            .ToArray();
+        var analysis = RazorCSharpDependencyAnalyzer.AnalyzeExpression(expression);
 
         return new RazorExpressionPlan(
             expression,
-            dependencies,
-            roots);
+            analysis.Dependencies,
+            analysis.RootIdentifiers);
+    }
+}
+
+internal sealed record RazorCSharpDependencyAnalysis(
+    IReadOnlyList<string> Dependencies,
+    IReadOnlyList<string> RootIdentifiers,
+    IReadOnlyList<string> DeclaredIdentifiers);
+
+internal static class RazorCSharpDependencyAnalyzer
+{
+    private static readonly CSharpParseOptions ScriptParseOptions = CSharpParseOptions.Default.WithKind(SourceCodeKind.Script);
+
+    private static readonly HashSet<string> ReservedIdentifiers = new(StringComparer.Ordinal)
+    {
+        "abstract", "and", "as", "async", "await", "base", "bool", "break", "byte", "case", "catch",
+        "char", "checked", "class", "const", "continue", "decimal", "default", "delegate", "do", "double",
+        "dynamic", "else", "enum", "event", "explicit", "extern", "false", "finally", "fixed", "float",
+        "for", "foreach", "global", "goto", "if", "implicit", "in", "int", "interface", "internal", "is",
+        "lock", "long", "namespace", "new", "not", "null", "object", "operator", "or", "out", "override",
+        "params", "private", "protected", "public", "readonly", "record", "ref", "return", "sbyte",
+        "sealed", "short", "sizeof", "stackalloc", "static", "string", "struct", "switch", "this",
+        "throw", "true", "try", "typeof", "uint", "ulong", "unchecked", "unsafe", "ushort", "using",
+        "var", "virtual", "void", "volatile", "when", "while", "with"
+    };
+
+    public static RazorCSharpDependencyAnalysis AnalyzeExpression(string expression)
+    {
+        var syntax = SyntaxFactory.ParseExpression(expression);
+        return AnalyzeCore(syntax);
     }
 
-    private static string[] ExtractDependencies(string expression)
+    public static RazorCSharpDependencyAnalysis AnalyzeCodeBlock(string code)
     {
-        var dependencies = new HashSet<string>(StringComparer.Ordinal);
-        var span = expression.AsSpan();
-        var i = 0;
-        var inString = false;
-        var escaped = false;
-        var quote = '\0';
+        var tree = CSharpSyntaxTree.ParseText(code, ScriptParseOptions);
+        return AnalyzeCore(tree.GetRoot());
+    }
 
-        while (i < span.Length)
+    private static RazorCSharpDependencyAnalysis AnalyzeCore(SyntaxNode root)
+    {
+        var declaredIdentifiers = CollectDeclaredIdentifiers(root);
+        var dependencies = CollectDependencies(root, declaredIdentifiers);
+        var rootIdentifiers = dependencies
+            .Select(GetRootIdentifier)
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(static value => value, StringComparer.Ordinal)
+            .ToArray();
+
+        return new RazorCSharpDependencyAnalysis(
+            dependencies.OrderBy(static value => value, StringComparer.Ordinal).ToArray(),
+            rootIdentifiers,
+            declaredIdentifiers.OrderBy(static value => value, StringComparer.Ordinal).ToArray());
+    }
+
+    private static HashSet<string> CollectDeclaredIdentifiers(SyntaxNode root)
+    {
+        var declared = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var declarator in root.DescendantNodesAndSelf().OfType<VariableDeclaratorSyntax>())
         {
-            var c = span[i];
-            if (escaped)
+            if (!declarator.Identifier.IsMissing && !string.IsNullOrWhiteSpace(declarator.Identifier.ValueText))
             {
-                escaped = false;
-                i++;
-                continue;
+                declared.Add(declarator.Identifier.ValueText);
             }
-
-            if (inString)
-            {
-                if (c == '\\')
-                {
-                    escaped = true;
-                }
-                else if (c == quote)
-                {
-                    inString = false;
-                    quote = '\0';
-                }
-
-                i++;
-                continue;
-            }
-
-            if (c == '"' || c == '\'')
-            {
-                inString = true;
-                quote = c;
-                i++;
-                continue;
-            }
-
-            if (!IsIdentifierStart(c))
-            {
-                i++;
-                continue;
-            }
-
-            if (i > 0 && (span[i - 1] == '.' || span[i - 1] == ':'))
-            {
-                i++;
-                while (i < span.Length && IsIdentifierPart(span[i]))
-                {
-                    i++;
-                }
-
-                continue;
-            }
-
-            var start = i;
-            i++;
-            while (i < span.Length && IsIdentifierPart(span[i]))
-            {
-                i++;
-            }
-
-            var token = span[start..i].ToString();
-            if (IsReservedIdentifier(token))
-                continue;
-
-            var end = i;
-            while (end < span.Length && span[end] == '.')
-            {
-                var nextStart = end + 1;
-                if (nextStart >= span.Length || !IsIdentifierStart(span[nextStart]))
-                    break;
-
-                end = nextStart + 1;
-                while (end < span.Length && IsIdentifierPart(span[end]))
-                {
-                    end++;
-                }
-            }
-
-            var path = span[start..end].ToString();
-            var after = end;
-            while (after < span.Length && char.IsWhiteSpace(span[after]))
-            {
-                after++;
-            }
-
-            var isInvocation = after < span.Length && span[after] == '(';
-            AddDependency(dependencies, path, isInvocation);
-            i = end;
         }
 
-        return dependencies.ToArray();
+        foreach (var parameter in root.DescendantNodesAndSelf().OfType<ParameterSyntax>())
+        {
+            if (!parameter.Identifier.IsMissing && !string.IsNullOrWhiteSpace(parameter.Identifier.ValueText))
+            {
+                declared.Add(parameter.Identifier.ValueText);
+            }
+        }
+
+        foreach (var foreachStatement in root.DescendantNodesAndSelf().OfType<ForEachStatementSyntax>())
+        {
+            if (!foreachStatement.Identifier.IsMissing && !string.IsNullOrWhiteSpace(foreachStatement.Identifier.ValueText))
+            {
+                declared.Add(foreachStatement.Identifier.ValueText);
+            }
+        }
+
+        foreach (var catchDeclaration in root.DescendantNodesAndSelf().OfType<CatchDeclarationSyntax>())
+        {
+            if (!catchDeclaration.Identifier.IsMissing && !string.IsNullOrWhiteSpace(catchDeclaration.Identifier.ValueText))
+            {
+                declared.Add(catchDeclaration.Identifier.ValueText);
+            }
+        }
+
+        foreach (var localFunction in root.DescendantNodesAndSelf().OfType<LocalFunctionStatementSyntax>())
+        {
+            if (!localFunction.Identifier.IsMissing && !string.IsNullOrWhiteSpace(localFunction.Identifier.ValueText))
+            {
+                declared.Add(localFunction.Identifier.ValueText);
+            }
+        }
+
+        foreach (var designation in root.DescendantNodesAndSelf().OfType<SingleVariableDesignationSyntax>())
+        {
+            if (!designation.Identifier.IsMissing && !string.IsNullOrWhiteSpace(designation.Identifier.ValueText))
+            {
+                declared.Add(designation.Identifier.ValueText);
+            }
+        }
+
+        return declared;
+    }
+
+    private static HashSet<string> CollectDependencies(SyntaxNode root, HashSet<string> declaredIdentifiers)
+    {
+        var dependencies = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var memberAccess in root.DescendantNodesAndSelf().OfType<MemberAccessExpressionSyntax>())
+        {
+            if (memberAccess.Parent is MemberAccessExpressionSyntax parentMemberAccess && parentMemberAccess.Expression == memberAccess)
+                continue;
+
+            if (!TryGetMemberAccessPath(memberAccess, declaredIdentifiers, out var path))
+                continue;
+
+            var isInvocation = memberAccess.Parent is InvocationExpressionSyntax invocation && invocation.Expression == memberAccess;
+            AddDependency(dependencies, path, isInvocation);
+        }
+
+        foreach (var identifier in root.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>())
+        {
+            if (identifier.Parent is MemberAccessExpressionSyntax)
+                continue;
+
+            if (ShouldSkipIdentifier(identifier, declaredIdentifiers))
+                continue;
+
+            var isInvocation = identifier.Parent is InvocationExpressionSyntax invocation && invocation.Expression == identifier;
+            AddDependency(dependencies, identifier.Identifier.ValueText, isInvocation);
+        }
+
+        return dependencies;
+    }
+
+    private static bool TryGetMemberAccessPath(
+        ExpressionSyntax expression,
+        HashSet<string> declaredIdentifiers,
+        out string path)
+    {
+        var parts = new Stack<string>();
+        ExpressionSyntax? current = expression;
+
+        while (current != null)
+        {
+            switch (current)
+            {
+                case MemberAccessExpressionSyntax memberAccess:
+                    parts.Push(memberAccess.Name.Identifier.ValueText);
+                    current = memberAccess.Expression;
+                    continue;
+
+                case ElementAccessExpressionSyntax elementAccess:
+                    current = elementAccess.Expression;
+                    continue;
+
+                case ParenthesizedExpressionSyntax parenthesized:
+                    current = parenthesized.Expression;
+                    continue;
+
+                case IdentifierNameSyntax identifier:
+                    if (ShouldSkipIdentifier(identifier, declaredIdentifiers))
+                    {
+                        path = string.Empty;
+                        return false;
+                    }
+
+                    parts.Push(identifier.Identifier.ValueText);
+                    path = string.Join(".", parts);
+                    return true;
+
+                default:
+                    path = string.Empty;
+                    return false;
+            }
+        }
+
+        path = string.Empty;
+        return false;
+    }
+
+    private static bool ShouldSkipIdentifier(IdentifierNameSyntax identifier, HashSet<string> declaredIdentifiers)
+    {
+        var value = identifier.Identifier.ValueText;
+        if (string.IsNullOrWhiteSpace(value) || declaredIdentifiers.Contains(value) || ReservedIdentifiers.Contains(value))
+            return true;
+
+        if (identifier.Parent is QualifiedNameSyntax or AliasQualifiedNameSyntax or NameColonSyntax)
+            return true;
+
+        if (IsInTypeContext(identifier))
+            return true;
+
+        if (IsInsideNameOf(identifier))
+            return true;
+
+        return false;
+    }
+
+    private static bool IsInTypeContext(IdentifierNameSyntax identifier)
+    {
+        return identifier.Parent switch
+        {
+            VariableDeclarationSyntax variableDeclaration => variableDeclaration.Type == identifier,
+            ParameterSyntax parameter => parameter.Type == identifier,
+            ForEachStatementSyntax foreachStatement => foreachStatement.Type == identifier,
+            ObjectCreationExpressionSyntax objectCreation => objectCreation.Type == identifier,
+            CastExpressionSyntax castExpression => castExpression.Type == identifier,
+            TypeOfExpressionSyntax typeOfExpression => typeOfExpression.Type == identifier,
+            DefaultExpressionSyntax defaultExpression => defaultExpression.Type == identifier,
+            RefTypeSyntax refType => refType.Type == identifier,
+            NullableTypeSyntax nullableType => nullableType.ElementType == identifier,
+            _ => false
+        };
+    }
+
+    private static bool IsInsideNameOf(IdentifierNameSyntax identifier)
+    {
+        if (identifier.Parent is not ArgumentSyntax argument || argument.Parent is not ArgumentListSyntax argumentList || argumentList.Parent is not InvocationExpressionSyntax invocation)
+            return false;
+
+        return invocation.Expression is IdentifierNameSyntax invokedName
+            && string.Equals(invokedName.Identifier.ValueText, "nameof", StringComparison.Ordinal);
     }
 
     private static void AddDependency(HashSet<string> dependencies, string path, bool isInvocation)
@@ -404,19 +759,18 @@ internal static class RazorExpressionAnalyzer
         }
     }
 
-    private static bool IsIdentifierStart(char c) =>
-        c == '_' || char.IsLetter(c);
-
-    private static bool IsIdentifierPart(char c) =>
-        c == '_' || char.IsLetterOrDigit(c);
-
-    private static bool IsReservedIdentifier(string identifier) =>
-        identifier is "true" or "false" or "null" or "new" or "global" or "this" or "base";
-
-    private static string GetRootIdentifier(string path)
+    internal static string GetRootIdentifier(string path)
     {
         var dotIndex = path.IndexOf('.');
-        return dotIndex < 0 ? path : path[..dotIndex];
+        var bracketIndex = path.IndexOf('[');
+        if (dotIndex < 0)
+            return bracketIndex < 0 ? path : path[..bracketIndex];
+
+        if (bracketIndex < 0)
+            return path[..dotIndex];
+
+        var endIndex = Math.Min(dotIndex, bracketIndex);
+        return path[..endIndex];
     }
 }
 
@@ -431,6 +785,17 @@ internal static class RazorEvaluationGuards
     {
         // Expressions that explicitly handle null should still be evaluated.
         return plan.Expression.IndexOf("null", StringComparison.OrdinalIgnoreCase) < 0;
+    }
+
+    public static bool ShouldShortCircuitMissingRoot(RazorTemplate template)
+    {
+        foreach (var segment in template.Segments)
+        {
+            if (segment.Text.IndexOf("null", StringComparison.OrdinalIgnoreCase) >= 0)
+                return false;
+        }
+
+        return true;
     }
 
     public static bool IsUnavailableBindingValue(object? value)
@@ -448,6 +813,21 @@ internal static class RazorEvaluationGuards
     public static bool HasMissingRootValue(RazorExpressionPlan plan, Func<string, object?> resolver)
     {
         foreach (var root in plan.RootIdentifiers)
+        {
+            if (string.IsNullOrWhiteSpace(root))
+                continue;
+
+            var value = resolver(root);
+            if (IsMissingRootValue(value))
+                return true;
+        }
+
+        return false;
+    }
+
+    public static bool HasMissingRootValue(RazorTemplate template, Func<string, object?> resolver)
+    {
+        foreach (var root in template.RootIdentifiers)
         {
             if (string.IsNullOrWhiteSpace(root))
                 continue;
@@ -617,6 +997,224 @@ internal static class RazorExpressionRuntimeCompiler
     }
 }
 
+internal static class RazorTemplateRuntimeCompiler
+{
+    private sealed class CompiledTemplate
+    {
+        public required ScriptRunner<object?[]> Runner { get; init; }
+    }
+
+    private static readonly ConcurrentDictionary<string, CompiledTemplate> Cache = new(StringComparer.Ordinal);
+
+    public static void EnsureCompiled(RazorTemplate template)
+    {
+        if (!template.HasCodeBlocks)
+            return;
+
+        var key = BuildCacheKey(template);
+        _ = Cache.GetOrAdd(key, _ => Compile(template));
+    }
+
+    public static bool TryEvaluate(RazorTemplate template, Func<string, object?> resolver, out object? value)
+    {
+        if (RazorEvaluationGuards.ShouldShortCircuitMissingRoot(template) &&
+            RazorEvaluationGuards.HasMissingRootValue(template, resolver))
+        {
+            value = null;
+            return false;
+        }
+
+        try
+        {
+            var parts = EvaluateParts(template, resolver);
+            value = CollapseResult(template, parts);
+            return true;
+        }
+        catch (Microsoft.CSharp.RuntimeBinder.RuntimeBinderException ex) when (IsTransientNullBindingError(ex))
+        {
+            value = null;
+            return false;
+        }
+        catch (NullReferenceException)
+        {
+            value = null;
+            return false;
+        }
+    }
+
+    private static object?[] EvaluateParts(RazorTemplate template, Func<string, object?> resolver)
+    {
+        var key = BuildCacheKey(template);
+        var compiled = Cache.GetOrAdd(key, _ => Compile(template));
+        var globals = new RazorScriptGlobals { Resolve = resolver };
+        return compiled.Runner(globals).GetAwaiter().GetResult();
+    }
+
+    private static object? CollapseResult(RazorTemplate template, object?[] parts)
+    {
+        if (template.IsSingleComputedValue)
+            return parts.Length == 0 ? null : parts[0];
+
+        var sb = new StringBuilder();
+        foreach (var part in parts)
+        {
+            sb.Append(part?.ToString() ?? string.Empty);
+        }
+
+        return sb.ToString();
+    }
+
+    private static string BuildCacheKey(RazorTemplate template)
+    {
+        var sb = new StringBuilder();
+        foreach (var root in template.RootIdentifiers)
+        {
+            sb.Append(root).Append('|');
+        }
+
+        sb.Append("::");
+
+        foreach (var segment in template.Segments)
+        {
+            sb.Append((int)segment.Kind).Append(':').Append(segment.Text).Append("||");
+        }
+
+        return sb.ToString();
+    }
+
+    private static CompiledTemplate Compile(RazorTemplate template)
+    {
+        var scriptBody = BuildScriptBody(template);
+        var references = AppDomain.CurrentDomain.GetAssemblies()
+            .Where(static a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.Location))
+            .Cast<Assembly>()
+            .ToList();
+
+        TryAddReference(references, "Microsoft.CSharp");
+
+        var distinctReferences = references
+            .GroupBy(static a => a.FullName, StringComparer.Ordinal)
+            .Select(static g => g.First())
+            .ToArray();
+
+        var options = ScriptOptions.Default
+            .WithReferences(distinctReferences)
+            .WithImports("System", "System.Linq", "System.Collections.Generic");
+
+        try
+        {
+            var script = CSharpScript.Create<object?[]>(scriptBody, options, typeof(RazorScriptGlobals));
+            var diagnostics = script.Compile();
+            var errors = diagnostics.Where(static d => d.Severity == DiagnosticSeverity.Error).ToArray();
+            if (errors.Length > 0)
+            {
+                var message = string.Join(Environment.NewLine, errors.Select(static d => d.ToString()));
+                throw new XamlParseException($"Razor template compile failed: {message}");
+            }
+
+            return new CompiledTemplate
+            {
+                Runner = script.CreateDelegate()
+            };
+        }
+        catch (CompilationErrorException ex)
+        {
+            throw new XamlParseException($"Razor template compile failed: {string.Join(Environment.NewLine, ex.Diagnostics)}", ex);
+        }
+    }
+
+    private static string BuildScriptBody(RazorTemplate template)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("var __resolver = Resolve;");
+        foreach (var root in template.RootIdentifiers.Distinct(StringComparer.Ordinal))
+        {
+            if (string.IsNullOrWhiteSpace(root) || !IsValidIdentifier(root))
+                continue;
+
+            sb.Append("dynamic ").Append(root).Append(" = __resolver(\"")
+                .Append(root.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal))
+                .AppendLine("\");");
+        }
+
+        sb.AppendLine("var __parts = new System.Collections.Generic.List<object?>();");
+        sb.AppendLine("void Write(object? value) => __parts.Add(value);");
+        sb.AppendLine("void WriteLiteral(string value) => __parts.Add(value);");
+
+        foreach (var segment in template.Segments)
+        {
+            switch (segment.Kind)
+            {
+                case RazorSegmentKind.Literal:
+                    sb.Append("WriteLiteral(").Append(ToStringLiteral(segment.Text)).AppendLine(");");
+                    break;
+
+                case RazorSegmentKind.Path:
+                case RazorSegmentKind.Expression:
+                    sb.Append("Write((object?)(").Append(segment.Text).AppendLine("));");
+                    break;
+
+                case RazorSegmentKind.Code:
+                    sb.AppendLine(segment.Text);
+                    break;
+            }
+        }
+
+        sb.AppendLine("return __parts.ToArray();");
+        return sb.ToString();
+    }
+
+    private static void TryAddReference(List<Assembly> references, string assemblyName)
+    {
+        try
+        {
+            var assembly = Assembly.Load(assemblyName);
+            references.Add(assembly);
+        }
+        catch
+        {
+            // Ignore optional references that are unavailable in the current context.
+        }
+    }
+
+    private static bool IsValidIdentifier(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        if (!(value[0] == '_' || char.IsLetter(value[0])))
+            return false;
+
+        for (var i = 1; i < value.Length; i++)
+        {
+            var c = value[i];
+            if (c != '_' && !char.IsLetterOrDigit(c))
+                return false;
+        }
+
+        return true;
+    }
+
+    private static string ToStringLiteral(string value)
+    {
+        return "\"" + value
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("\"", "\\\"", StringComparison.Ordinal)
+            .Replace("\r", "\\r", StringComparison.Ordinal)
+            .Replace("\n", "\\n", StringComparison.Ordinal)
+            + "\"";
+    }
+
+    private static bool IsTransientNullBindingError(Microsoft.CSharp.RuntimeBinder.RuntimeBinderException ex)
+    {
+        var message = ex.Message;
+        if (string.IsNullOrWhiteSpace(message))
+            return false;
+
+        return message.IndexOf("null", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+}
+
 internal static class RazorValueResolver
 {
     public static object? Resolve(
@@ -753,6 +1351,12 @@ internal sealed class RazorTemplateConverter : IMultiValueConverter
             return null;
 
         object? result;
+        if (_template.HasCodeBlocks)
+        {
+            result = EvaluateScriptTemplate(target);
+            return ConvertToTargetType(result, targetType);
+        }
+
         if (_template.IsSingleExpression && _template.SingleExpressionPlan != null)
         {
             result = EvaluateExpression(_template.SingleExpressionPlan, target);
@@ -784,6 +1388,9 @@ internal sealed class RazorTemplateConverter : IMultiValueConverter
                         sb.Append(evaluated?.ToString() ?? string.Empty);
                     }
                     break;
+
+                case RazorSegmentKind.Code:
+                    break;
             }
         }
 
@@ -809,6 +1416,19 @@ internal sealed class RazorTemplateConverter : IMultiValueConverter
 
         if (!RazorExpressionRuntimeCompiler.TryEvaluate(
                 plan,
+                path => RazorValueResolver.Resolve(target, _codeBehind, path),
+                out var value))
+        {
+            return null;
+        }
+
+        return value;
+    }
+
+    private object? EvaluateScriptTemplate(object target)
+    {
+        if (!RazorTemplateRuntimeCompiler.TryEvaluate(
+                _template,
                 path => RazorValueResolver.Resolve(target, _codeBehind, path),
                 out var value))
         {
@@ -1073,6 +1693,19 @@ internal static class RazorBindingEngine
 
     private static object? EvaluateTemplateOnce(RazorTemplate template, object target, object? codeBehind)
     {
+        if (template.HasCodeBlocks)
+        {
+            if (!RazorTemplateRuntimeCompiler.TryEvaluate(
+                    template,
+                    path => RazorValueResolver.Resolve(target, codeBehind, path),
+                    out var scriptValue))
+            {
+                return null;
+            }
+
+            return scriptValue;
+        }
+
         if (template.IsSinglePath && template.SinglePath != null)
             return RazorValueResolver.Resolve(target, codeBehind, template.SinglePath);
 
@@ -1126,6 +1759,9 @@ internal static class RazorBindingEngine
                         sb.Append(value?.ToString() ?? string.Empty);
                     }
                     break;
+
+                case RazorSegmentKind.Code:
+                    break;
             }
         }
 
@@ -1178,11 +1814,18 @@ internal static class RazorBindingEngine
 
     private static BindingBase CreateBinding(RazorTemplate template, object targetObject, object? codeBehind)
     {
-        foreach (var segment in template.Segments)
+        if (template.HasCodeBlocks)
         {
-            if (segment.Kind == RazorSegmentKind.Expression && segment.ExpressionPlan != null)
+            RazorTemplateRuntimeCompiler.EnsureCompiled(template);
+        }
+        else
+        {
+            foreach (var segment in template.Segments)
             {
-                RazorExpressionRuntimeCompiler.EnsureCompiled(segment.ExpressionPlan);
+                if (segment.Kind == RazorSegmentKind.Expression && segment.ExpressionPlan != null)
+                {
+                    RazorExpressionRuntimeCompiler.EnsureCompiled(segment.ExpressionPlan);
+                }
             }
         }
 

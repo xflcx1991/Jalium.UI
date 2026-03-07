@@ -6,6 +6,28 @@ namespace Jalium.UI.Tests;
 public class LayoutReparentingStabilityTests
 {
     [Fact]
+    public void NullLayoutInvalidations_ShouldBeIgnoredWithoutBreakingPendingPass()
+    {
+        var host = new LayoutHostPanel();
+        var leaf = new ProbeElement();
+        host.Children.Add(leaf);
+
+        var viewport = new Size(320, 240);
+        host.UpdateLayoutPass(viewport);
+
+        leaf.InvalidateMeasure();
+        var layoutManager = ((ILayoutManagerHost)host).LayoutManager;
+        layoutManager.InvalidateMeasure(null);
+        layoutManager.InvalidateArrange(null);
+
+        var exception = Record.Exception(() => host.UpdateLayoutPass(viewport));
+
+        Assert.Null(exception);
+        Assert.True(leaf.IsMeasureValid);
+        Assert.True(leaf.IsArrangeValid);
+    }
+
+    [Fact]
     public void InvalidateMeasure_ShouldPropagatePastAlreadyInvalidAncestor()
     {
         var host = new LayoutHostPanel();

@@ -185,7 +185,7 @@ public class MenuFlyoutItem : Control
         }
 
         var textBrush = IsEnabled
-            ? Foreground ?? ResolveBrush("OnePopupText", "TextPrimary", s_fallbackTextBrush)
+            ? ResolveForegroundBrush()
             : ResolveBrush("OneTextDisabled", "TextDisabled", s_fallbackDisabledTextBrush);
 
         double x = LeftPadding;
@@ -252,6 +252,16 @@ public class MenuFlyoutItem : Control
                 item.Text = uiCommand.Label;
             item.Icon ??= uiCommand.IconSource;
         }
+    }
+
+    private Brush ResolveForegroundBrush()
+    {
+        if (HasLocalValue(Control.ForegroundProperty) && Foreground != null)
+        {
+            return Foreground;
+        }
+
+        return ResolveBrush("OnePopupText", "TextPrimary", s_fallbackTextBrush);
     }
 
     private Brush ResolveBrush(string primaryKey, string secondaryKey, Brush fallback)

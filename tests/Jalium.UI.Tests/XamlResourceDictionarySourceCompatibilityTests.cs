@@ -8,6 +8,58 @@ namespace Jalium.UI.Tests;
 public class XamlResourceDictionarySourceCompatibilityTests
 {
     [Fact]
+    public void ResourceDictionary_ShouldParsePrimitiveColorAndStringResources()
+    {
+        const string xaml = """
+            <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                <Color x:Key="AccentColor">#FF112233</Color>
+                <x:String x:Key="AnimationKeySpline">0,0,0,1</x:String>
+            </ResourceDictionary>
+            """;
+
+        var dictionary = Assert.IsType<ResourceDictionary>(XamlReader.Parse(xaml));
+
+        Assert.Equal(Color.FromArgb(0xFF, 0x11, 0x22, 0x33), Assert.IsType<Color>(dictionary["AccentColor"]));
+        Assert.Equal("0,0,0,1", Assert.IsType<string>(dictionary["AnimationKeySpline"]));
+    }
+
+    [Fact]
+    public void ResourceDictionary_ShouldResolvePrimitiveThemeDictionaryResources()
+    {
+        const string xaml = """
+            <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                <ResourceDictionary.ThemeDictionaries>
+                    <ResourceDictionary x:Key="Dark">
+                        <Color x:Key="AccentColor">#FF112233</Color>
+                    </ResourceDictionary>
+                    <ResourceDictionary x:Key="Light">
+                        <Color x:Key="AccentColor">#FF445566</Color>
+                    </ResourceDictionary>
+                </ResourceDictionary.ThemeDictionaries>
+            </ResourceDictionary>
+            """;
+
+        var previousThemeKey = ResourceDictionary.CurrentThemeKey;
+
+        try
+        {
+            var dictionary = Assert.IsType<ResourceDictionary>(XamlReader.Parse(xaml));
+
+            ResourceDictionary.CurrentThemeKey = "Dark";
+            Assert.Equal(Color.FromArgb(0xFF, 0x11, 0x22, 0x33), Assert.IsType<Color>(dictionary["AccentColor"]));
+
+            ResourceDictionary.CurrentThemeKey = "Light";
+            Assert.Equal(Color.FromArgb(0xFF, 0x44, 0x55, 0x66), Assert.IsType<Color>(dictionary["AccentColor"]));
+        }
+        finally
+        {
+            ResourceDictionary.CurrentThemeKey = previousThemeKey;
+        }
+    }
+
+    [Fact]
     public void Source_WithRootPathAndPackPath_ShouldLoadMergedDictionariesWithXamlFallback()
     {
         const string xaml = """

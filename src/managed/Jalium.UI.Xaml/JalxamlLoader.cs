@@ -63,6 +63,7 @@ public static class JalxamlLoader
     public static object LoadFromResource(string resourceName, Assembly? assembly = null)
     {
         assembly ??= Assembly.GetCallingAssembly();
+        var normalizedName = resourceName.Replace('/', '.').Replace('\\', '.');
 
         // Try different resource name formats
         var stream = assembly.GetManifestResourceStream(resourceName);
@@ -77,7 +78,6 @@ public static class JalxamlLoader
         if (stream == null)
         {
             // Try replacing path separators
-            var normalizedName = resourceName.Replace('/', '.').Replace('\\', '.');
             stream = assembly.GetManifestResourceStream(normalizedName);
 
             if (stream == null)
@@ -89,7 +89,42 @@ public static class JalxamlLoader
 
         if (stream == null)
         {
-            // List available resources for debugging
+            var assemblyName = assembly.GetName().Name;
+            var availableResources = assembly.GetManifestResourceNames();
+
+            var exactIgnoreCase = availableResources.FirstOrDefault(n =>
+                string.Equals(n, resourceName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(n, normalizedName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(n, $"{assemblyName}.{resourceName}", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(n, $"{assemblyName}.{normalizedName}", StringComparison.OrdinalIgnoreCase));
+
+            if (exactIgnoreCase != null)
+            {
+                stream = assembly.GetManifestResourceStream(exactIgnoreCase);
+            }
+
+            if (stream == null)
+            {
+                var fileName = GetResourceFileName(resourceName);
+                var suffixes = new[]
+                {
+                    $".{normalizedName}",
+                    $".{resourceName}",
+                    $".{fileName}"
+                };
+
+                var suffixMatch = availableResources.FirstOrDefault(n =>
+                    suffixes.Any(s => n.EndsWith(s, StringComparison.OrdinalIgnoreCase)));
+
+                if (suffixMatch != null)
+                {
+                    stream = assembly.GetManifestResourceStream(suffixMatch);
+                }
+            }
+        }
+
+        if (stream == null)
+        {
             var availableResources = assembly.GetManifestResourceNames();
             throw new JalxamlLoadException(
                 $"Cannot find embedded resource '{resourceName}' in assembly '{assembly.GetName().Name}'. " +
@@ -100,6 +135,21 @@ public static class JalxamlLoader
         {
             return XamlReader.Load(stream);
         }
+    }
+
+    private static string GetResourceFileName(string resourceName)
+    {
+        var fileName = resourceName.Replace('\\', '/').Split('/').LastOrDefault() ?? resourceName;
+        var extensionIndex = fileName.LastIndexOf('.');
+        if (extensionIndex <= 0)
+        {
+            return fileName;
+        }
+
+        var extension = fileName.Substring(extensionIndex);
+        var stem = fileName.Substring(0, extensionIndex);
+        var simpleStem = stem.Split('.').LastOrDefault();
+        return string.IsNullOrEmpty(simpleStem) ? fileName : $"{simpleStem}{extension}";
     }
 
     /// <summary>

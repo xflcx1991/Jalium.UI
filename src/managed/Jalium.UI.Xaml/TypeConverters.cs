@@ -2,6 +2,7 @@ using System.Globalization;
 using Jalium.UI;
 using Jalium.UI.Controls;
 using Jalium.UI.Media;
+using AnimationDuration = Jalium.UI.Media.Animation.Duration;
 
 namespace Jalium.UI.Markup;
 
@@ -353,6 +354,26 @@ public sealed class UriValueConverter : TypeConverter
 }
 
 /// <summary>
+/// Converts strings to Duration values.
+/// </summary>
+public sealed class DurationValueConverter : TypeConverter
+{
+    public override object? ConvertFrom(object? value)
+    {
+        if (value is not string str)
+            return null;
+
+        str = str.Trim();
+        if (str.Equals("Automatic", StringComparison.OrdinalIgnoreCase))
+            return AnimationDuration.Automatic;
+        if (str.Equals("Forever", StringComparison.OrdinalIgnoreCase))
+            return AnimationDuration.Forever;
+
+        return new AnimationDuration(TimeSpan.Parse(str, CultureInfo.InvariantCulture));
+    }
+}
+
+/// <summary>
 /// Converts strings to IconElement values.
 /// Supports Symbol names (for example "Save" or "Symbol.Save") and raw glyph strings.
 /// </summary>
@@ -393,6 +414,7 @@ public static class TypeConverterRegistry
         [typeof(HorizontalAlignment)] = new HorizontalAlignmentConverter(),
         [typeof(VerticalAlignment)] = new VerticalAlignmentConverter(),
         [typeof(Orientation)] = new OrientationConverter(),
+        [typeof(AnimationDuration)] = new DurationValueConverter(),
         [typeof(Uri)] = new UriValueConverter(),
         [typeof(Type)] = new TypeTypeConverter(),
         [typeof(IconElement)] = new IconElementConverter(),

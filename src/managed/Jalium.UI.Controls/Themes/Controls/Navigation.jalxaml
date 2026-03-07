@@ -173,5 +173,22 @@
         </Style.Triggers>
     </Style>
 
-</ResourceDictionary>
+    <!-- ============================================== -->
+    <!-- NavigationViewItemHeader Style -->
+    <!-- ============================================== -->
+    <Style TargetType="NavigationViewItemHeader">
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="Height" Value="40" />
+        <Setter Property="Margin" Value="12,8,12,4" />
+    </Style>
 
+    <!-- ============================================== -->
+    <!-- NavigationViewItemSeparator Style -->
+    <!-- ============================================== -->
+    <Style TargetType="NavigationViewItemSeparator">
+        <Setter Property="Background" Value="{DynamicResource ControlBorder}" />
+        <Setter Property="Height" Value="1" />
+        <Setter Property="Margin" Value="16,8,16,8" />
+    </Style>
+
+</ResourceDictionary>

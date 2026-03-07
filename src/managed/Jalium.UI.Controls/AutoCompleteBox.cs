@@ -372,16 +372,6 @@ public sealed class AutoCompleteBox : TextBoxBase, IImeSupport
     /// </summary>
     public AutoCompleteBox()
     {
-        // Dark theme appearance
-        Background = new SolidColorBrush(Color.FromRgb(45, 45, 45));
-        Foreground = new SolidColorBrush(Color.White);
-        BorderBrush = new SolidColorBrush(Color.FromRgb(100, 100, 100));
-        BorderThickness = new Thickness(1);
-        Padding = new Thickness(8, 6, 8, 6);
-        CornerRadius = new CornerRadius(8);
-        FontSize = 14;
-        Height = DefaultHeight;
-
         // Set IBeam cursor for text input
         Cursor = Jalium.UI.Cursors.IBeam;
 
@@ -897,7 +887,7 @@ public sealed class AutoCompleteBox : TextBoxBase, IImeSupport
                 Tag = item,
                 Foreground = Foreground ?? s_whiteBrush,
                 MinHeight = ItemHeight,
-                Background = index == _selectedSuggestionIndex ? s_dropdownSelectionBrush : s_transparentBrush
+                Background = index == _selectedSuggestionIndex ? ResolveSelectedSuggestionBackground() : s_transparentBrush
             };
 
             itemContainer.ItemClicked += (s, e) => SelectSuggestion(index);
@@ -916,7 +906,7 @@ public sealed class AutoCompleteBox : TextBoxBase, IImeSupport
         {
             if (_dropDownItemsPanel.Children[i] is ComboBoxItem itemContainer)
             {
-                itemContainer.Background = i == _selectedSuggestionIndex ? s_dropdownSelectionBrush : s_transparentBrush;
+                itemContainer.Background = i == _selectedSuggestionIndex ? ResolveSelectedSuggestionBackground() : s_transparentBrush;
             }
         }
     }
@@ -1045,7 +1035,7 @@ public sealed class AutoCompleteBox : TextBoxBase, IImeSupport
             directDc.DrawRoundedRectangle(Background, null, inputRect, cornerRadius);
         }
 
-        var borderBrush = IsFocused ? s_focusBorderBrush : BorderBrush;
+        var borderBrush = IsFocused ? ResolveFocusedBorderBrush() : BorderBrush;
         if (borderBrush != null && BorderThickness.TotalWidth > 0)
         {
             var pen = new Pen(borderBrush, BorderThickness.Left);
@@ -1100,7 +1090,7 @@ public sealed class AutoCompleteBox : TextBoxBase, IImeSupport
         {
             var watermarkText = new FormattedText(Watermark, FontFamily ?? "Segoe UI", FontSize > 0 ? FontSize : 14)
             {
-                Foreground = s_watermarkBrush,
+                Foreground = ResolvePlaceholderBrush(),
                 MaxTextWidth = contentRect.Width,
                 MaxTextHeight = lineHeight,
                 Trimming = TextTrimming
@@ -1219,8 +1209,8 @@ public sealed class AutoCompleteBox : TextBoxBase, IImeSupport
         var shadowRect = new Rect(2, dropDownTop + 2, RenderSize.Width, dropDownHeight);
         dc.DrawRectangle(s_dropdownShadowBrush, null, shadowRect);
 
-        var dropDownBorder = new Pen(BorderBrush ?? s_dropdownBorderFallbackBrush, 1);
-        dc.DrawRectangle(s_dropdownBgBrush, dropDownBorder, dropDownRect);
+        var dropDownBorder = new Pen(ResolveDropDownBorderBrush(), 1);
+        dc.DrawRectangle(ResolveDropDownBackground(), dropDownBorder, dropDownRect);
 
         // Clip to dropdown
         dc.PushClip(new RectangleGeometry(dropDownRect));
@@ -1235,7 +1225,7 @@ public sealed class AutoCompleteBox : TextBoxBase, IImeSupport
             // Draw selection background
             if (i == _selectedSuggestionIndex)
             {
-                dc.DrawRectangle(s_dropdownSelectionBrush, null, itemRect);
+                dc.DrawRectangle(ResolveSelectedSuggestionBackground(), null, itemRect);
             }
 
             // Draw item text
@@ -1252,6 +1242,36 @@ public sealed class AutoCompleteBox : TextBoxBase, IImeSupport
         }
 
         dc.Pop(); // Pop dropdown clip
+    }
+
+    private Brush ResolveFocusedBorderBrush()
+    {
+        return TryFindResource("ControlBorderFocused") as Brush ?? s_focusBorderBrush;
+    }
+
+    private Brush ResolvePlaceholderBrush()
+    {
+        return TryFindResource("TextPlaceholder") as Brush ?? s_watermarkBrush;
+    }
+
+    private Brush ResolveSelectedSuggestionBackground()
+    {
+        return TryFindResource("AccentBrush") as Brush ?? s_dropdownSelectionBrush;
+    }
+
+    private Brush ResolveDropDownBackground()
+    {
+        return TryFindResource("SurfaceBackground") as Brush
+            ?? TryFindResource("ControlBackground") as Brush
+            ?? s_dropdownBgBrush;
+    }
+
+    private Brush ResolveDropDownBorderBrush()
+    {
+        return BorderBrush
+            ?? TryFindResource("ControlBorder") as Brush
+            ?? TryFindResource("MenuFlyoutPresenterBorderBrush") as Brush
+            ?? s_dropdownBorderFallbackBrush;
     }
 
     #endregion

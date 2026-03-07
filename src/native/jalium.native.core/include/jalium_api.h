@@ -153,6 +153,27 @@ JALIUM_API JaliumResult jalium_render_target_destroy_webview_visual(
     JaliumRenderTarget* rt,
     void* visual);
 
+/// Updates the placement and clip rectangle of a composition visual previously created
+/// by jalium_render_target_create_webview_visual.
+/// @param rt The render target.
+/// @param visual The visual pointer to update.
+/// @param x Left coordinate in composition space.
+/// @param y Top coordinate in composition space.
+/// @param width Visible width.
+/// @param height Visible height.
+/// @param content_offset_x Content X offset inside the clipped host region.
+/// @param content_offset_y Content Y offset inside the clipped host region.
+/// @return JALIUM_OK on success.
+JALIUM_API JaliumResult jalium_render_target_set_webview_visual_placement(
+    JaliumRenderTarget* rt,
+    void* visual,
+    int32_t x,
+    int32_t y,
+    int32_t width,
+    int32_t height,
+    int32_t content_offset_x,
+    int32_t content_offset_y);
+
 // ============================================================================
 // Drawing Commands
 // ============================================================================
@@ -315,6 +336,14 @@ JALIUM_API void jalium_push_rounded_rect_clip(JaliumRenderTarget* rt, float x, f
 /// Pops the top clip from the stack.
 /// @param rt The render target.
 JALIUM_API void jalium_pop_clip(JaliumRenderTarget* rt);
+
+/// Punches a transparent rectangular hole in the current render target.
+/// @param rt The render target.
+/// @param x The x coordinate.
+/// @param y The y coordinate.
+/// @param width The width.
+/// @param height The height.
+JALIUM_API void jalium_punch_transparent_rect(JaliumRenderTarget* rt, float x, float y, float width, float height);
 
 /// Pushes an opacity value onto the stack.
 /// @param rt The render target.

@@ -38,11 +38,6 @@ public sealed class StatusBar : ItemsControl
     /// </summary>
     public StatusBar()
     {
-        // Default styling
-        Background = new SolidColorBrush(Color.FromRgb(45, 45, 45));
-        Foreground = new SolidColorBrush(Color.White);
-        Height = 24;
-        Padding = new Thickness(4, 0, 4, 0);
     }
 
     #endregion
@@ -98,7 +93,8 @@ public sealed class StatusBar : ItemsControl
         if (BorderBrush != null && BorderThickness.Top > 0)
         {
             var borderPen = new Pen(BorderBrush, BorderThickness.Top);
-            dc.DrawLine(borderPen, new Point(0, 0), new Point(rect.Width, 0));
+            var y = borderPen.Thickness * 0.5;
+            dc.DrawLine(borderPen, new Point(0, y), new Point(rect.Width, y));
         }
     }
 
@@ -122,6 +118,8 @@ public sealed class StatusBar : ItemsControl
 /// </summary>
 public sealed class StatusBarItem : ContentControl
 {
+    private UIElement? _contentVisual;
+
     #region Constructor
 
     /// <summary>
@@ -129,13 +127,44 @@ public sealed class StatusBarItem : ContentControl
     /// </summary>
     public StatusBarItem()
     {
-        Padding = new Thickness(8, 0, 8, 0);
-        VerticalContentAlignment = VerticalAlignment.Center;
+        UseTemplateContentManagement();
     }
 
     #endregion
 
     #region Layout
+
+    /// <inheritdoc />
+    protected override void OnContentChanged(object? oldContent, object? newContent)
+    {
+        if (_contentVisual != null)
+        {
+            RemoveVisualChild(_contentVisual);
+            _contentVisual = null;
+        }
+
+        if (newContent is UIElement element)
+        {
+            _contentVisual = element;
+            AddVisualChild(element);
+        }
+
+        InvalidateMeasure();
+    }
+
+    /// <inheritdoc />
+    public override int VisualChildrenCount => _contentVisual != null ? 1 : 0;
+
+    /// <inheritdoc />
+    public override Visual? GetVisualChild(int index)
+    {
+        if (index == 0 && _contentVisual != null)
+        {
+            return _contentVisual;
+        }
+
+        throw new ArgumentOutOfRangeException(nameof(index));
+    }
 
     /// <inheritdoc />
     protected override Size MeasureOverride(Size availableSize)
@@ -153,15 +182,34 @@ public sealed class StatusBarItem : ContentControl
                 Math.Max(24, formattedText.Height + padding.TotalHeight));
         }
 
-        if (Content is UIElement element)
+        if (_contentVisual != null)
         {
-            element.Measure(availableSize);
+            var contentAvailable = new Size(
+                Math.Max(0, availableSize.Width - padding.TotalWidth),
+                Math.Max(0, availableSize.Height - padding.TotalHeight));
+            _contentVisual.Measure(contentAvailable);
             return new Size(
-                element.DesiredSize.Width + padding.TotalWidth,
-                Math.Max(24, element.DesiredSize.Height + padding.TotalHeight));
+                _contentVisual.DesiredSize.Width + padding.TotalWidth,
+                Math.Max(24, _contentVisual.DesiredSize.Height + padding.TotalHeight));
         }
 
         return new Size(padding.TotalWidth, 24);
+    }
+
+    /// <inheritdoc />
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        if (_contentVisual != null)
+        {
+            var padding = Padding;
+            _contentVisual.Arrange(new Rect(
+                padding.Left,
+                padding.Top,
+                Math.Max(0, finalSize.Width - padding.TotalWidth),
+                Math.Max(0, finalSize.Height - padding.TotalHeight)));
+        }
+
+        return finalSize;
     }
 
     #endregion
@@ -183,10 +231,9 @@ public sealed class StatusBarItem : ContentControl
             dc.DrawRectangle(Background, null, rect);
         }
 
-        // Draw content
         if (Content is string text)
         {
-            var fgBrush = Foreground ?? new SolidColorBrush(Color.White);
+            var fgBrush = ResolveForegroundBrush();
             var formattedText = new FormattedText(text, FontFamily ?? "Segoe UI", FontSize > 0 ? FontSize : 12)
             {
                 Foreground = fgBrush
@@ -197,6 +244,18 @@ public sealed class StatusBarItem : ContentControl
             var textY = (rect.Height - formattedText.Height) / 2;
             dc.DrawText(formattedText, new Point(textX, textY));
         }
+    }
+
+    private Brush ResolveForegroundBrush()
+    {
+        if (HasLocalValue(Control.ForegroundProperty) && Foreground != null)
+        {
+            return Foreground;
+        }
+
+        return TryFindResource("TextSecondary") as Brush
+            ?? Foreground
+            ?? new SolidColorBrush(Color.White);
     }
 
     #endregion

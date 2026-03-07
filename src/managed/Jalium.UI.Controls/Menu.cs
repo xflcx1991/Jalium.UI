@@ -41,9 +41,6 @@ public sealed class Menu : ItemsControl
     /// </summary>
     public Menu()
     {
-        Background = new SolidColorBrush(Color.FromRgb(45, 45, 45));
-        Foreground = new SolidColorBrush(Color.White);
-        Height = 28;
     }
 
     #endregion
@@ -335,8 +332,6 @@ public sealed class MenuItem : HeaderedItemsControl
     public MenuItem()
     {
         Focusable = true;
-        Height = ItemHeight;
-        Padding = new Thickness(MenuItemPadding, 0, MenuItemPadding, 0);
 
         AddHandler(MouseDownEvent, new RoutedEventHandler(OnMouseDownHandler));
         AddHandler(MouseEnterEvent, new RoutedEventHandler(OnMouseEnterHandler));
@@ -705,7 +700,9 @@ public sealed class MenuItem : HeaderedItemsControl
         // Draw background
         if (_isHighlighted || IsSubmenuOpen)
         {
-            var highlightBrush = s_highlightBrush;
+            var highlightBrush = isTopLevel
+                ? ResolveMenuBrush("MenuBarItemBackgroundHover", s_highlightBrush)
+                : ResolveMenuBrush("MenuFlyoutItemBackgroundHover", s_highlightBrush);
             dc.DrawRectangle(highlightBrush, null, rect);
         }
         else if (Background != null)
@@ -714,8 +711,8 @@ public sealed class MenuItem : HeaderedItemsControl
         }
 
         var fgBrush = IsEnabled
-            ? (Foreground ?? s_whiteBrush)
-            : s_disabledBrush;
+            ? ResolvePrimaryTextBrush()
+            : ResolveMenuBrush("TextDisabled", s_disabledBrush);
 
         if (isTopLevel)
         {
@@ -770,7 +767,7 @@ public sealed class MenuItem : HeaderedItemsControl
             {
                 var gestureFormatted = new FormattedText(InputGestureText, FontFamily ?? "Segoe UI", FontSize > 0 ? FontSize : 12)
                 {
-                    Foreground = s_gestureBrush
+                    Foreground = ResolveMenuBrush("TextSecondary", s_gestureBrush)
                 };
                 TextMeasurement.MeasureText(gestureFormatted);
                 var arrowReserve = HasItems ? ArrowColumnWidth : 0;
@@ -812,6 +809,21 @@ public sealed class MenuItem : HeaderedItemsControl
         ArrowIcons.DrawArrow(dc, brush, arrowBounds, ArrowIcons.Direction.Right);
     }
 
+    private Brush ResolvePrimaryTextBrush()
+    {
+        if (HasLocalValue(Control.ForegroundProperty) && Foreground != null)
+        {
+            return Foreground;
+        }
+
+        return ResolveMenuBrush("TextPrimary", s_whiteBrush);
+    }
+
+    private SolidColorBrush ResolveMenuBrush(string resourceKey, SolidColorBrush fallback)
+    {
+        return TryFindResource(resourceKey) as SolidColorBrush ?? fallback;
+    }
+
     #endregion
 
     #region Submenu Popup
@@ -831,8 +843,8 @@ public sealed class MenuItem : HeaderedItemsControl
         _submenuScrollHost = new MenuPopupScrollHost();
         _submenuBorder = new Border
         {
-            Background = new SolidColorBrush(Color.FromRgb(45, 45, 48)),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(67, 67, 70)),
+            Background = ResolveMenuBrush("MenuFlyoutPresenterBackground", new SolidColorBrush(Color.FromRgb(45, 45, 48))),
+            BorderBrush = ResolveMenuBrush("MenuFlyoutPresenterBorderBrush", new SolidColorBrush(Color.FromRgb(67, 67, 70))),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(4),
             Padding = new Thickness(2),

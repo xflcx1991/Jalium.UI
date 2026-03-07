@@ -10,10 +10,15 @@ namespace Jalium.UI.Controls;
 /// </summary>
 public sealed class CommandBar : Control
 {
+    private static readonly SolidColorBrush s_fallbackBackgroundBrush = new(Color.FromRgb(45, 45, 45));
+    private static readonly SolidColorBrush s_fallbackBorderBrush = new(Color.FromRgb(61, 61, 61));
+
     private StackPanel? _primaryItemsPanel;
     private StackPanel? _secondaryItemsPanel;
     private Button? _moreButton;
     private Popup? _overflowPopup;
+    private Border? _overflowBorder;
+    private bool _isSyncingPopupState;
 
     #region Dependency Properties
 
@@ -151,6 +156,7 @@ public sealed class CommandBar : Control
     protected override Size MeasureOverride(Size availableSize)
     {
         EnsureVisualTree();
+        UpdateMoreButtonVisibility();
 
         if (_primaryItemsPanel != null)
         {
@@ -169,7 +175,6 @@ public sealed class CommandBar : Control
         if (_moreButton != null)
         {
             _moreButton.Measure(new Size(40, availableSize.Height));
-            _moreButton.Visibility = ShouldShowMoreButton() ? Visibility.Visible : Visibility.Collapsed;
         }
 
         var width = (_primaryItemsPanel?.DesiredSize.Width ?? 0) +
@@ -205,15 +210,24 @@ public sealed class CommandBar : Control
         base.OnRender(drawingContext);
 
         // Draw background
-        var bg = Background ?? new Jalium.UI.Media.SolidColorBrush(
-            Jalium.UI.Media.Color.FromRgb(45, 45, 45));
+        var bg = ResolveBackgroundBrush();
         dc.DrawRectangle(bg, null, new Rect(RenderSize));
 
         // Draw bottom border
-        var borderBrush = BorderBrush ?? new Jalium.UI.Media.SolidColorBrush(
-            Jalium.UI.Media.Color.FromRgb(61, 61, 61));
+        var borderBrush = ResolveBorderBrush();
         var pen = new Jalium.UI.Media.Pen(borderBrush, 1);
         dc.DrawLine(pen, new Point(0, RenderSize.Height), new Point(RenderSize.Width, RenderSize.Height));
+    }
+
+    /// <inheritdoc />
+    protected override void OnPropertyChanged(DependencyPropertyChangedEventArgs e)
+    {
+        base.OnPropertyChanged(e);
+
+        if (e.Property == BackgroundProperty || e.Property == BorderBrushProperty)
+        {
+            UpdateOverflowChrome();
+        }
     }
 
     private void EnsureVisualTree()
@@ -236,7 +250,8 @@ public sealed class CommandBar : Control
             Width = 40,
             Focusable = true,
             Background = Jalium.UI.Media.Brushes.Transparent,
-            Foreground = new Jalium.UI.Media.SolidColorBrush(Jalium.UI.Media.Color.FromRgb(255, 255, 255))
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(0)
         };
         _moreButton.Click += OnMoreButtonClick;
         AddVisualChild(_moreButton);
@@ -248,6 +263,7 @@ public sealed class CommandBar : Control
             PlacementTarget = _moreButton,
             StaysOpen = false
         };
+        _overflowPopup.Closed += OnOverflowPopupClosed;
 
         _secondaryItemsPanel = new StackPanel { Orientation = Orientation.Vertical };
         foreach (var cmd in SecondaryCommands)
@@ -256,17 +272,16 @@ public sealed class CommandBar : Control
                 _secondaryItemsPanel.Children.Add(element);
         }
 
-        var border = new Border
+        _overflowBorder = new Border
         {
-            Background = new Jalium.UI.Media.SolidColorBrush(Jalium.UI.Media.Color.FromRgb(51, 51, 51)),
-            BorderBrush = new Jalium.UI.Media.SolidColorBrush(Jalium.UI.Media.Color.FromRgb(61, 61, 61)),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
             Padding = new Thickness(4),
             Child = _secondaryItemsPanel,
             MinWidth = 200
         };
-        _overflowPopup.Child = border;
+        UpdateOverflowChrome();
+        _overflowPopup.Child = _overflowBorder;
         AddVisualChild(_overflowPopup);
     }
 
@@ -304,7 +319,60 @@ public sealed class CommandBar : Control
 
     private void OnMoreButtonClick(object? sender, EventArgs e)
     {
+        if (!ShouldShowMoreButton())
+            return;
+
         IsOpen = !IsOpen;
+    }
+
+    private void OnOverflowPopupClosed(object? sender, EventArgs e)
+    {
+        if (_isSyncingPopupState || !IsOpen)
+            return;
+
+        IsOpen = false;
+    }
+
+    private void UpdateMoreButtonVisibility()
+    {
+        if (_moreButton == null)
+            return;
+
+        _moreButton.Visibility = ShouldShowMoreButton() ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void UpdateOverflowChrome()
+    {
+        if (_overflowBorder == null)
+            return;
+
+        _overflowBorder.Background = ResolveOverflowBackgroundBrush();
+        _overflowBorder.BorderBrush = ResolveBorderBrush();
+    }
+
+    private Brush ResolveBackgroundBrush()
+    {
+        return Background
+            ?? TryFindResource("CommandBarBackground") as Brush
+            ?? TryFindResource("SurfaceBackground") as Brush
+            ?? s_fallbackBackgroundBrush;
+    }
+
+    private Brush ResolveOverflowBackgroundBrush()
+    {
+        return Background
+            ?? TryFindResource("CommandBarOverflowBackground") as Brush
+            ?? TryFindResource("CommandBarBackground") as Brush
+            ?? TryFindResource("SurfaceBackground") as Brush
+            ?? s_fallbackBackgroundBrush;
+    }
+
+    private Brush ResolveBorderBrush()
+    {
+        return BorderBrush
+            ?? TryFindResource("CommandBarBorderBrush") as Brush
+            ?? TryFindResource("ControlBorder") as Brush
+            ?? s_fallbackBorderBrush;
     }
 
     private static void OnIsOpenChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -312,19 +380,34 @@ public sealed class CommandBar : Control
         if (d is CommandBar bar)
         {
             var isOpen = (bool)(e.NewValue ?? false);
-            if (isOpen)
+            bar._isSyncingPopupState = true;
+            try
             {
-                bar.Opening?.Invoke(bar, EventArgs.Empty);
-                if (bar._overflowPopup != null)
-                    bar._overflowPopup.IsOpen = true;
-                bar.Opened?.Invoke(bar, EventArgs.Empty);
+                if (isOpen)
+                {
+                    if (!bar.ShouldShowMoreButton())
+                    {
+                        if (bar._overflowPopup != null)
+                            bar._overflowPopup.IsOpen = false;
+                        return;
+                    }
+
+                    bar.Opening?.Invoke(bar, EventArgs.Empty);
+                    if (bar._overflowPopup != null)
+                        bar._overflowPopup.IsOpen = true;
+                    bar.Opened?.Invoke(bar, EventArgs.Empty);
+                }
+                else
+                {
+                    bar.Closing?.Invoke(bar, EventArgs.Empty);
+                    if (bar._overflowPopup != null)
+                        bar._overflowPopup.IsOpen = false;
+                    bar.Closed?.Invoke(bar, EventArgs.Empty);
+                }
             }
-            else
+            finally
             {
-                bar.Closing?.Invoke(bar, EventArgs.Empty);
-                if (bar._overflowPopup != null)
-                    bar._overflowPopup.IsOpen = false;
-                bar.Closed?.Invoke(bar, EventArgs.Empty);
+                bar._isSyncingPopupState = false;
             }
         }
     }
@@ -344,13 +427,22 @@ public sealed class CommandBar : Control
 
     private void OnSecondaryCommandsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        if (_secondaryItemsPanel == null) return;
-
-        _secondaryItemsPanel.Children.Clear();
-        foreach (var cmd in SecondaryCommands)
+        if (_secondaryItemsPanel != null)
         {
-            if (cmd is FrameworkElement element)
-                _secondaryItemsPanel.Children.Add(element);
+            _secondaryItemsPanel.Children.Clear();
+            foreach (var cmd in SecondaryCommands)
+            {
+                if (cmd is FrameworkElement element)
+                    _secondaryItemsPanel.Children.Add(element);
+            }
         }
+
+        if (SecondaryCommands.Count == 0 && IsOpen)
+        {
+            IsOpen = false;
+        }
+
+        UpdateMoreButtonVisibility();
+        InvalidateMeasure();
     }
 }

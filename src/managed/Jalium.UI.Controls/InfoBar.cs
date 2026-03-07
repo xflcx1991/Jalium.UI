@@ -194,9 +194,6 @@ public sealed class InfoBar : ContentControl
     /// </summary>
     public InfoBar()
     {
-        Padding = new Thickness(12, 8, 12, 8);
-        CornerRadius = new CornerRadius(4);
-
         AddHandler(MouseDownEvent, new RoutedEventHandler(OnMouseDownHandler));
     }
 
@@ -430,11 +427,21 @@ public sealed class InfoBar : ContentControl
     {
         return Severity switch
         {
-            InfoBarSeverity.Informational => (s_infoBgBrush, s_infoIconBrush),
-            InfoBarSeverity.Success => (s_successBgBrush, s_successIconBrush),
-            InfoBarSeverity.Warning => (s_warningBgBrush, s_warningIconBrush),
-            InfoBarSeverity.Error => (s_errorBgBrush, s_errorIconBrush),
-            _ => (s_infoBgBrush, s_infoIconBrush)
+            InfoBarSeverity.Informational => (
+                ResolveSolidColorBrush("InfoBarInformationalBackground", s_infoBgBrush),
+                ResolveSolidColorBrush("InfoBarInfoBrush", s_infoIconBrush)),
+            InfoBarSeverity.Success => (
+                ResolveSolidColorBrush("InfoBarSuccessBackground", s_successBgBrush),
+                ResolveSolidColorBrush("InfoBarSuccessBrush", s_successIconBrush)),
+            InfoBarSeverity.Warning => (
+                ResolveSolidColorBrush("InfoBarWarningBackground", s_warningBgBrush),
+                ResolveSolidColorBrush("InfoBarWarningBrush", s_warningIconBrush)),
+            InfoBarSeverity.Error => (
+                ResolveSolidColorBrush("InfoBarErrorBackground", s_errorBgBrush),
+                ResolveSolidColorBrush("InfoBarErrorBrush", s_errorIconBrush)),
+            _ => (
+                ResolveSolidColorBrush("InfoBarInformationalBackground", s_infoBgBrush),
+                ResolveSolidColorBrush("InfoBarInfoBrush", s_infoIconBrush))
         };
     }
 
@@ -443,30 +450,40 @@ public sealed class InfoBar : ContentControl
         return Severity switch
         {
             InfoBarSeverity.Informational => (
-                Color.FromRgb(45, 45, 55),
-                Color.White,
-                Color.FromRgb(0, 120, 212)),
+                ResolveColor("InfoBarInformationalBackground", Color.FromRgb(45, 45, 55)),
+                ResolveColor("InfoBarForeground", Color.White),
+                ResolveColor("InfoBarInfoBrush", Color.FromRgb(0, 120, 212))),
 
             InfoBarSeverity.Success => (
-                Color.FromRgb(35, 55, 40),
-                Color.White,
-                Color.FromRgb(16, 185, 129)),
+                ResolveColor("InfoBarSuccessBackground", Color.FromRgb(35, 55, 40)),
+                ResolveColor("InfoBarForeground", Color.White),
+                ResolveColor("InfoBarSuccessBrush", Color.FromRgb(16, 185, 129))),
 
             InfoBarSeverity.Warning => (
-                Color.FromRgb(55, 50, 35),
-                Color.White,
-                Color.FromRgb(245, 158, 11)),
+                ResolveColor("InfoBarWarningBackground", Color.FromRgb(55, 50, 35)),
+                ResolveColor("InfoBarForeground", Color.White),
+                ResolveColor("InfoBarWarningBrush", Color.FromRgb(245, 158, 11))),
 
             InfoBarSeverity.Error => (
-                Color.FromRgb(55, 35, 40),
-                Color.White,
-                Color.FromRgb(239, 68, 68)),
+                ResolveColor("InfoBarErrorBackground", Color.FromRgb(55, 35, 40)),
+                ResolveColor("InfoBarForeground", Color.White),
+                ResolveColor("InfoBarErrorBrush", Color.FromRgb(239, 68, 68))),
 
             _ => (
-                Color.FromRgb(45, 45, 55),
-                Color.White,
-                Color.FromRgb(0, 120, 212))
+                ResolveColor("InfoBarInformationalBackground", Color.FromRgb(45, 45, 55)),
+                ResolveColor("InfoBarForeground", Color.White),
+                ResolveColor("InfoBarInfoBrush", Color.FromRgb(0, 120, 212)))
         };
+    }
+
+    private SolidColorBrush ResolveSolidColorBrush(string resourceKey, SolidColorBrush fallback)
+    {
+        return TryFindResource(resourceKey) as SolidColorBrush ?? fallback;
+    }
+
+    private Color ResolveColor(string resourceKey, Color fallback)
+    {
+        return (TryFindResource(resourceKey) as SolidColorBrush)?.Color ?? fallback;
     }
 
     #endregion

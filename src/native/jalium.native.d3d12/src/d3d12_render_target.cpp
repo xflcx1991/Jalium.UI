@@ -569,27 +569,47 @@ JaliumResult D3D12RenderTarget::CreateWebViewVisual(void** visualOut) {
         return JALIUM_ERROR_NOT_SUPPORTED;
     }
 
-    ComPtr<IDCompositionVisual> childVisual;
-    HRESULT hr = dcompDevice_->CreateVisual(&childVisual);
-    if (FAILED(hr) || !childVisual) {
+    ComPtr<IDCompositionVisual> containerVisual;
+    HRESULT hr = dcompDevice_->CreateVisual(&containerVisual);
+    if (FAILED(hr) || !containerVisual) {
         return JALIUM_ERROR_RESOURCE_CREATION_FAILED;
     }
 
-    // Always keep WebView visuals above the Jalium swap chain visual.
-    hr = dcompVisual_->AddVisual(childVisual.Get(), TRUE, dcompSwapChainVisual_.Get());
+    ComPtr<IDCompositionVisual> targetVisual;
+    hr = dcompDevice_->CreateVisual(&targetVisual);
+    if (FAILED(hr) || !targetVisual) {
+        return JALIUM_ERROR_RESOURCE_CREATION_FAILED;
+    }
+
+    hr = containerVisual->AddVisual(targetVisual.Get(), FALSE, nullptr);
+    if (FAILED(hr)) {
+        return JALIUM_ERROR_INVALID_STATE;
+    }
+
+    // Keep WebView visuals below the Jalium swap chain visual so later UI drawing
+    // can naturally cover them after punching a transparent hole in the scene.
+    hr = dcompVisual_->AddVisual(containerVisual.Get(), FALSE, dcompSwapChainVisual_.Get());
     if (FAILED(hr)) {
         return JALIUM_ERROR_INVALID_STATE;
     }
 
     hr = dcompDevice_->Commit();
     if (FAILED(hr)) {
-        dcompVisual_->RemoveVisual(childVisual.Get());
+        dcompVisual_->RemoveVisual(containerVisual.Get());
         dcompDevice_->Commit();
         return JALIUM_ERROR_INVALID_STATE;
     }
 
-    childVisual->AddRef();
-    *visualOut = childVisual.Get();
+    auto* rawTargetVisual = targetVisual.Get();
+    webViewVisuals_.emplace(
+        rawTargetVisual,
+        WebViewVisualEntry{
+            containerVisual,
+            targetVisual
+        });
+
+    rawTargetVisual->AddRef();
+    *visualOut = rawTargetVisual;
     return JALIUM_OK;
 }
 
@@ -598,15 +618,84 @@ JaliumResult D3D12RenderTarget::DestroyWebViewVisual(void* visual) {
         return JALIUM_ERROR_INVALID_ARGUMENT;
     }
 
-    auto* childVisual = reinterpret_cast<IDCompositionVisual*>(visual);
+    auto* targetVisual = reinterpret_cast<IDCompositionVisual*>(visual);
 
     if (!isComposition_ || !dcompDevice_ || !dcompVisual_) {
-        childVisual->Release();
+        targetVisual->Release();
         return JALIUM_ERROR_NOT_SUPPORTED;
     }
 
-    HRESULT hr = dcompVisual_->RemoveVisual(childVisual);
-    childVisual->Release();
+    auto entryIt = webViewVisuals_.find(targetVisual);
+    if (entryIt == webViewVisuals_.end()) {
+        targetVisual->Release();
+        return JALIUM_ERROR_INVALID_ARGUMENT;
+    }
+
+    auto entry = std::move(entryIt->second);
+    webViewVisuals_.erase(entryIt);
+
+    HRESULT hr = dcompVisual_->RemoveVisual(entry.containerVisual.Get());
+    targetVisual->Release();
+    if (FAILED(hr)) {
+        return JALIUM_ERROR_INVALID_STATE;
+    }
+
+    hr = dcompDevice_->Commit();
+    return FAILED(hr) ? JALIUM_ERROR_INVALID_STATE : JALIUM_OK;
+}
+
+JaliumResult D3D12RenderTarget::SetWebViewVisualPlacement(
+    void* visual,
+    int32_t x,
+    int32_t y,
+    int32_t width,
+    int32_t height,
+    int32_t contentOffsetX,
+    int32_t contentOffsetY)
+{
+    if (!visual || width < 0 || height < 0) {
+        return JALIUM_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (!isComposition_ || !dcompDevice_ || !dcompVisual_) {
+        return JALIUM_ERROR_NOT_SUPPORTED;
+    }
+
+    auto* targetVisual = reinterpret_cast<IDCompositionVisual*>(visual);
+    auto entryIt = webViewVisuals_.find(targetVisual);
+    if (entryIt == webViewVisuals_.end()) {
+        return JALIUM_ERROR_INVALID_ARGUMENT;
+    }
+
+    auto* containerVisual = entryIt->second.containerVisual.Get();
+
+    HRESULT hr = containerVisual->SetOffsetX(static_cast<float>(x));
+    if (FAILED(hr)) {
+        return JALIUM_ERROR_INVALID_STATE;
+    }
+
+    hr = containerVisual->SetOffsetY(static_cast<float>(y));
+    if (FAILED(hr)) {
+        return JALIUM_ERROR_INVALID_STATE;
+    }
+
+    const D2D_RECT_F clipRect{
+        0.0f,
+        0.0f,
+        static_cast<float>(width),
+        static_cast<float>(height)
+    };
+    hr = containerVisual->SetClip(clipRect);
+    if (FAILED(hr)) {
+        return JALIUM_ERROR_INVALID_STATE;
+    }
+
+    hr = targetVisual->SetOffsetX(static_cast<float>(contentOffsetX));
+    if (FAILED(hr)) {
+        return JALIUM_ERROR_INVALID_STATE;
+    }
+
+    hr = targetVisual->SetOffsetY(static_cast<float>(contentOffsetY));
     if (FAILED(hr)) {
         return JALIUM_ERROR_INVALID_STATE;
     }
@@ -1226,6 +1315,20 @@ void D3D12RenderTarget::PopClip() {
     } else {
         d2dContext_->PopLayer();
     }
+}
+
+void D3D12RenderTarget::PunchTransparentRect(float x, float y, float w, float h) {
+    if (!isDrawing_ || !d2dContext_ || w <= 0 || h <= 0) return;
+
+    ComPtr<ID2D1SolidColorBrush> transparentBrush;
+    if (FAILED(d2dContext_->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 0), &transparentBrush)) || !transparentBrush) {
+        return;
+    }
+
+    auto previousBlend = d2dContext_->GetPrimitiveBlend();
+    d2dContext_->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
+    d2dContext_->FillRectangle(D2D1::RectF(x, y, x + w, y + h), transparentBrush.Get());
+    d2dContext_->SetPrimitiveBlend(previousBlend);
 }
 
 void D3D12RenderTarget::PushOpacity(float opacity) {

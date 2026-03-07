@@ -899,6 +899,24 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
     }
 
     /// <summary>
+    /// Punches a transparent rectangular hole using the current offset and clip stack.
+    /// </summary>
+    public void PunchTransparentRect(Rect rectangle)
+    {
+        if (_closed) return;
+
+        var x = (float)Math.Round(rectangle.X + Offset.X);
+        var y = (float)Math.Round(rectangle.Y + Offset.Y);
+        var width = (float)Math.Round(rectangle.Width);
+        var height = (float)Math.Round(rectangle.Height);
+
+        if (width <= 0 || height <= 0)
+            return;
+
+        _renderTarget.PunchTransparentRect(x, y, width, height);
+    }
+
+    /// <summary>
     /// Pops the most recent opacity from the opacity stack.
     /// </summary>
     public void PopOpacity()

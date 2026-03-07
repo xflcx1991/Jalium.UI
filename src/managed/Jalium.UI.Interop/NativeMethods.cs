@@ -190,6 +190,20 @@ internal static partial class NativeMethods
     [LibraryImport(CoreLib, EntryPoint = "jalium_render_target_destroy_webview_visual")]
     internal static partial int RenderTargetDestroyWebViewVisual(nint renderTarget, nint visualTarget);
 
+    /// <summary>
+    /// Updates the placement and clip rectangle of a composition visual created for WebView hosting.
+    /// </summary>
+    [LibraryImport(CoreLib, EntryPoint = "jalium_render_target_set_webview_visual_placement")]
+    internal static partial int RenderTargetSetWebViewVisualPlacement(
+        nint renderTarget,
+        nint visualTarget,
+        int x,
+        int y,
+        int width,
+        int height,
+        int contentOffsetX,
+        int contentOffsetY);
+
     #endregion
 
     #region Drawing Commands
@@ -458,6 +472,12 @@ internal static partial class NativeMethods
     /// </summary>
     [LibraryImport(CoreLib, EntryPoint = "jalium_pop_clip")]
     internal static partial void PopClip(nint renderTarget);
+
+    /// <summary>
+    /// Punches a transparent rectangular hole in the current render target.
+    /// </summary>
+    [LibraryImport(CoreLib, EntryPoint = "jalium_punch_transparent_rect")]
+    internal static partial void PunchTransparentRect(nint renderTarget, float x, float y, float width, float height);
 
     /// <summary>
     /// Pushes an opacity value.

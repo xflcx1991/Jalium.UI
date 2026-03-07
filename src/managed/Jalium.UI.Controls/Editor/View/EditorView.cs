@@ -37,6 +37,7 @@ internal sealed class EditorView
     private double _lineHeight;
     private double _charWidth;
     private double _gutterWidth;
+    private double _leadingGutterInset;
     private string? _cachedFontFamily;
     private double _cachedFontSize;
 
@@ -68,9 +69,14 @@ internal sealed class EditorView
     public double LineHeight => _lineHeight;
     public double CharWidth => _charWidth;
     public double GutterWidth => _gutterWidth;
-    public double FoldingLaneLeft => _gutterWidth + FoldingLaneGap;
+    public double LeadingGutterInset
+    {
+        get => _leadingGutterInset;
+        set => _leadingGutterInset = Math.Max(0, value);
+    }
+    public double LineNumberAreaLeft => LeadingGutterInset;
+    public double FoldingLaneLeft => LineNumberAreaLeft + _gutterWidth + FoldingLaneGap;
     public double FoldingLaneWidth => FoldingMarginWidth;
-    public double LineNumberAreaLeft => 0;
     public double TextAreaLeft => FoldingLaneLeft + FoldingMarginWidth + TextAreaGap;
     public int CachedLineCount => _lineCache.Count;
 

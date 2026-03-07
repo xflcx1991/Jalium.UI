@@ -186,11 +186,6 @@ public sealed class ToolTip : ContentControl
         UseTemplateContentManagement();
 
         // Default styling — overridden by theme implicit style when available
-        Background = s_defaultBackgroundBrush;
-        BorderBrush = s_defaultBorderBrush;
-        BorderThickness = new Thickness(1);
-        Padding = new Thickness(8, 4, 8, 4);
-        Foreground = s_defaultForegroundBrush;
     }
 
     private static void OnIsOpenChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

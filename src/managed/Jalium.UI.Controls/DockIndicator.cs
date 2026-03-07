@@ -17,7 +17,7 @@ internal static class DockIndicator
     private const double EdgeButtonSize = 32;
     private const double CornerRadius = 6;
 
-    // Dark theme colors for indicator chrome
+    // Fallback colors used when theme resources are unavailable.
     private static readonly Color ChromeBg = Color.FromArgb(230, 32, 32, 32);
     private static readonly Color ChromeBorder = Color.FromArgb(180, 70, 70, 70);
     private static readonly Color ButtonBg = Color.FromArgb(255, 50, 50, 50);
@@ -25,6 +25,15 @@ internal static class DockIndicator
     private static readonly Color ButtonHoverBg = Color.FromArgb(255, 0, 120, 212); // Accent
     private static readonly Color IconNormal = Color.FromArgb(220, 200, 200, 200);
     private static readonly Color IconHover = Color.FromRgb(255, 255, 255);
+    private static readonly Color PreviewBg = Color.FromArgb(50, 0, 120, 212);
+    private static readonly Color PreviewBorder = Color.FromArgb(140, 0, 120, 212);
+    private static readonly SolidColorBrush s_fallbackChromeBackgroundBrush = new(ChromeBg);
+    private static readonly SolidColorBrush s_fallbackChromeBorderBrush = new(ChromeBorder);
+    private static readonly SolidColorBrush s_fallbackButtonBackgroundBrush = new(ButtonBg);
+    private static readonly SolidColorBrush s_fallbackButtonBorderBrush = new(ButtonBorder);
+    private static readonly SolidColorBrush s_fallbackButtonHoverBackgroundBrush = new(ButtonHoverBg);
+    private static readonly SolidColorBrush s_fallbackPreviewBackgroundBrush = new(PreviewBg);
+    private static readonly SolidColorBrush s_fallbackPreviewBorderBrush = new(PreviewBorder);
 
     #region Hit-Testing
 
@@ -105,8 +114,8 @@ internal static class DockIndicator
         var half = ButtonSize / 2;
         var pad = 5.0;
 
-        var bgBrush = new SolidColorBrush(ChromeBg);
-        var borderPen = new Pen(new SolidColorBrush(ChromeBorder), 1);
+        var bgBrush = ResolveChromeBackgroundBrush();
+        var borderPen = new Pen(ResolveChromeBorderBrush(), 1);
 
         // Horizontal bar: Left + Center + Right
         var hRect = new Rect(
@@ -137,8 +146,8 @@ internal static class DockIndicator
             var rect = GetEdgeButtonRect(layoutWidth, layoutHeight, pos);
 
             // Pill-shaped background
-            var bgBrush = new SolidColorBrush(ChromeBg);
-            var borderPen = new Pen(new SolidColorBrush(ChromeBorder), 1);
+            var bgBrush = ResolveChromeBackgroundBrush();
+            var borderPen = new Pen(ResolveChromeBorderBrush(), 1);
             var bgRect = new Rect(rect.X - 4, rect.Y - 4, rect.Width + 8, rect.Height + 8);
             dc.DrawRoundedRectangle(bgBrush, borderPen, bgRect, CornerRadius, CornerRadius);
 
@@ -152,14 +161,12 @@ internal static class DockIndicator
 
     private static void DrawButton(DrawingContext dc, Rect rect, DockPosition position, bool isHovered)
     {
-        var bgBrush = isHovered
-            ? new SolidColorBrush(ButtonHoverBg)
-            : new SolidColorBrush(ButtonBg);
-        var borderPen = new Pen(new SolidColorBrush(isHovered ? ButtonHoverBg : ButtonBorder), 1);
+        var bgBrush = ResolveButtonBackgroundBrush(isHovered);
+        var borderPen = new Pen(ResolveButtonBorderBrush(isHovered), 1);
 
         dc.DrawRoundedRectangle(bgBrush, borderPen, rect, 4, 4);
 
-        var iconColor = isHovered ? IconHover : IconNormal;
+        var iconColor = ResolveIconColor(isHovered);
         DrawDockIcon(dc, rect, position, iconColor);
     }
 
@@ -237,8 +244,8 @@ internal static class DockIndicator
     {
         if (position == DockPosition.None) return;
 
-        var previewBrush = new SolidColorBrush(Color.FromArgb(50, 0, 120, 212));
-        var borderPen = new Pen(new SolidColorBrush(Color.FromArgb(140, 0, 120, 212)), 2);
+        var previewBrush = ResolvePreviewBackgroundBrush();
+        var borderPen = new Pen(ResolvePreviewBorderBrush(), 2);
 
         var canonicalPos = ToCanonicalPosition(position);
         Rect previewRect = canonicalPos switch
@@ -255,6 +262,69 @@ internal static class DockIndicator
         {
             dc.DrawRoundedRectangle(previewBrush, borderPen, previewRect, 4, 4);
         }
+    }
+
+    private static Brush ResolveChromeBackgroundBrush()
+    {
+        return ResolveBrush("DockIndicatorChromeBackground", s_fallbackChromeBackgroundBrush);
+    }
+
+    private static Brush ResolveChromeBorderBrush()
+    {
+        return ResolveBrush("DockIndicatorChromeBorder", s_fallbackChromeBorderBrush);
+    }
+
+    private static Brush ResolveButtonBackgroundBrush(bool isHovered)
+    {
+        return isHovered
+            ? ResolveBrush("DockIndicatorButtonHoverBackground", s_fallbackButtonHoverBackgroundBrush)
+            : ResolveBrush("DockIndicatorButtonBackground", s_fallbackButtonBackgroundBrush);
+    }
+
+    private static Brush ResolveButtonBorderBrush(bool isHovered)
+    {
+        return isHovered
+            ? ResolveBrush("DockIndicatorButtonHoverBackground", s_fallbackButtonHoverBackgroundBrush)
+            : ResolveBrush("DockIndicatorButtonBorder", s_fallbackButtonBorderBrush);
+    }
+
+    private static Color ResolveIconColor(bool isHovered)
+    {
+        return ResolveColor(
+            isHovered ? "DockIndicatorIconHoverForeground" : "DockIndicatorIconForeground",
+            isHovered ? IconHover : IconNormal);
+    }
+
+    private static Brush ResolvePreviewBackgroundBrush()
+    {
+        return ResolveBrush("DockIndicatorPreviewBackground", s_fallbackPreviewBackgroundBrush);
+    }
+
+    private static Brush ResolvePreviewBorderBrush()
+    {
+        return ResolveBrush("DockIndicatorPreviewBorder", s_fallbackPreviewBorderBrush);
+    }
+
+    private static Brush ResolveBrush(string resourceKey, Brush fallback)
+    {
+        var appResources = Jalium.UI.Application.Current?.Resources;
+        if (appResources != null && appResources.TryGetValue(resourceKey, out var resource) && resource is Brush brush)
+            return brush;
+
+        return fallback;
+    }
+
+    private static Color ResolveColor(string resourceKey, Color fallback)
+    {
+        var appResources = Jalium.UI.Application.Current?.Resources;
+        if (appResources != null
+            && appResources.TryGetValue(resourceKey, out var resource)
+            && resource is SolidColorBrush brush)
+        {
+            return brush.Color;
+        }
+
+        return fallback;
     }
 
     #endregion

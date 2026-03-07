@@ -172,14 +172,33 @@ public sealed class ContextMenu : ItemsControl
     /// </summary>
     public ContextMenu()
     {
-        Background = s_defaultBackgroundBrush;
-        BorderBrush = s_defaultBorderBrush;
-        BorderThickness = new Thickness(1);
-        Padding = new Thickness(2);
-        CornerRadius = new CornerRadius(4);
     }
 
     #endregion
+
+    /// <inheritdoc />
+    protected override void OnPropertyChanged(DependencyPropertyChangedEventArgs e)
+    {
+        base.OnPropertyChanged(e);
+
+        if (e.Property == BackgroundProperty ||
+            e.Property == BorderBrushProperty ||
+            e.Property == BorderThicknessProperty ||
+            e.Property == PaddingProperty ||
+            e.Property == CornerRadiusProperty)
+        {
+            UpdatePopupChrome();
+        }
+
+        if (e.Property == PlacementProperty ||
+            e.Property == HorizontalOffsetProperty ||
+            e.Property == VerticalOffsetProperty ||
+            e.Property == PlacementTargetProperty ||
+            e.Property == StaysOpenProperty)
+        {
+            UpdatePopupSettings();
+        }
+    }
 
     #region Item Generation
 
@@ -250,12 +269,8 @@ public sealed class ContextMenu : ItemsControl
 
         _popupBorder = new Border
         {
-            Background = Background ?? s_defaultBackgroundBrush,
-            BorderBrush = BorderBrush ?? s_defaultBorderBrush,
-            BorderThickness = BorderThickness,
-            CornerRadius = CornerRadius,
-            Padding = Padding
         };
+        UpdatePopupChrome();
 
         _popup = new Popup
         {
@@ -265,6 +280,7 @@ public sealed class ContextMenu : ItemsControl
             ShouldConstrainToRootBounds = false,
             Child = _popupBorder
         };
+        UpdatePopupSettings();
     }
 
     /// <summary>
@@ -295,6 +311,50 @@ public sealed class ContextMenu : ItemsControl
         }
 
         _popupBorder.Child = scrollHost;
+    }
+
+    private void UpdatePopupChrome()
+    {
+        if (_popupBorder == null)
+            return;
+
+        _popupBorder.Background = ResolvePopupBackgroundBrush();
+        _popupBorder.BorderBrush = ResolvePopupBorderBrush();
+        _popupBorder.BorderThickness = BorderThickness;
+        _popupBorder.CornerRadius = CornerRadius;
+        _popupBorder.Padding = Padding;
+    }
+
+    private Brush ResolvePopupBackgroundBrush()
+    {
+        return Background
+            ?? TryFindResource("MenuFlyoutPresenterBackground") as Brush
+            ?? TryFindResource("SurfaceBackground") as Brush
+            ?? s_defaultBackgroundBrush;
+    }
+
+    private Brush ResolvePopupBorderBrush()
+    {
+        return BorderBrush
+            ?? TryFindResource("MenuFlyoutPresenterBorderBrush") as Brush
+            ?? TryFindResource("ControlBorder") as Brush
+            ?? s_defaultBorderBrush;
+    }
+
+    private void UpdatePopupSettings()
+    {
+        if (_popup == null)
+            return;
+
+        _popup.PlacementTarget = PlacementTarget;
+        _popup.StaysOpen = StaysOpen;
+
+        if (_popup.IsOpen)
+        {
+            _popup.Placement = Placement;
+            _popup.HorizontalOffset = HorizontalOffset;
+            _popup.VerticalOffset = VerticalOffset;
+        }
     }
 
     #endregion

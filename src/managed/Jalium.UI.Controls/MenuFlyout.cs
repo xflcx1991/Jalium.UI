@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Media;
 
@@ -6,14 +8,17 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Represents a flyout that displays a menu of commands.
 /// </summary>
+[ContentProperty("Items")]
 public sealed class MenuFlyout : FlyoutBase
 {
-    private readonly List<Control> _items = new();
+    private readonly ObservableCollection<Control> _items = new();
 
     /// <summary>
     /// Gets the collection of items in the MenuFlyout.
     /// </summary>
     public IList<Control> Items => _items;
+
+    internal ObservableCollection<Control> ItemCollection => _items;
 
     /// <summary>
     /// Gets or sets the style applied to the MenuFlyoutPresenter.
@@ -48,11 +53,8 @@ internal sealed class MenuFlyoutPresenter : Control
         Padding = s_defaultPadding;
         CornerRadius = s_defaultCornerRadius;
         _scrollHost = new MenuPopupScrollHost();
-
-        foreach (var item in _flyout.Items)
-        {
-            _scrollHost.ItemsPanel.Children.Add(item);
-        }
+        _flyout.ItemCollection.CollectionChanged += OnFlyoutItemsChanged;
+        RefreshItems();
 
         AddVisualChild(_scrollHost);
     }
@@ -118,6 +120,22 @@ internal sealed class MenuFlyoutPresenter : Control
         if (TryFindResource(secondaryKey) is Brush secondary)
             return secondary;
         return fallback;
+    }
+
+    private void OnFlyoutItemsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        RefreshItems();
+        InvalidateMeasure();
+        InvalidateVisual();
+    }
+
+    private void RefreshItems()
+    {
+        _scrollHost.ItemsPanel.Children.Clear();
+        foreach (var item in _flyout.Items)
+        {
+            _scrollHost.ItemsPanel.Children.Add(item);
+        }
     }
 
     private Thickness GetEffectiveBorderThickness()

@@ -177,6 +177,7 @@ public sealed class ScrollBar : RangeBase
         {
             Style = s_internalRepeatButtonStyle,
             Focusable = false,
+            TransitionProperty = "None",
             Background = s_transparentBrush,
             BorderBrush = s_transparentBrush,
             BorderThickness = new Thickness(0),
@@ -214,6 +215,7 @@ public sealed class ScrollBar : RangeBase
         {
             Style = s_internalRepeatButtonStyle,
             Focusable = false,
+            TransitionProperty = "None",
             Opacity = 0,
             Background = s_transparentBrush,
             BorderBrush = s_transparentBrush,
@@ -230,6 +232,7 @@ public sealed class ScrollBar : RangeBase
         {
             Style = s_internalRepeatButtonStyle,
             Focusable = false,
+            TransitionProperty = "None",
             Opacity = 0,
             Background = s_transparentBrush,
             BorderBrush = s_transparentBrush,
@@ -249,6 +252,7 @@ public sealed class ScrollBar : RangeBase
         {
             Style = s_internalRepeatButtonStyle,
             Focusable = false,
+            TransitionProperty = "None",
             Background = s_transparentBrush,
             BorderBrush = s_transparentBrush,
             BorderThickness = new Thickness(0),

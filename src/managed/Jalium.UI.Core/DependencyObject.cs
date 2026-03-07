@@ -6,6 +6,9 @@ namespace Jalium.UI;
 /// </summary>
 public class DependencyObject : DispatcherObject
 {
+    [ThreadStatic]
+    private static HashSet<(DependencyObject owner, DependencyProperty property)>? t_activeCoercions;
+
     private readonly Dictionary<DependencyProperty, object?> _localValues = new();
     private readonly Dictionary<DependencyProperty, object?> _parentTemplateValues = new();
     private readonly Dictionary<DependencyProperty, object?> _styleTriggerValues = new();
@@ -47,6 +50,23 @@ public class DependencyObject : DispatcherObject
         public bool IsCoerced { get; }
     }
 
+    private sealed class CoercionKeyComparer : IEqualityComparer<(DependencyObject owner, DependencyProperty property)>
+    {
+        public static readonly CoercionKeyComparer Instance = new();
+
+        public bool Equals((DependencyObject owner, DependencyProperty property) x, (DependencyObject owner, DependencyProperty property) y)
+        {
+            return ReferenceEquals(x.owner, y.owner) && ReferenceEquals(x.property, y.property);
+        }
+
+        public int GetHashCode((DependencyObject owner, DependencyProperty property) obj)
+        {
+            return HashCode.Combine(
+                System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj.owner),
+                System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj.property));
+        }
+    }
+
     internal enum LayerValueSource
     {
         ParentTemplate,
@@ -54,6 +74,8 @@ public class DependencyObject : DispatcherObject
         TemplateTrigger,
         StyleSetter
     }
+
+    private delegate bool ValueMutation();
 
     /// <summary>
     /// Gets the current effective value of a dependency property.
@@ -101,22 +123,15 @@ public class DependencyObject : DispatcherObject
     public void SetValue(DependencyProperty dp, object? value)
     {
         ArgumentNullException.ThrowIfNull(dp);
-        var oldValue = GetValue(dp);
-        if (_currentValues.TryGetValue(dp, out var current) && current.source == BaseValueSource.Local)
-            _currentValues.Remove(dp);
-        _localValues[dp] = value;
-        var newValue = GetValue(dp);
-
-        if (!Equals(oldValue, newValue))
-        {
-            OnPropertyChanged(new DependencyPropertyChangedEventArgs(dp, oldValue, newValue));
-
-            // Notify binding for TwoWay/OneWayToSource
-            if (_bindings.TryGetValue(dp, out var binding))
+        MutateValue(
+            dp,
+            () =>
             {
-                binding.UpdateSource();
-            }
-        }
+                SetLocalValueCore(dp, value);
+                return true;
+            },
+            notifyBinding: true,
+            allowAutoTransition: true);
     }
 
     /// <summary>
@@ -127,70 +142,101 @@ public class DependencyObject : DispatcherObject
     public void SetCurrentValue(DependencyProperty dp, object? value)
     {
         ArgumentNullException.ThrowIfNull(dp);
-
         var source = GetValueSourceInternal(dp);
-        if (source.IsAnimated && _animatedValues.TryGetValue(dp, out var animated))
-        {
-            var oldValue = GetValue(dp);
-            _animatedValues[dp] = animated with { CurrentValue = value };
-            var newValue = GetValue(dp);
-            if (!Equals(oldValue, newValue))
-                OnPropertyChanged(new DependencyPropertyChangedEventArgs(dp, oldValue, newValue));
-            return;
-        }
-
-        SetCurrentValueForSource(dp, value, source.BaseValueSource);
+        SetCurrentValueForSource(dp, value, source.BaseValueSource, allowAutoTransition: true);
     }
 
     private void SetCurrentValueForSource(DependencyProperty dp, object? value, BaseValueSource baseSource)
     {
+        SetCurrentValueForSource(dp, value, baseSource, allowAutoTransition: false);
+    }
+
+    private void SetCurrentValueForSource(DependencyProperty dp, object? value, BaseValueSource baseSource, bool allowAutoTransition)
+    {
         switch (baseSource)
         {
             case BaseValueSource.Local:
-                {
-                    var oldValue = GetValue(dp);
-                    _localValues[dp] = value;
-                    var newValue = GetValue(dp);
-                    if (!Equals(oldValue, newValue))
-                        OnPropertyChanged(new DependencyPropertyChangedEventArgs(dp, oldValue, newValue));
-                    return;
-                }
+                MutateValue(
+                    dp,
+                    () =>
+                    {
+                        _localValues[dp] = value;
+                        return true;
+                    },
+                    notifyBinding: false,
+                    allowAutoTransition);
+                return;
             case BaseValueSource.ParentTemplate:
-                SetLayerValue(dp, value, LayerValueSource.ParentTemplate);
+                MutateValue(
+                    dp,
+                    () =>
+                    {
+                        SetLayerValueCore(dp, value, LayerValueSource.ParentTemplate);
+                        return true;
+                    },
+                    notifyBinding: false,
+                    allowAutoTransition);
                 return;
             case BaseValueSource.StyleTrigger:
-                SetLayerValue(dp, value, LayerValueSource.StyleTrigger);
+                MutateValue(
+                    dp,
+                    () =>
+                    {
+                        SetLayerValueCore(dp, value, LayerValueSource.StyleTrigger);
+                        return true;
+                    },
+                    notifyBinding: false,
+                    allowAutoTransition);
                 return;
             case BaseValueSource.TemplateTrigger:
             case BaseValueSource.ParentTemplateTrigger:
-                SetLayerValue(dp, value, LayerValueSource.TemplateTrigger);
+                MutateValue(
+                    dp,
+                    () =>
+                    {
+                        SetLayerValueCore(dp, value, LayerValueSource.TemplateTrigger);
+                        return true;
+                    },
+                    notifyBinding: false,
+                    allowAutoTransition);
                 return;
             case BaseValueSource.Style:
             case BaseValueSource.DefaultStyle:
-                SetLayerValue(dp, value, LayerValueSource.StyleSetter);
+                MutateValue(
+                    dp,
+                    () =>
+                    {
+                        SetLayerValueCore(dp, value, LayerValueSource.StyleSetter);
+                        return true;
+                    },
+                    notifyBinding: false,
+                    allowAutoTransition);
                 return;
             case BaseValueSource.Default:
             case BaseValueSource.Inherited:
-                // Preserve no-local semantics: keep this as a lightweight current-value layer.
-                {
-                    var oldValue = GetValue(dp);
-                    var keepSource = baseSource == BaseValueSource.Inherited
-                        ? BaseValueSource.Inherited
-                        : BaseValueSource.Default;
-                    _currentValues[dp] = (value, keepSource);
-                    var newValue = GetValue(dp);
-                    if (!Equals(oldValue, newValue))
-                        OnPropertyChanged(new DependencyPropertyChangedEventArgs(dp, oldValue, newValue));
-                    return;
-                }
+                MutateValue(
+                    dp,
+                    () =>
+                    {
+                        var keepSource = baseSource == BaseValueSource.Inherited
+                            ? BaseValueSource.Inherited
+                            : BaseValueSource.Default;
+                        _currentValues[dp] = (value, keepSource);
+                        return true;
+                    },
+                    notifyBinding: false,
+                    allowAutoTransition);
+                return;
             default:
-                {
-                    var oldValue = GetValue(dp);
-                    _localValues[dp] = value;
-                    var newValue = GetValue(dp);
-                    if (!Equals(oldValue, newValue))
-                        OnPropertyChanged(new DependencyPropertyChangedEventArgs(dp, oldValue, newValue));
-                }
+                MutateValue(
+                    dp,
+                    () =>
+                    {
+                        _localValues[dp] = value;
+                        return true;
+                    },
+                    notifyBinding: false,
+                    allowAutoTransition);
                 return;
         }
     }
@@ -296,13 +342,11 @@ public class DependencyObject : DispatcherObject
     public void ClearValue(DependencyProperty dp)
     {
         ArgumentNullException.ThrowIfNull(dp);
-        var oldValue = GetValue(dp);
-        if (!_localValues.Remove(dp))
-            return;
-
-        var newValue = GetValue(dp);
-        if (!Equals(oldValue, newValue))
-            OnPropertyChanged(new DependencyPropertyChangedEventArgs(dp, oldValue, newValue));
+        MutateValue(
+            dp,
+            () => ClearLocalValueCore(dp),
+            notifyBinding: false,
+            allowAutoTransition: true);
     }
 
     /// <summary>
@@ -378,7 +422,7 @@ public class DependencyObject : DispatcherObject
         if (!_animatedValues.ContainsKey(dp))
         {
             // Store base value for restoration when animation ends
-            var (baseValue, baseSource) = GetUncoercedBaseValue(dp);
+            var (baseValue, baseSource) = GetUncoercedBaseValueInternal(dp);
             _animatedValues[dp] = new AnimatedPropertyValue(baseValue, baseSource, value, holdEndValue);
         }
         else
@@ -482,59 +526,30 @@ public class DependencyObject : DispatcherObject
     internal void SetLayerValue(DependencyProperty dp, object? value, LayerValueSource source)
     {
         ArgumentNullException.ThrowIfNull(dp);
-
-        var oldValue = GetValue(dp);
-        var mappedSource = MapLayerValueSource(source);
-        if (_currentValues.TryGetValue(dp, out var current) && current.source == mappedSource)
-            _currentValues.Remove(dp);
-        switch (source)
-        {
-            case LayerValueSource.ParentTemplate:
-                _parentTemplateValues[dp] = value;
-                break;
-            case LayerValueSource.StyleTrigger:
-                _styleTriggerValues[dp] = value;
-                break;
-            case LayerValueSource.TemplateTrigger:
-                _templateTriggerValues[dp] = value;
-                break;
-            case LayerValueSource.StyleSetter:
-                _styleSetterValues[dp] = value;
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(source), source, null);
-        }
-
-        var newValue = GetValue(dp);
-        if (!Equals(oldValue, newValue))
-            OnPropertyChanged(new DependencyPropertyChangedEventArgs(dp, oldValue, newValue));
+        MutateValue(
+            dp,
+            () =>
+            {
+                SetLayerValueCore(dp, value, source);
+                return true;
+            },
+            notifyBinding: false,
+            allowAutoTransition: true);
     }
 
     internal void ClearLayerValue(DependencyProperty dp, LayerValueSource source)
     {
         ArgumentNullException.ThrowIfNull(dp);
-
-        var oldValue = GetValue(dp);
-        bool removed = source switch
-        {
-            LayerValueSource.ParentTemplate => _parentTemplateValues.Remove(dp),
-            LayerValueSource.StyleTrigger => _styleTriggerValues.Remove(dp),
-            LayerValueSource.TemplateTrigger => _templateTriggerValues.Remove(dp),
-            LayerValueSource.StyleSetter => _styleSetterValues.Remove(dp),
-            _ => throw new ArgumentOutOfRangeException(nameof(source), source, null)
-        };
-
-        if (!removed)
-            return;
-
-        var newValue = GetValue(dp);
-        if (!Equals(oldValue, newValue))
-            OnPropertyChanged(new DependencyPropertyChangedEventArgs(dp, oldValue, newValue));
+        MutateValue(
+            dp,
+            () => ClearLayerValueCore(dp, source),
+            notifyBinding: false,
+            allowAutoTransition: true);
     }
 
     private ValueState GetValueState(DependencyProperty dp, bool forceCoerce = false)
     {
-        var (baseValue, source) = GetUncoercedBaseValue(dp);
+        var (baseValue, source) = GetUncoercedBaseValueInternal(dp);
         bool isAnimated = false;
         bool isExpression = _bindings.ContainsKey(dp);
 
@@ -548,18 +563,41 @@ public class DependencyObject : DispatcherObject
         bool isCoerced = false;
         if (dp.DefaultMetadata.CoerceValueCallback != null)
         {
-            var coerced = dp.DefaultMetadata.CoerceValueCallback(this, effectiveValue);
-            if (forceCoerce || !Equals(coerced, effectiveValue))
+            var activeCoercions = t_activeCoercions ??= new HashSet<(DependencyObject owner, DependencyProperty property)>(CoercionKeyComparer.Instance);
+            var coercionKey = (this, dp);
+            var shouldInvokeCoerce = activeCoercions.Add(coercionKey);
+
+            try
             {
-                effectiveValue = coerced;
-                isCoerced = !Equals(coerced, baseValue) || isAnimated;
+                if (shouldInvokeCoerce)
+                {
+                    var coerced = dp.DefaultMetadata.CoerceValueCallback(this, effectiveValue);
+                    if (forceCoerce || !Equals(coerced, effectiveValue))
+                    {
+                        effectiveValue = coerced;
+                        isCoerced = !Equals(coerced, baseValue) || isAnimated;
+                    }
+                }
+            }
+            finally
+            {
+                if (shouldInvokeCoerce)
+                {
+                    activeCoercions.Remove(coercionKey);
+                }
             }
         }
 
         return new ValueState(effectiveValue, source, isAnimated, isExpression, isCoerced);
     }
 
-    private (object? value, BaseValueSource source) GetUncoercedBaseValue(DependencyProperty dp)
+    internal object? GetEffectiveBaseValue(DependencyProperty dp, bool forceCoerce = false)
+    {
+        ArgumentNullException.ThrowIfNull(dp);
+        return GetBaseValueState(dp, forceCoerce).Value;
+    }
+
+    internal virtual (object? value, BaseValueSource source) GetUncoercedBaseValueInternal(DependencyProperty dp)
     {
         if (_localValues.TryGetValue(dp, out var local))
             return (local, BaseValueSource.Local);
@@ -580,6 +618,181 @@ public class DependencyObject : DispatcherObject
             return current;
 
         return (dp.DefaultMetadata.DefaultValue, BaseValueSource.Default);
+    }
+
+    private ValueState GetBaseValueState(DependencyProperty dp, bool forceCoerce = false)
+    {
+        var (baseValue, source) = GetUncoercedBaseValueInternal(dp);
+        bool isExpression = _bindings.ContainsKey(dp);
+        object? effectiveValue = baseValue;
+        bool isCoerced = false;
+
+        if (dp.DefaultMetadata.CoerceValueCallback != null)
+        {
+            var activeCoercions = t_activeCoercions ??= new HashSet<(DependencyObject owner, DependencyProperty property)>(CoercionKeyComparer.Instance);
+            var coercionKey = (this, dp);
+            var shouldInvokeCoerce = activeCoercions.Add(coercionKey);
+
+            try
+            {
+                if (shouldInvokeCoerce)
+                {
+                    var coerced = dp.DefaultMetadata.CoerceValueCallback(this, effectiveValue);
+                    if (forceCoerce || !Equals(coerced, effectiveValue))
+                    {
+                        effectiveValue = coerced;
+                        isCoerced = !Equals(coerced, baseValue);
+                    }
+                }
+            }
+            finally
+            {
+                if (shouldInvokeCoerce)
+                {
+                    activeCoercions.Remove(coercionKey);
+                }
+            }
+        }
+
+        return new ValueState(effectiveValue, source, false, isExpression, isCoerced);
+    }
+
+    private void MutateValue(DependencyProperty dp, ValueMutation mutateCore, bool notifyBinding, bool allowAutoTransition)
+    {
+        ArgumentNullException.ThrowIfNull(dp);
+        ArgumentNullException.ThrowIfNull(mutateCore);
+
+        if (allowAutoTransition && TryMutateValueWithAutomaticTransition(dp, mutateCore, notifyBinding))
+            return;
+
+        var oldValue = GetValue(dp);
+        if (!mutateCore())
+            return;
+
+        var newValue = GetValue(dp);
+        if (!Equals(oldValue, newValue))
+        {
+            OnPropertyChanged(new DependencyPropertyChangedEventArgs(dp, oldValue, newValue));
+            if (notifyBinding && _bindings.TryGetValue(dp, out var binding))
+            {
+                binding.UpdateSource();
+            }
+        }
+    }
+
+    private bool TryMutateValueWithAutomaticTransition(DependencyProperty dp, ValueMutation mutateCore, bool notifyBinding)
+    {
+        if (this is not UIElement uiElement ||
+            !uiElement.ShouldAutomaticallyTransition(dp) ||
+            uiElement.HasExplicitAnimation(dp))
+        {
+            return false;
+        }
+
+        var hadAutomaticTransition = uiElement.HasAutomaticTransition(dp);
+        var oldDisplayedValue = GetValue(dp);
+        var oldBaseValue = GetEffectiveBaseValue(dp);
+
+        SetAnimatedValue(dp, oldDisplayedValue, holdEndValue: false);
+
+        if (!mutateCore())
+        {
+            if (!hadAutomaticTransition)
+            {
+                ClearAnimatedValue(dp);
+            }
+
+            return true;
+        }
+
+        var newBaseValue = GetEffectiveBaseValue(dp, forceCoerce: true);
+        if (Equals(oldBaseValue, newBaseValue))
+        {
+            if (!hadAutomaticTransition)
+            {
+                ClearAnimatedValue(dp);
+            }
+
+            return true;
+        }
+
+        if (Equals(oldDisplayedValue, newBaseValue))
+        {
+            uiElement.StopAutomaticTransition(dp, clearAnimatedValue: false);
+            ClearAnimatedValue(dp);
+        }
+        else if (uiElement.TryStartAutomaticTransition(dp, oldDisplayedValue, newBaseValue))
+        {
+            if (notifyBinding && _bindings.TryGetValue(dp, out var binding))
+            {
+                binding.UpdateSource();
+            }
+
+            return true;
+        }
+        else
+        {
+            uiElement.StopAutomaticTransition(dp, clearAnimatedValue: false);
+            ClearAnimatedValue(dp);
+        }
+
+        if (notifyBinding && _bindings.TryGetValue(dp, out var fallbackBinding))
+        {
+            fallbackBinding.UpdateSource();
+        }
+
+        return true;
+    }
+
+    private void SetLocalValueCore(DependencyProperty dp, object? value)
+    {
+        if (_currentValues.TryGetValue(dp, out var current) && current.source == BaseValueSource.Local)
+        {
+            _currentValues.Remove(dp);
+        }
+
+        _localValues[dp] = value;
+    }
+
+    private bool ClearLocalValueCore(DependencyProperty dp) => _localValues.Remove(dp);
+
+    private void SetLayerValueCore(DependencyProperty dp, object? value, LayerValueSource source)
+    {
+        var mappedSource = MapLayerValueSource(source);
+        if (_currentValues.TryGetValue(dp, out var current) && current.source == mappedSource)
+        {
+            _currentValues.Remove(dp);
+        }
+
+        switch (source)
+        {
+            case LayerValueSource.ParentTemplate:
+                _parentTemplateValues[dp] = value;
+                break;
+            case LayerValueSource.StyleTrigger:
+                _styleTriggerValues[dp] = value;
+                break;
+            case LayerValueSource.TemplateTrigger:
+                _templateTriggerValues[dp] = value;
+                break;
+            case LayerValueSource.StyleSetter:
+                _styleSetterValues[dp] = value;
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(source), source, null);
+        }
+    }
+
+    private bool ClearLayerValueCore(DependencyProperty dp, LayerValueSource source)
+    {
+        return source switch
+        {
+            LayerValueSource.ParentTemplate => _parentTemplateValues.Remove(dp),
+            LayerValueSource.StyleTrigger => _styleTriggerValues.Remove(dp),
+            LayerValueSource.TemplateTrigger => _templateTriggerValues.Remove(dp),
+            LayerValueSource.StyleSetter => _styleSetterValues.Remove(dp),
+            _ => throw new ArgumentOutOfRangeException(nameof(source), source, null)
+        };
     }
 
     private static BaseValueSource MapLayerValueSource(LayerValueSource source) =>

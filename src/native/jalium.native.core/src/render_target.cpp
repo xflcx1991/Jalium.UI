@@ -148,6 +148,30 @@ JALIUM_API JaliumResult jalium_render_target_destroy_webview_visual(
     return reinterpret_cast<jalium::RenderTarget*>(rt)->DestroyWebViewVisual(visual);
 }
 
+JALIUM_API JaliumResult jalium_render_target_set_webview_visual_placement(
+    JaliumRenderTarget* rt,
+    void* visual,
+    int32_t x,
+    int32_t y,
+    int32_t width,
+    int32_t height,
+    int32_t content_offset_x,
+    int32_t content_offset_y)
+{
+    if (!rt || !visual || width < 0 || height < 0) {
+        return JALIUM_ERROR_INVALID_ARGUMENT;
+    }
+
+    return reinterpret_cast<jalium::RenderTarget*>(rt)->SetWebViewVisualPlacement(
+        visual,
+        x,
+        y,
+        width,
+        height,
+        content_offset_x,
+        content_offset_y);
+}
+
 JALIUM_API void jalium_draw_fill_rectangle(
     JaliumRenderTarget* rt,
     float x, float y, float width, float height,
@@ -367,6 +391,12 @@ JALIUM_API void jalium_push_rounded_rect_clip(JaliumRenderTarget* rt, float x, f
 JALIUM_API void jalium_pop_clip(JaliumRenderTarget* rt) {
     if (rt) {
         reinterpret_cast<jalium::RenderTarget*>(rt)->PopClip();
+    }
+}
+
+JALIUM_API void jalium_punch_transparent_rect(JaliumRenderTarget* rt, float x, float y, float width, float height) {
+    if (rt) {
+        reinterpret_cast<jalium::RenderTarget*>(rt)->PunchTransparentRect(x, y, width, height);
     }
 }
 

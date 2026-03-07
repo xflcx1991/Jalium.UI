@@ -62,7 +62,6 @@ public class Page : ContentControl
     /// </summary>
     public Page()
     {
-        Background = new SolidColorBrush(Color.Transparent);
     }
 
     #region Navigation Events

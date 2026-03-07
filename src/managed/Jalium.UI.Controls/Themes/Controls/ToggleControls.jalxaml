@@ -31,7 +31,7 @@
                             <!-- Check Mark Path -->
                             <Path Name="CheckMark"
                                   Data="M 0,5 L 3,8 L 8,2"
-                                  Stroke="White"
+                                  Stroke="{DynamicResource TextOnAccent}"
                                   StrokeThickness="2"
                                   Stretch="None"
                                   HorizontalAlignment="Center"
@@ -121,7 +121,7 @@
                                 <Ellipse Name="RadioDot"
                                          Width="8"
                                          Height="8"
-                                         Fill="White"
+                                         Fill="{DynamicResource TextOnAccent}"
                                          HorizontalAlignment="Center"
                                          VerticalAlignment="Center"
                                          Opacity="0" />

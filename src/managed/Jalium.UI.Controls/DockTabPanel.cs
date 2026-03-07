@@ -1,5 +1,5 @@
 using Jalium.UI.Controls.Primitives;
-using Jalium.UI.Interop;
+using Jalium.UI.Input;
 using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
@@ -13,7 +13,9 @@ public sealed class DockTabPanel : Selector
 {
     private static readonly SolidColorBrush s_fallbackPanelBackgroundBrush = new(Color.FromRgb(0x1E, 0x1E, 0x2E));
     private static readonly SolidColorBrush s_fallbackTabStripBrush = new(Color.FromRgb(0x18, 0x18, 0x26));
+    private static readonly SolidColorBrush s_fallbackBorderBrush = new(Color.FromRgb(0x3C, 0x3C, 0x4D));
     private static readonly SolidColorBrush s_fallbackAccentBrush = new(Color.FromRgb(0x7A, 0xA2, 0xF7));
+    private const double TabStripScrollBarThickness = 10.0;
 
     /// <summary>
     /// Occurs when a tab is explicitly closed via tab close action.
@@ -26,6 +28,10 @@ public sealed class DockTabPanel : Selector
     public static readonly DependencyProperty SelectedContentProperty =
         DependencyProperty.Register(nameof(SelectedContent), typeof(object), typeof(DockTabPanel),
             new PropertyMetadata(null));
+
+    public static readonly DependencyProperty TabStripPlacementProperty =
+        DependencyProperty.Register(nameof(TabStripPlacement), typeof(Dock), typeof(DockTabPanel),
+            new PropertyMetadata(Dock.Top, OnTabStripPlacementChanged));
 
     public static readonly DependencyProperty TabStripHeightProperty =
         DependencyProperty.Register(nameof(TabStripHeight), typeof(double), typeof(DockTabPanel),
@@ -47,6 +53,12 @@ public sealed class DockTabPanel : Selector
     {
         get => GetValue(SelectedContentProperty);
         set => SetValue(SelectedContentProperty, value);
+    }
+
+    public Dock TabStripPlacement
+    {
+        get => (Dock)(GetValue(TabStripPlacementProperty) ?? Dock.Top);
+        set => SetValue(TabStripPlacementProperty, value);
     }
 
     public double TabStripHeight
@@ -71,12 +83,36 @@ public sealed class DockTabPanel : Selector
 
     private UIElement? _selectedContentElement;
     private bool _isDockHighlighted;
+    private readonly ScrollBar _tabStripScrollBar;
+    private double _tabStripScrollOffset;
+    private double _tabStripExtent;
+    private double _tabStripViewport;
+    private bool _isTabStripScrollable;
+    private Rect _tabStripRect;
+    private Rect _tabHeaderViewportRect;
+    private Rect _tabScrollBarRect;
+    private Rect _contentRect;
 
     /// <summary>
     /// Indicates this panel is inside a floating window (not docked).
     /// Floating panels are excluded from dock-back hit-testing targets.
     /// </summary>
     internal bool IsFloating { get; set; }
+
+    internal bool IsVerticalTabStrip => TabStripPlacement is Dock.Left or Dock.Right;
+
+    internal Rect TabHeadersViewportRect => _tabHeaderViewportRect;
+
+    internal double TabStripScrollOffsetForTesting => _tabStripScrollOffset;
+
+    internal bool IsTabStripScrollableForTesting => _tabStripScrollBar.Visibility == Visibility.Visible;
+
+    internal Rect TabStripScrollBarRectForTesting => _tabScrollBarRect;
+
+    internal void SetTabStripScrollOffsetForTesting(double offset)
+    {
+        SetTabStripScrollOffsetInternal(offset, invalidateLayout: false);
+    }
 
     /// <summary>
     /// When true, draws an accent border to show this panel is a valid dock target.
@@ -136,25 +172,27 @@ public sealed class DockTabPanel : Selector
     /// </summary>
     internal int CalculateReorderInsertIndex(Point mouseInPanel)
     {
-        var mouseX = mouseInPanel.X;
+        var mousePrimary = IsVerticalTabStrip ? mouseInPanel.Y : mouseInPanel.X;
 
         for (int i = 0; i < Items.Count; i++)
         {
             if (Items[i] is not DockItem item) continue;
 
             var itemPos = item.TransformToAncestor(this);
-            var midX = itemPos.X + item.ActualWidth / 2;
+            var itemStart = IsVerticalTabStrip ? itemPos.Y : itemPos.X;
+            var itemLength = IsVerticalTabStrip ? item.ActualHeight : item.ActualWidth;
+            var itemMid = itemStart + itemLength / 2;
 
-            if (mouseX < midX)
+            if (mousePrimary < itemMid)
             {
-                // Insert before tab i 鈥?skip if no actual change
+                // Insert before tab i; skip if there is no actual position change.
                 if (i == _reorderDragItemIndex || i == _reorderDragItemIndex + 1)
                     return -1;
                 return i;
             }
         }
 
-        // After all tabs 鈥?skip if dragged tab is already last
+        // After all tabs; skip if dragged tab is already last.
         if (_reorderDragItemIndex == Items.Count - 1)
             return -1;
         return Items.Count;
@@ -166,6 +204,20 @@ public sealed class DockTabPanel : Selector
     {
         MinWidth = 100;
         MinHeight = 100;
+        ClipToBounds = true;
+
+        _tabStripScrollBar = new ScrollBar
+        {
+            Orientation = Orientation.Horizontal,
+            Visibility = Visibility.Collapsed,
+            IsThumbSlim = true,
+            SmallChange = 32,
+            LargeChange = 120,
+            Focusable = false
+        };
+        _tabStripScrollBar.Scroll += OnTabStripScroll;
+        AddVisualChild(_tabStripScrollBar);
+        AddHandler(PreviewMouseWheelEvent, new RoutedEventHandler(OnMouseWheelHandler));
 
         Items.CollectionChanged += OnDockItemsChanged;
 
@@ -179,7 +231,11 @@ public sealed class DockTabPanel : Selector
 
     protected override Panel CreateItemsPanel()
     {
-        return new StackPanel { Orientation = Orientation.Horizontal };
+        return new StackPanel
+        {
+            Orientation = IsVerticalTabStrip ? Orientation.Vertical : Orientation.Horizontal,
+            ClipToBounds = true
+        };
     }
 
     protected override bool IsItemItsOwnContainer(object item) => item is DockItem;
@@ -235,8 +291,24 @@ public sealed class DockTabPanel : Selector
                 dockItem.IsSelected = (i == SelectedIndex);
         }
 
+        EnsureItemsHostOrientation();
         InvalidateMeasure();
         InvalidateVisual();
+    }
+
+    internal Rect GetTabStripInteractionRect()
+    {
+        if (_tabHeaderViewportRect.Width > 0 && _tabHeaderViewportRect.Height > 0)
+            return _tabHeaderViewportRect;
+
+        var stripThickness = GetEffectiveTabStripThickness(new Size(ActualWidth, ActualHeight));
+        return TabStripPlacement switch
+        {
+            Dock.Bottom => new Rect(0, Math.Max(0, ActualHeight - stripThickness), ActualWidth, stripThickness),
+            Dock.Left => new Rect(0, 0, stripThickness, ActualHeight),
+            Dock.Right => new Rect(Math.Max(0, ActualWidth - stripThickness), 0, stripThickness, ActualHeight),
+            _ => new Rect(0, 0, ActualWidth, stripThickness),
+        };
     }
 
     internal void SelectTab(DockItem item)
@@ -278,7 +350,7 @@ public sealed class DockTabPanel : Selector
             var newIndex = Math.Min(index, Items.Count - 1);
             if (SelectedIndex == newIndex)
             {
-                // SelectedIndex didn't change 鈥?force content update manually
+                // SelectedIndex did not change; force content update manually.
                 UpdateContainerSelection();
             }
             else
@@ -400,9 +472,22 @@ public sealed class DockTabPanel : Selector
             SetValue(SelectedContentProperty, null);
         }
 
+        EnsureSelectedTabVisibleCore();
         InvalidateMeasure();
         InvalidateArrange();
         InvalidateVisual();
+    }
+
+    private static void OnTabStripPlacementChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is DockTabPanel panel)
+        {
+            panel._tabStripScrollOffset = 0;
+            panel.EnsureItemsHostOrientation();
+            panel.InvalidateMeasure();
+            panel.InvalidateArrange();
+            panel.InvalidateVisual();
+        }
     }
 
     private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -416,8 +501,269 @@ public sealed class DockTabPanel : Selector
         if (d is DockTabPanel panel)
         {
             panel.InvalidateMeasure();
+            panel.InvalidateArrange();
             panel.InvalidateVisual();
         }
+    }
+
+    private void OnTabStripScroll(object? sender, ScrollEventArgs e)
+    {
+        SetTabStripScrollOffsetInternal(_tabStripScrollBar.Value, invalidateLayout: true);
+    }
+
+    private void OnMouseWheelHandler(object sender, RoutedEventArgs e)
+    {
+        if (e is not MouseWheelEventArgs wheelArgs)
+            return;
+        if (_tabStripScrollBar.Visibility != Visibility.Visible)
+            return;
+
+        var pos = wheelArgs.GetPosition(this);
+        if (!GetTabStripInteractionRect().Contains(pos))
+            return;
+
+        var delta = wheelArgs.Delta > 0
+            ? -Math.Max(12, _tabStripScrollBar.SmallChange * 2)
+            : Math.Max(12, _tabStripScrollBar.SmallChange * 2);
+
+        SetTabStripScrollOffsetInternal(_tabStripScrollOffset + delta, invalidateLayout: true);
+        e.Handled = true;
+    }
+
+    private void EnsureItemsHostOrientation()
+    {
+        if (ItemsHost is StackPanel stackPanel)
+        {
+            var orientation = IsVerticalTabStrip ? Orientation.Vertical : Orientation.Horizontal;
+            if (stackPanel.Orientation != orientation)
+                stackPanel.Orientation = orientation;
+            if (!stackPanel.ClipToBounds)
+                stackPanel.ClipToBounds = true;
+        }
+
+        _tabStripScrollBar.Orientation = IsVerticalTabStrip ? Orientation.Vertical : Orientation.Horizontal;
+    }
+
+    private double GetEffectiveTabStripThickness(Size size)
+    {
+        var thickness = Math.Max(0, TabStripHeight);
+        if (IsVerticalTabStrip)
+        {
+            if (double.IsFinite(size.Width))
+                thickness = Math.Min(thickness, Math.Max(0, size.Width));
+        }
+        else
+        {
+            if (double.IsFinite(size.Height))
+                thickness = Math.Min(thickness, Math.Max(0, size.Height));
+        }
+
+        return thickness;
+    }
+
+    private void MeasureTabHeaders(double stripThickness)
+    {
+        if (ItemsHost != null)
+        {
+            if (IsVerticalTabStrip)
+                ItemsHost.Measure(new Size(stripThickness, double.PositiveInfinity));
+            else
+                ItemsHost.Measure(new Size(double.PositiveInfinity, stripThickness));
+            return;
+        }
+
+        var itemExtent = Math.Max(18.0, stripThickness);
+        foreach (var item in Items)
+        {
+            if (item is not DockItem dockItem) continue;
+
+            var itemMeasureSize = IsVerticalTabStrip
+                ? new Size(stripThickness, itemExtent)
+                : new Size(double.PositiveInfinity, stripThickness);
+            dockItem.Measure(itemMeasureSize);
+        }
+    }
+
+    private double ComputeTabStripExtent()
+    {
+        if (ItemsHost != null)
+            return IsVerticalTabStrip ? ItemsHost.DesiredSize.Height : ItemsHost.DesiredSize.Width;
+
+        double total = 0;
+        for (int i = 0; i < Items.Count; i++)
+        {
+            if (Items[i] is not DockItem dockItem) continue;
+            total += GetTabPrimaryLength(dockItem);
+        }
+
+        return total;
+    }
+
+    private double GetTabPrimaryLength(DockItem item)
+    {
+        var desired = IsVerticalTabStrip ? item.DesiredSize.Height : item.DesiredSize.Width;
+        if (desired <= 0)
+            desired = IsVerticalTabStrip ? item.ActualHeight : item.ActualWidth;
+        return Math.Max(0, desired);
+    }
+
+    private void RefreshTabStripScrollMetrics(Size size)
+    {
+        _tabStripExtent = ComputeTabStripExtent();
+
+        var viewport = IsVerticalTabStrip ? size.Height : size.Width;
+        if (!double.IsFinite(viewport) || viewport < 0)
+            viewport = 0;
+        _tabStripViewport = viewport;
+
+        _isTabStripScrollable = _tabStripExtent > _tabStripViewport + 0.5;
+        if (!_isTabStripScrollable)
+            _tabStripScrollOffset = 0;
+
+        ClampTabStripScrollOffset();
+        UpdateTabStripScrollBarMetrics();
+    }
+
+    private void ClampTabStripScrollOffset()
+    {
+        var maxOffset = Math.Max(0, _tabStripExtent - _tabStripViewport);
+        if (!double.IsFinite(_tabStripScrollOffset))
+            _tabStripScrollOffset = 0;
+        _tabStripScrollOffset = Math.Clamp(_tabStripScrollOffset, 0, maxOffset);
+        SyncTabStripScrollBarValue();
+    }
+
+    private void SetTabStripScrollOffsetInternal(double offset, bool invalidateLayout)
+    {
+        var maxOffset = Math.Max(0, _tabStripExtent - _tabStripViewport);
+        if (!double.IsFinite(offset))
+            offset = 0;
+
+        var clamped = Math.Clamp(offset, 0, maxOffset);
+        if (Math.Abs(clamped - _tabStripScrollOffset) <= 0.1)
+        {
+            SyncTabStripScrollBarValue();
+            return;
+        }
+
+        _tabStripScrollOffset = clamped;
+        SyncTabStripScrollBarValue();
+
+        if (invalidateLayout)
+        {
+            InvalidateArrange();
+            InvalidateVisual();
+        }
+    }
+
+    private void SyncTabStripScrollBarValue()
+    {
+        if (Math.Abs(_tabStripScrollBar.Value - _tabStripScrollOffset) > 0.1)
+            _tabStripScrollBar.Value = _tabStripScrollOffset;
+    }
+
+    private void UpdateTabStripScrollBarMetrics()
+    {
+        var maxOffset = Math.Max(0, _tabStripExtent - _tabStripViewport);
+        var show = _isTabStripScrollable && _tabStripViewport > 0 && maxOffset > 0.5;
+
+        _tabStripScrollBar.Orientation = IsVerticalTabStrip ? Orientation.Vertical : Orientation.Horizontal;
+        _tabStripScrollBar.Minimum = 0;
+        _tabStripScrollBar.Maximum = maxOffset;
+        _tabStripScrollBar.ViewportSize = Math.Max(0, _tabStripViewport);
+        _tabStripScrollBar.LargeChange = Math.Max(1, Math.Min(_tabStripViewport, maxOffset));
+        _tabStripScrollBar.SmallChange = Math.Max(8, _tabStripScrollBar.LargeChange / 8);
+        _tabStripScrollBar.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+
+        if (!show)
+            _tabStripScrollOffset = 0;
+
+        SyncTabStripScrollBarValue();
+    }
+
+    private void EnsureSelectedTabVisibleCore()
+    {
+        if (!_isTabStripScrollable || _tabStripViewport <= 0)
+            return;
+        if (SelectedIndex < 0 || SelectedIndex >= Items.Count)
+            return;
+        if (Items[SelectedIndex] is not DockItem selectedItem)
+            return;
+
+        double selectedStart = 0;
+        for (int i = 0; i < SelectedIndex; i++)
+        {
+            if (Items[i] is DockItem item)
+                selectedStart += GetTabPrimaryLength(item);
+        }
+
+        var selectedLength = GetTabPrimaryLength(selectedItem);
+        var selectedEnd = selectedStart + selectedLength;
+        var targetOffset = _tabStripScrollOffset;
+
+        if (selectedStart < targetOffset)
+            targetOffset = selectedStart;
+        else if (selectedEnd > targetOffset + _tabStripViewport)
+            targetOffset = selectedEnd - _tabStripViewport;
+
+        SetTabStripScrollOffsetInternal(targetOffset, invalidateLayout: false);
+    }
+
+    private (Rect stripRect, Rect contentRect, Rect headerViewportRect, Rect scrollBarRect) ComputeLayoutRects(Size finalSize)
+    {
+        var stripThickness = GetEffectiveTabStripThickness(finalSize);
+
+        Rect stripRect;
+        Rect contentRect;
+
+        switch (TabStripPlacement)
+        {
+            case Dock.Bottom:
+                stripRect = new Rect(0, Math.Max(0, finalSize.Height - stripThickness), finalSize.Width, stripThickness);
+                contentRect = new Rect(1, 1, Math.Max(0, finalSize.Width - 2), Math.Max(0, finalSize.Height - stripThickness - 1));
+                break;
+            case Dock.Left:
+                stripRect = new Rect(0, 0, stripThickness, finalSize.Height);
+                contentRect = new Rect(stripThickness, 1, Math.Max(0, finalSize.Width - stripThickness - 1), Math.Max(0, finalSize.Height - 2));
+                break;
+            case Dock.Right:
+                stripRect = new Rect(Math.Max(0, finalSize.Width - stripThickness), 0, stripThickness, finalSize.Height);
+                contentRect = new Rect(1, 1, Math.Max(0, finalSize.Width - stripThickness - 1), Math.Max(0, finalSize.Height - 2));
+                break;
+            default:
+                stripRect = new Rect(0, 0, finalSize.Width, stripThickness);
+                contentRect = new Rect(1, stripThickness, Math.Max(0, finalSize.Width - 2), Math.Max(0, finalSize.Height - stripThickness - 1));
+                break;
+        }
+
+        var headerViewportRect = stripRect;
+        Rect scrollBarRect = Rect.Empty;
+
+        if (_tabStripScrollBar.Visibility == Visibility.Visible)
+        {
+            if (IsVerticalTabStrip)
+            {
+                var width = Math.Min(TabStripScrollBarThickness, stripRect.Width);
+                if (width > 0)
+                {
+                    scrollBarRect = TabStripPlacement == Dock.Left
+                        ? new Rect(stripRect.Right - width, stripRect.Y, width, stripRect.Height)
+                        : new Rect(stripRect.X, stripRect.Y, width, stripRect.Height);
+                }
+            }
+            else
+            {
+                var height = Math.Min(TabStripScrollBarThickness, stripRect.Height);
+                if (height > 0)
+                {
+                    scrollBarRect = TabStripPlacement == Dock.Top
+                        ? new Rect(stripRect.X, stripRect.Bottom - height, stripRect.Width, height)
+                        : new Rect(stripRect.X, stripRect.Y, stripRect.Width, height);
+                }
+            }
+        }
+
+        return (stripRect, contentRect, headerViewportRect, scrollBarRect);
     }
 
     protected override Size MeasureOverride(Size availableSize)
@@ -425,35 +771,36 @@ public sealed class DockTabPanel : Selector
         if (ItemsHost == null)
             RefreshItems();
 
-        var tabStripHeight = TabStripHeight;
+        EnsureItemsHostOrientation();
 
-        // Measure tab headers
-        if (ItemsHost != null)
+        var stripThickness = GetEffectiveTabStripThickness(availableSize);
+        MeasureTabHeaders(stripThickness);
+
+        var stripViewport = IsVerticalTabStrip
+            ? new Size(stripThickness, availableSize.Height)
+            : new Size(availableSize.Width, stripThickness);
+        RefreshTabStripScrollMetrics(stripViewport);
+
+        if (_tabStripScrollBar.Visibility == Visibility.Visible)
         {
-            ItemsHost.Measure(new Size(availableSize.Width, tabStripHeight));
+            var scrollMeasureSize = IsVerticalTabStrip
+                ? new Size(Math.Min(stripThickness, TabStripScrollBarThickness), availableSize.Height)
+                : new Size(availableSize.Width, Math.Min(stripThickness, TabStripScrollBarThickness));
+            _tabStripScrollBar.Measure(scrollMeasureSize);
         }
         else
         {
-            // Fallback when ItemsHost has not been created yet.
-            // Use unconstrained width so each tab can size to its header text.
-            foreach (var item in Items)
-            {
-                if (item is DockItem dockItem)
-                    dockItem.Measure(new Size(double.PositiveInfinity, tabStripHeight));
-            }
+            _tabStripScrollBar.Measure(Size.Empty);
         }
 
-        // Measure selected content (inset 1px for content border on left/right/bottom)
-        var contentHeight = Math.Max(0, availableSize.Height - tabStripHeight - 1);
-        var contentWidth = Math.Max(0, availableSize.Width - 2);
+        var contentWidth = Math.Max(0, availableSize.Width - (IsVerticalTabStrip ? stripThickness + 1 : 2));
+        var contentHeight = Math.Max(0, availableSize.Height - (IsVerticalTabStrip ? 2 : stripThickness + 1));
         if (_selectedContentElement is UIElement contentElement)
         {
-            // Reparent/switch can transiently report an undersized available size for one pass.
-            // Prefer current arranged size as fallback to avoid measuring content at near-zero width.
             if (contentWidth <= 0 && ActualWidth > 2)
-                contentWidth = Math.Max(0, ActualWidth - 2);
-            if (contentHeight <= 0 && ActualHeight > tabStripHeight + 1)
-                contentHeight = Math.Max(0, ActualHeight - tabStripHeight - 1);
+                contentWidth = Math.Max(0, ActualWidth - (IsVerticalTabStrip ? stripThickness + 1 : 2));
+            if (contentHeight <= 0 && ActualHeight > 2)
+                contentHeight = Math.Max(0, ActualHeight - (IsVerticalTabStrip ? 2 : stripThickness + 1));
 
             contentElement.Measure(new Size(contentWidth, contentHeight));
         }
@@ -463,18 +810,44 @@ public sealed class DockTabPanel : Selector
 
     protected override Size ArrangeOverride(Size finalSize)
     {
-        var tabStripHeight = TabStripHeight;
+        EnsureItemsHostOrientation();
 
-        // Arrange tab strip at top
+        var stripThickness = GetEffectiveTabStripThickness(finalSize);
+        var stripViewport = IsVerticalTabStrip
+            ? new Size(stripThickness, finalSize.Height)
+            : new Size(finalSize.Width, stripThickness);
+        RefreshTabStripScrollMetrics(stripViewport);
+
+        var (stripRect, contentRect, headerViewportRect, scrollBarRect) = ComputeLayoutRects(finalSize);
+        _tabStripRect = stripRect;
+        _contentRect = contentRect;
+        _tabHeaderViewportRect = headerViewportRect;
+        _tabScrollBarRect = scrollBarRect;
+
         if (ItemsHost != null)
-            ItemsHost.Arrange(new Rect(0, 0, finalSize.Width, tabStripHeight));
+        {
+            Rect hostRect;
+            if (IsVerticalTabStrip)
+            {
+                var hostHeight = Math.Max(_tabStripExtent, headerViewportRect.Height);
+                hostRect = new Rect(headerViewportRect.X, headerViewportRect.Y - _tabStripScrollOffset, headerViewportRect.Width, hostHeight);
+            }
+            else
+            {
+                var hostWidth = Math.Max(_tabStripExtent, headerViewportRect.Width);
+                hostRect = new Rect(headerViewportRect.X - _tabStripScrollOffset, headerViewportRect.Y, hostWidth, headerViewportRect.Height);
+            }
 
-        // Arrange content below (inset 1px for border on left/right/bottom, top seamless to active tab)
-        var contentRect = new Rect(1, tabStripHeight, Math.Max(0, finalSize.Width - 2), Math.Max(0, finalSize.Height - tabStripHeight - 1));
+            ItemsHost.Arrange(hostRect);
+        }
+
+        if (_tabStripScrollBar.Visibility == Visibility.Visible && scrollBarRect.Width > 0 && scrollBarRect.Height > 0)
+            _tabStripScrollBar.Arrange(scrollBarRect);
+        else
+            _tabStripScrollBar.Arrange(new Rect(0, 0, 0, 0));
+
         if (_selectedContentElement is UIElement contentElement)
         {
-            // Keep measure/arrange paired for switched content so it doesn't render stale geometry
-            // until a later unrelated invalidation arrives.
             contentElement.Measure(new Size(contentRect.Width, contentRect.Height));
             contentElement.Arrange(contentRect);
         }
@@ -489,6 +862,7 @@ public sealed class DockTabPanel : Selector
             int count = 0;
             if (ItemsHost != null) count++;
             if (_selectedContentElement != null) count++;
+            count++;
             return count;
         }
     }
@@ -506,7 +880,26 @@ public sealed class DockTabPanel : Selector
             if (index == current) return _selectedContentElement;
             current++;
         }
+        if (index == current) return _tabStripScrollBar;
         throw new ArgumentOutOfRangeException(nameof(index));
+    }
+
+    private bool TryGetSelectedTabBounds(out double selectedTabX, out double selectedTabWidth)
+    {
+        selectedTabX = 0;
+        selectedTabWidth = 0;
+
+        if (SelectedIndex < 0 || SelectedIndex >= Items.Count)
+            return false;
+        if (Items[SelectedIndex] is not DockItem selectedItem)
+            return false;
+        if (selectedItem.ActualWidth <= 0)
+            return false;
+
+        var pos = selectedItem.TransformToAncestor(this);
+        selectedTabX = pos.X;
+        selectedTabWidth = selectedItem.ActualWidth;
+        return true;
     }
 
     protected override void OnRender(object drawingContextObj)
@@ -517,251 +910,343 @@ public sealed class DockTabPanel : Selector
             return;
         }
 
-        var tabStripHeight = TabStripHeight;
-        var panelBackground = Background ?? ResolveBrush("OneBackgroundPrimary", "DockContentBackground", s_fallbackPanelBackgroundBrush);
-        var tabStripBrush = TabStripBackground ?? ResolveBrush("OneTabBackground", "DockTabStripBackground", s_fallbackTabStripBrush);
+        var panelBackground = ResolvePanelBackgroundBrush();
+        var tabStripBrush = ResolveTabStripBackgroundBrush();
+        var borderBrush = ResolveTabStripBorderBrush();
 
         // Paint a full backdrop first so anti-aliased rounded edges do not blend with
         // an uninitialized/parent surface (which can appear as white halos).
         dc.DrawRectangle(panelBackground, null, new Rect(0, 0, ActualWidth, ActualHeight));
 
-        // Calculate active tab position
-        double activeTabX = 0, activeTabWidth = 0;
-        bool hasActiveTab = false;
-        if (SelectedIndex >= 0 && SelectedIndex < Items.Count)
-        {
-            for (int i = 0; i < SelectedIndex; i++)
-            {
-                if (Items[i] is DockItem item)
-                    activeTabX += item.ActualWidth;
-            }
-            if (Items[SelectedIndex] is DockItem selItem && selItem.ActualWidth > 0)
-            {
-                activeTabWidth = selItem.ActualWidth;
-                hasActiveTab = true;
-            }
-        }
+        var stripRect = _tabStripRect.Width > 0 && _tabStripRect.Height > 0
+            ? _tabStripRect
+            : GetTabStripInteractionRect();
 
-        // 1. Fill content area with full rounded corners (including top-left/top-right)
-        var contentHeight = Math.Max(0, ActualHeight - tabStripHeight);
-        if (contentHeight > 0)
+        if (TabStripPlacement == Dock.Top)
         {
-            dc.DrawRoundedRectangle(
-                panelBackground,
-                null,
-                new Rect(0, tabStripHeight, ActualWidth, contentHeight),
-                new CornerRadius(4, 4, 4, 4));
-        }
+            var topY = Math.Clamp(stripRect.Bottom, 0, ActualHeight);
+            var contentHeight = Math.Max(0, ActualHeight - topY);
+            if (contentHeight > 0)
+            {
+                dc.DrawRoundedRectangle(
+                    panelBackground,
+                    null,
+                    new Rect(0, topY, ActualWidth, contentHeight),
+                    new CornerRadius(4, 4, 4, 4));
+            }
 
-        // 2. Draw tab strip background, SKIPPING the active tab
-        if (hasActiveTab)
-        {
-            if (activeTabX > 0)
-                dc.DrawRectangle(tabStripBrush, null, new Rect(0, 0, activeTabX, tabStripHeight));
-            var rightStart = activeTabX + activeTabWidth;
-            if (rightStart < ActualWidth)
-                dc.DrawRectangle(tabStripBrush, null, new Rect(rightStart, 0, ActualWidth - rightStart, tabStripHeight));
+            var hasActiveTab = TryGetSelectedTabBounds(out var activeTabX, out var activeTabWidth);
+            if (hasActiveTab)
+            {
+                var activeLeft = Math.Clamp(activeTabX, stripRect.X, stripRect.Right);
+                var activeRight = Math.Clamp(activeTabX + activeTabWidth, stripRect.X, stripRect.Right);
+                var clampedWidth = Math.Max(0, activeRight - activeLeft);
+                hasActiveTab = clampedWidth > 0;
+                activeTabX = activeLeft;
+                activeTabWidth = clampedWidth;
+            }
+
+            if (stripRect.Width > 0 && stripRect.Height > 0)
+            {
+                // Draw tab-strip background but leave the selected tab gap, same as the legacy look.
+                if (hasActiveTab)
+                {
+                    if (activeTabX > stripRect.X)
+                        dc.DrawRectangle(tabStripBrush, null, new Rect(stripRect.X, stripRect.Y, activeTabX - stripRect.X, stripRect.Height));
+                    var rightStart = activeTabX + activeTabWidth;
+                    if (rightStart < stripRect.Right)
+                        dc.DrawRectangle(tabStripBrush, null, new Rect(rightStart, stripRect.Y, stripRect.Right - rightStart, stripRect.Height));
+                }
+                else
+                {
+                    dc.DrawRectangle(tabStripBrush, null, stripRect);
+                }
+            }
         }
         else
         {
-            dc.DrawRectangle(tabStripBrush, null, new Rect(0, 0, ActualWidth, tabStripHeight));
+            if (stripRect.Width > 0 && stripRect.Height > 0)
+                dc.DrawRectangle(tabStripBrush, null, stripRect);
+
+            if (_contentRect.Width > 0 && _contentRect.Height > 0)
+                dc.DrawRectangle(panelBackground, null, _contentRect);
+
+            var separatorPen = new Pen(borderBrush, 1);
+            switch (TabStripPlacement)
+            {
+                case Dock.Bottom:
+                    dc.DrawLine(separatorPen, new Point(0, stripRect.Y), new Point(ActualWidth, stripRect.Y));
+                    break;
+                case Dock.Left:
+                    dc.DrawLine(separatorPen, new Point(stripRect.Right, 0), new Point(stripRect.Right, ActualHeight));
+                    break;
+                case Dock.Right:
+                    dc.DrawLine(separatorPen, new Point(stripRect.X, 0), new Point(stripRect.X, ActualHeight));
+                    break;
+                default:
+                    dc.DrawLine(separatorPen, new Point(0, stripRect.Bottom), new Point(ActualWidth, stripRect.Bottom));
+                    break;
+            }
         }
 
-        // Dock highlight border
         if (IsDockHighlighted)
         {
-            var highlightPen = new Pen(ResolveBrush("OneTabActiveBorder", "AccentBrush", s_fallbackAccentBrush), 2);
-            dc.DrawRoundedRectangle(null, highlightPen, new Rect(1, 1, ActualWidth - 2, ActualHeight - 2), 4, 4);
+            var highlightPen = new Pen(ResolveAccentBrush(), 2);
+            dc.DrawRoundedRectangle(null, highlightPen, new Rect(1, 1, Math.Max(0, ActualWidth - 2), Math.Max(0, ActualHeight - 2)), 4, 4);
         }
 
         base.OnRender(drawingContextObj);
     }
 
-    /// <summary>
-    /// Draws the complete border AFTER children (so it's on top of tab backgrounds).
-    /// </summary>
     protected override void OnPostRender(object drawingContextObj)
     {
         if (drawingContextObj is not DrawingContext dc) return;
+        if (TabStripPlacement == Dock.Top)
+        {
+            var stripRect = _tabStripRect.Width > 0 && _tabStripRect.Height > 0
+                ? _tabStripRect
+                : GetTabStripInteractionRect();
+            var topY = Math.Clamp(stripRect.Bottom, 0, ActualHeight);
+            if (Math.Max(0, ActualHeight - topY) <= 0)
+                return;
 
-        var tabStripHeight = TabStripHeight;
-        var contentHeight = Math.Max(0, ActualHeight - tabStripHeight);
-        if (contentHeight <= 0) return;
+            var accentBrush = ResolveAccentBrush();
+            var topBorderPen = new Pen(accentBrush, 1)
+            {
+                LineJoin = PenLineJoin.Round,
+                StartLineCap = PenLineCap.Round,
+                EndLineCap = PenLineCap.Round,
+            };
+            var halfStroke = topBorderPen.Thickness * 0.5;
+            var leftEdge = halfStroke;
+            var topEdge = halfStroke;
+            var rightEdge = Math.Max(leftEdge, ActualWidth - halfStroke);
+            var bottomEdge = Math.Max(topEdge, ActualHeight - halfStroke);
+            var contentRightEdge = rightEdge;
+            var contentBottomEdge = bottomEdge;
+            if (_contentRect.Width > 0 && _contentRect.Height > 0)
+            {
+                contentRightEdge = Math.Clamp(_contentRect.Right - halfStroke, leftEdge, rightEdge);
+                contentBottomEdge = Math.Clamp(_contentRect.Bottom - halfStroke, topEdge, bottomEdge);
+            }
 
-        var accentBrush = ResolveBrush("OneTabActiveBorder", "AccentBrush", s_fallbackAccentBrush);
-        var borderPen = new Pen(accentBrush, 1);
-        var halfStroke = borderPen.Thickness * 0.5;
-        var left = halfStroke;
-        var top = halfStroke;
-        var right = Math.Max(left, ActualWidth - halfStroke);
-        var bottom = Math.Max(top, ActualHeight - halfStroke);
+            if (contentRightEdge <= leftEdge || contentBottomEdge <= topEdge)
+                return;
 
+            var hasActiveTab = TryGetSelectedTabBounds(out var selectedTabX, out var selectedTabWidth);
+            if (hasActiveTab)
+            {
+                var originalTabX = selectedTabX;
+                var clampedLeft = Math.Clamp(originalTabX, leftEdge, contentRightEdge);
+                var clampedRight = Math.Clamp(originalTabX + selectedTabWidth, leftEdge, contentRightEdge);
+                selectedTabX = clampedLeft;
+                selectedTabWidth = Math.Max(0, clampedRight - clampedLeft);
+                hasActiveTab = selectedTabWidth > 0;
+            }
+
+            topY = Math.Clamp(topY, topEdge, contentBottomEdge);
+            double w = contentRightEdge;
+            double h = contentBottomEdge;
+            const double contentR = 4;
+            const double tabTopR = 4;
+            const double tabBottomR = 4;
+            const double k = 0.5522847498; // cubic bezier approximation for quarter circle
+            var firstTabAtLeftEdge = hasActiveTab && selectedTabX <= leftEdge + contentR + 0.5;
+            var startY = firstTabAtLeftEdge ? topY : topY + contentR;
+
+            var borderFigure = new PathFigure
+            {
+                StartPoint = new Point(leftEdge, startY),
+                IsClosed = true,
+                IsFilled = false,
+            };
+
+            if (!firstTabAtLeftEdge)
+            {
+                // Top-left content corner: left edge -> top edge
+                borderFigure.Segments.Add(new BezierSegment(
+                    new Point(leftEdge, topY + contentR * (1 - k)),
+                    new Point(leftEdge + contentR * (1 - k), topY),
+                    new Point(leftEdge + contentR, topY)));
+            }
+
+            if (hasActiveTab)
+            {
+                double tx = selectedTabX;
+                double tw = selectedTabWidth;
+
+                // First tab touching left edge should use a square bottom-left corner.
+                var isLeftEdgeTab = tx <= leftEdge + contentR + 0.5;
+                if (isLeftEdgeTab)
+                {
+                    var tabRight = tx + tw;
+                    tx = leftEdge;
+                    tw = Math.Max(0, Math.Min(tabRight, w) - tx);
+                }
+                var canUseLeftOutward = !isLeftEdgeTab && tx - tabBottomR >= leftEdge + contentR;
+                var leftJoinX = canUseLeftOutward
+                    ? tx - tabBottomR
+                    : (isLeftEdgeTab ? tx : Math.Clamp(tx + tabBottomR, leftEdge + contentR, w - contentR));
+                if (!isLeftEdgeTab)
+                    borderFigure.Segments.Add(new LineSegment(new Point(leftJoinX, topY)));
+
+                // Selected tab bottom-left corner: bottom edge -> left edge
+                if (isLeftEdgeTab)
+                {
+                    borderFigure.Segments.Add(new LineSegment(new Point(tx, topY - tabBottomR)));
+                }
+                else if (canUseLeftOutward)
+                {
+                    borderFigure.Segments.Add(new BezierSegment(
+                        new Point(tx - tabBottomR * (1 - k), topY),
+                        new Point(tx, topY - tabBottomR * (1 - k)),
+                        new Point(tx, topY - tabBottomR)));
+                }
+                else
+                {
+                    borderFigure.Segments.Add(new BezierSegment(
+                        new Point(tx + tabBottomR * (1 - k), topY),
+                        new Point(tx, topY - tabBottomR * (1 - k)),
+                        new Point(tx, topY - tabBottomR)));
+                }
+
+                // Selected tab left edge
+                borderFigure.Segments.Add(new LineSegment(new Point(tx, topEdge + tabTopR)));
+
+                // Selected tab top-left corner: left edge -> top edge
+                borderFigure.Segments.Add(new BezierSegment(
+                    new Point(tx, topEdge + tabTopR * (1 - k)),
+                    new Point(tx + tabTopR * (1 - k), topEdge),
+                    new Point(tx + tabTopR, topEdge)));
+
+                // Selected tab top edge
+                borderFigure.Segments.Add(new LineSegment(new Point(tx + tw - tabTopR, topEdge)));
+
+                // Selected tab top-right corner: top edge -> right edge
+                borderFigure.Segments.Add(new BezierSegment(
+                    new Point(tx + tw - tabTopR * (1 - k), topEdge),
+                    new Point(tx + tw, topEdge + tabTopR * (1 - k)),
+                    new Point(tx + tw, topEdge + tabTopR)));
+
+                // Selected tab right edge
+                borderFigure.Segments.Add(new LineSegment(new Point(tx + tw, topY - tabBottomR)));
+
+                // Selected tab bottom-right corner: right edge -> bottom edge
+                var canUseRightOutward = tx + tw + tabBottomR <= w - contentR;
+                if (canUseRightOutward)
+                {
+                    borderFigure.Segments.Add(new BezierSegment(
+                        new Point(tx + tw, topY - tabBottomR * (1 - k)),
+                        new Point(tx + tw + tabBottomR * (1 - k), topY),
+                        new Point(tx + tw + tabBottomR, topY)));
+                }
+                else
+                {
+                    borderFigure.Segments.Add(new BezierSegment(
+                        new Point(tx + tw, topY - tabBottomR * (1 - k)),
+                        new Point(tx + tw - tabBottomR * (1 - k), topY),
+                        new Point(tx + tw - tabBottomR, topY)));
+                }
+            }
+
+            // Continue top edge to top-right content corner
+            borderFigure.Segments.Add(new LineSegment(new Point(w - contentR, topY)));
+
+            // Top-right content corner: top edge -> right edge
+            borderFigure.Segments.Add(new BezierSegment(
+                new Point(w - contentR * (1 - k), topY),
+                new Point(w, topY + contentR * (1 - k)),
+                new Point(w, topY + contentR)));
+
+            // Right edge
+            borderFigure.Segments.Add(new LineSegment(new Point(w, h - contentR)));
+
+            // Bottom-right content corner: right edge -> bottom edge
+            borderFigure.Segments.Add(new BezierSegment(
+                new Point(w, h - contentR * (1 - k)),
+                new Point(w - contentR * (1 - k), h),
+                new Point(w - contentR, h)));
+
+            // Bottom edge
+            borderFigure.Segments.Add(new LineSegment(new Point(leftEdge + contentR, h)));
+
+            // Bottom-left content corner: bottom edge -> left edge
+            borderFigure.Segments.Add(new BezierSegment(
+                new Point(leftEdge + contentR * (1 - k), h),
+                new Point(leftEdge, h - contentR * (1 - k)),
+                new Point(leftEdge, h - contentR)));
+
+            var borderGeometry = new PathGeometry();
+            borderGeometry.Figures.Add(borderFigure);
+            dc.PushClip(new RectangleGeometry(new Rect(0, 0, Math.Max(0, ActualWidth), Math.Max(0, ActualHeight))));
+            dc.DrawGeometry(null, topBorderPen, borderGeometry);
+            dc.Pop();
+            return;
+        }
+
+        if (_contentRect.Width <= 0 || _contentRect.Height <= 0) return;
+        var borderBrush = ResolveTabStripBorderBrush();
+        var borderPen = new Pen(borderBrush, 1);
+        var half = borderPen.Thickness * 0.5;
+        var left = _contentRect.X + half;
+        var top = _contentRect.Y + half;
+        var right = _contentRect.Right - half;
+        var bottom = _contentRect.Bottom - half;
         if (right <= left || bottom <= top)
             return;
 
-        // Recalculate active tab position
-        double activeTabX = 0, activeTabWidth = 0;
-        bool hasActiveTab = false;
-        if (SelectedIndex >= 0 && SelectedIndex < Items.Count)
+        switch (TabStripPlacement)
         {
-            for (int i = 0; i < SelectedIndex; i++)
-            {
-                if (Items[i] is DockItem item)
-                    activeTabX += item.ActualWidth;
-            }
-            if (Items[SelectedIndex] is DockItem selItem && selItem.ActualWidth > 0)
-            {
-                activeTabWidth = selItem.ActualWidth;
-                hasActiveTab = true;
-            }
+            case Dock.Bottom:
+                dc.DrawLine(borderPen, new Point(left, top), new Point(right, top));
+                dc.DrawLine(borderPen, new Point(left, top), new Point(left, bottom));
+                dc.DrawLine(borderPen, new Point(right, top), new Point(right, bottom));
+                break;
+            case Dock.Left:
+                dc.DrawLine(borderPen, new Point(left, top), new Point(right, top));
+                dc.DrawLine(borderPen, new Point(right, top), new Point(right, bottom));
+                dc.DrawLine(borderPen, new Point(left, bottom), new Point(right, bottom));
+                break;
+            case Dock.Right:
+                dc.DrawLine(borderPen, new Point(left, top), new Point(right, top));
+                dc.DrawLine(borderPen, new Point(left, top), new Point(left, bottom));
+                dc.DrawLine(borderPen, new Point(left, bottom), new Point(right, bottom));
+                break;
+            default:
+                dc.DrawLine(borderPen, new Point(left, top), new Point(left, bottom));
+                dc.DrawLine(borderPen, new Point(left, bottom), new Point(right, bottom));
+                dc.DrawLine(borderPen, new Point(right, top), new Point(right, bottom));
+                break;
         }
+    }
 
-        double selectedTabX = activeTabX;
-        double selectedTabWidth = activeTabWidth;
-        if (hasActiveTab)
-        {
-            selectedTabX = Math.Clamp(activeTabX, left, right);
-            var selectedTabRight = Math.Clamp(activeTabX + activeTabWidth, left, right);
-            selectedTabWidth = Math.Max(0, selectedTabRight - selectedTabX);
-            hasActiveTab = selectedTabWidth > 0;
-        }
+    private Brush ResolvePanelBackgroundBrush()
+    {
+        if (HasLocalValue(Control.BackgroundProperty) && Background != null)
+            return Background;
 
-        double topY = Math.Clamp(tabStripHeight, top, bottom);
-        double w = right;
-        double h = bottom;
-        const double contentR = 4;
-        const double tabTopR = 4;
-        const double tabBottomR = 4;
-        const double k = 0.5522847498; // cubic bezier approximation for quarter circle
-        var firstTabAtLeftEdge = hasActiveTab && selectedTabX <= left + contentR + 0.5;
-        var startY = firstTabAtLeftEdge ? topY : topY + contentR;
+        return ResolveBrush("OneBackgroundPrimary", "DockContentBackground", s_fallbackPanelBackgroundBrush);
+    }
 
-        var borderFigure = new PathFigure
-        {
-            StartPoint = new Point(left, startY),
-            IsClosed = false,
-            IsFilled = false,
-        };
+    private Brush ResolveTabStripBackgroundBrush()
+    {
+        if (HasLocalValue(TabStripBackgroundProperty) && TabStripBackground != null)
+            return TabStripBackground;
 
-        if (firstTabAtLeftEdge)
-        {
-            // First selected tab touching the left edge should connect with a square corner.
-            borderFigure.Segments.Add(new LineSegment(new Point(left, topY)));
-        }
-        else
-        {
-            // Top-left content corner: left edge -> top edge
-            borderFigure.Segments.Add(new BezierSegment(
-                new Point(left, topY + contentR * (1 - k)),
-                new Point(left + contentR * (1 - k), topY),
-                new Point(left + contentR, topY)));
-        }
+        return ResolveBrush("OneTabBackground", "DockTabStripBackground", s_fallbackTabStripBrush);
+    }
 
-        if (hasActiveTab)
-        {
-            double tx = selectedTabX;
-            double tw = selectedTabWidth;
+    private Brush ResolveTabStripBorderBrush()
+    {
+        if (HasLocalValue(TabStripBorderBrushProperty) && TabStripBorderBrush != null)
+            return TabStripBorderBrush;
 
-            // First tab touching left edge should use a square bottom-left corner.
-            var isLeftEdgeTab = tx <= left + contentR + 0.5;
-            var canUseLeftOutward = !isLeftEdgeTab && tx - tabBottomR >= left + contentR;
-            var leftJoinX = canUseLeftOutward
-                ? tx - tabBottomR
-                : (isLeftEdgeTab ? tx : Math.Clamp(tx + tabBottomR, left + contentR, w - contentR));
-            borderFigure.Segments.Add(new LineSegment(new Point(leftJoinX, topY)));
+        return ResolveBrush("OneBorderDefault", "DockTabStripBorder", s_fallbackBorderBrush);
+    }
 
-            // Selected tab bottom-left corner: bottom edge -> left edge
-            if (isLeftEdgeTab)
-            {
-                borderFigure.Segments.Add(new LineSegment(new Point(tx, topY - tabBottomR)));
-            }
-            else if (canUseLeftOutward)
-            {
-                borderFigure.Segments.Add(new BezierSegment(
-                    new Point(tx - tabBottomR * (1 - k), topY),
-                    new Point(tx, topY - tabBottomR * (1 - k)),
-                    new Point(tx, topY - tabBottomR)));
-            }
-            else
-            {
-                borderFigure.Segments.Add(new BezierSegment(
-                    new Point(tx + tabBottomR * (1 - k), topY),
-                    new Point(tx, topY - tabBottomR * (1 - k)),
-                    new Point(tx, topY - tabBottomR)));
-            }
-
-            // Selected tab left edge
-            borderFigure.Segments.Add(new LineSegment(new Point(tx, top + tabTopR)));
-
-            // Selected tab top-left corner: left edge -> top edge
-            borderFigure.Segments.Add(new BezierSegment(
-                new Point(tx, top + tabTopR * (1 - k)),
-                new Point(tx + tabTopR * (1 - k), top),
-                new Point(tx + tabTopR, top)));
-
-            // Selected tab top edge
-            borderFigure.Segments.Add(new LineSegment(new Point(tx + tw - tabTopR, top)));
-
-            // Selected tab top-right corner: top edge -> right edge
-            borderFigure.Segments.Add(new BezierSegment(
-                new Point(tx + tw - tabTopR * (1 - k), top),
-                new Point(tx + tw, top + tabTopR * (1 - k)),
-                new Point(tx + tw, top + tabTopR)));
-
-            // Selected tab right edge
-            borderFigure.Segments.Add(new LineSegment(new Point(tx + tw, topY - tabBottomR)));
-
-            // Selected tab bottom-right corner: right edge -> bottom edge
-            var canUseRightOutward = tx + tw + tabBottomR <= w - contentR;
-            if (canUseRightOutward)
-            {
-                borderFigure.Segments.Add(new BezierSegment(
-                    new Point(tx + tw, topY - tabBottomR * (1 - k)),
-                    new Point(tx + tw + tabBottomR * (1 - k), topY),
-                    new Point(tx + tw + tabBottomR, topY)));
-            }
-            else
-            {
-                borderFigure.Segments.Add(new BezierSegment(
-                    new Point(tx + tw, topY - tabBottomR * (1 - k)),
-                    new Point(tx + tw - tabBottomR * (1 - k), topY),
-                    new Point(tx + tw - tabBottomR, topY)));
-            }
-        }
-
-        // Continue top edge to top-right content corner
-        borderFigure.Segments.Add(new LineSegment(new Point(w - contentR, topY)));
-
-        // Top-right content corner: top edge -> right edge
-        borderFigure.Segments.Add(new BezierSegment(
-            new Point(w - contentR * (1 - k), topY),
-            new Point(w, topY + contentR * (1 - k)),
-            new Point(w, topY + contentR)));
-
-        // Right edge
-        borderFigure.Segments.Add(new LineSegment(new Point(w, h - contentR)));
-
-        // Bottom-right content corner: right edge -> bottom edge
-        borderFigure.Segments.Add(new BezierSegment(
-            new Point(w, h - contentR * (1 - k)),
-            new Point(w - contentR * (1 - k), h),
-            new Point(w - contentR, h)));
-
-        // Bottom edge
-        borderFigure.Segments.Add(new LineSegment(new Point(left + contentR, h)));
-
-        // Bottom-left content corner: bottom edge -> left edge
-        borderFigure.Segments.Add(new BezierSegment(
-            new Point(left + contentR * (1 - k), h),
-            new Point(left, h - contentR * (1 - k)),
-            new Point(left, h - contentR)));
-
-        // Left edge back to start
-        borderFigure.Segments.Add(new LineSegment(new Point(left, startY)));
-
-        var borderGeometry = new PathGeometry();
-        borderGeometry.Figures.Add(borderFigure);
-        dc.DrawGeometry(null, borderPen, borderGeometry);
+    private Brush ResolveAccentBrush()
+    {
+        return ResolveBrush("OneTabActiveBorder", "AccentBrush", s_fallbackAccentBrush);
     }
 
     private Brush ResolveBrush(string primaryKey, string secondaryKey, Brush fallback)
@@ -795,3 +1280,4 @@ public sealed class DockItemClosedEventArgs : EventArgs
         Index = index;
     }
 }
+

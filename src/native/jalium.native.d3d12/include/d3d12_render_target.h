@@ -4,6 +4,7 @@
 #include "d3d12_backend.h"
 #include <dcomp.h>
 #include <stack>
+#include <unordered_map>
 #include <vector>
 
 namespace jalium {
@@ -26,6 +27,14 @@ public:
     JaliumResult EndDraw() override;
     JaliumResult CreateWebViewVisual(void** visualOut) override;
     JaliumResult DestroyWebViewVisual(void* visual) override;
+    JaliumResult SetWebViewVisualPlacement(
+        void* visual,
+        int32_t x,
+        int32_t y,
+        int32_t width,
+        int32_t height,
+        int32_t contentOffsetX,
+        int32_t contentOffsetY) override;
     void Clear(float r, float g, float b, float a) override;
 
     void FillRectangle(float x, float y, float w, float h, Brush* brush) override;
@@ -53,6 +62,7 @@ public:
     void PushClip(float x, float y, float w, float h) override;
     void PushRoundedRectClip(float x, float y, float w, float h, float rx, float ry) override;
     void PopClip() override;
+    void PunchTransparentRect(float x, float y, float w, float h) override;
     void PushOpacity(float opacity) override;
     void PopOpacity() override;
     void SetVSyncEnabled(bool enabled) override;
@@ -192,6 +202,12 @@ private:
     ComPtr<IDCompositionTarget> dcompTarget_;
     ComPtr<IDCompositionVisual> dcompVisual_;          // Root container visual
     ComPtr<IDCompositionVisual> dcompSwapChainVisual_; // Visual that hosts the window swap chain content
+
+    struct WebViewVisualEntry {
+        ComPtr<IDCompositionVisual> containerVisual;
+        ComPtr<IDCompositionVisual> targetVisual;
+    };
+    std::unordered_map<IDCompositionVisual*, WebViewVisualEntry> webViewVisuals_;
 
     // Dirty rect tracking for partial rendering
     std::vector<D2D1_RECT_F> dirtyRects_;

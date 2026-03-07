@@ -21,6 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="QRCoder" Version="*" />
     <PackageReference Include="System.Drawing.Common" Version="*" />
   </ItemGroup>
 

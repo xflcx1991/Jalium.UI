@@ -1,4 +1,5 @@
 ﻿using System.Drawing;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using Jalium.UI.Input;
@@ -26,6 +27,8 @@ public sealed partial class WebView : FrameworkElement, IDisposable
     private CoreWebView2? _coreWebView2;
     private readonly bool _isWindowlessComposition =
         !string.Equals(Environment.GetEnvironmentVariable("JALIUM_WEBVIEW2_COMPOSITION"), "disable", StringComparison.OrdinalIgnoreCase);
+    private readonly bool _debugEnabled = IsDebugEnabled();
+    private readonly string _debugInstanceId = Guid.NewGuid().ToString("N")[..8];
 
     private object? _compositionRootVisualTarget;
     private nint _compositionRootVisualHandle;
@@ -39,6 +42,17 @@ public sealed partial class WebView : FrameworkElement, IDisposable
     private Rectangle _lastControllerBounds = Rectangle.Empty;
     private bool _isHostVisible;
     private int _visualAttachmentVersion;
+    private string? _lastDebugPlacementSignature;
+    private Rectangle _lastDebugPunchRect = Rectangle.Empty;
+
+    private static readonly Jalium.UI.Media.SolidColorBrush s_debugFrameBrush =
+        new(Media.Color.FromArgb(255, 255, 99, 71));
+    private static readonly Jalium.UI.Media.SolidColorBrush s_debugTextBrush =
+        new(Media.Color.FromArgb(255, 255, 255, 255));
+    private static readonly Jalium.UI.Media.SolidColorBrush s_debugTextBackgroundBrush =
+        new(Media.Color.FromArgb(210, 20, 20, 20));
+    private static readonly Jalium.UI.Media.Pen s_debugFramePen =
+        new(s_debugFrameBrush, 2);
 
     public WebView()
     {
@@ -242,6 +256,7 @@ public sealed partial class WebView : FrameworkElement, IDisposable
 
     private async Task InitializeWebView2Async()
     {
+        DebugLog("init", $"begin actual={ActualWidth:F1}x{ActualHeight:F1} comp={_isWindowlessComposition}");
         _initError = null;
         if (_controller != null && _coreWebView2 != null)
             return;
@@ -282,9 +297,11 @@ public sealed partial class WebView : FrameworkElement, IDisposable
         }
 
         Rectangle hostRect;
-        if (!TryGetHostPlacement(out hostRect, out _))
+        Rectangle controllerBounds;
+        if (!TryGetHostPlacement(out hostRect, out controllerBounds))
         {
             hostRect = new Rectangle(0, 0, 1, 1);
+            controllerBounds = new Rectangle(0, 0, 1, 1);
         }
 
         if (!_isWindowlessComposition)
@@ -343,7 +360,9 @@ public sealed partial class WebView : FrameworkElement, IDisposable
         var bg = DefaultBackgroundColor;
         _controller.DefaultBackgroundColor = System.Drawing.Color.FromArgb(bg.A, bg.R, bg.G, bg.B);
 
-        _controller.Bounds = hostRect;
+        UpdateCompositionVisualPlacement(hostRect, controllerBounds);
+        _controller.Bounds = new Rectangle(0, 0, controllerBounds.Width, controllerBounds.Height);
+        DebugLog("init", $"controller ready host={FormatRect(hostRect)} ctrl={FormatRect(controllerBounds)}");
 
         _controller.IsVisible = true;
         _controller.NotifyParentWindowPositionChanged();
@@ -442,11 +461,7 @@ public sealed partial class WebView : FrameworkElement, IDisposable
             return false;
 
         hostRect = visiblePx;
-        controllerBounds = new Rectangle(
-            rawPx.X - visiblePx.X,
-            rawPx.Y - visiblePx.Y,
-            rawPx.Width,
-            rawPx.Height);
+        controllerBounds = CalculateControllerBounds(rawPx, visiblePx);
         return true;
     }
 
@@ -455,11 +470,33 @@ public sealed partial class WebView : FrameworkElement, IDisposable
         if (_parentWindow == null)
             return Rect.Empty;
 
-        var origin = element.TransformToAncestor(_parentWindow);
+        var origin = GetVisualOffsetRelativeToAncestor(element, _parentWindow);
         if (double.IsNaN(origin.X) || double.IsNaN(origin.Y))
             return Rect.Empty;
 
         return new Rect(origin.X, origin.Y, element.ActualWidth, element.ActualHeight);
+    }
+
+    private static Jalium.UI.Point GetVisualOffsetRelativeToAncestor(Visual visual, Visual? ancestor)
+    {
+        double x = 0;
+        double y = 0;
+
+        Visual? current = visual;
+        while (current != null && current != ancestor)
+        {
+            if (current is UIElement uiElement)
+            {
+                var bounds = uiElement.VisualBounds;
+                var renderOffset = uiElement.RenderOffset;
+                x += bounds.X + renderOffset.X;
+                y += bounds.Y + renderOffset.Y;
+            }
+
+            current = current.VisualParent;
+        }
+
+        return new Jalium.UI.Point(x, y);
     }
 
     private Rect ClipToVisibleAncestorBounds(Rect rawRect)
@@ -548,6 +585,15 @@ public sealed partial class WebView : FrameworkElement, IDisposable
         return Rectangle.FromLTRB(left, top, right, bottom);
     }
 
+    internal static Rectangle CalculateControllerBounds(Rectangle rawPx, Rectangle visiblePx)
+    {
+        return new Rectangle(
+            rawPx.X - visiblePx.X,
+            rawPx.Y - visiblePx.Y,
+            rawPx.Width,
+            rawPx.Height);
+    }
+
     private bool TryAcquireCompositionRootVisualTarget(out object? target)
     {
         target = null;
@@ -605,8 +651,9 @@ public sealed partial class WebView : FrameworkElement, IDisposable
             return;
 
         var attachedToWindow = IsAttachedToParentWindow();
-        Rectangle rect;
-        bool hasPlacement = TryGetHostPlacement(out rect, out _);
+        Rectangle hostRect;
+        Rectangle controllerBounds;
+        bool hasPlacement = TryGetHostPlacement(out hostRect, out controllerBounds);
         bool shouldBeVisible = attachedToWindow
             && Visibility == Visibility.Visible
             && hasPlacement;
@@ -618,6 +665,7 @@ public sealed partial class WebView : FrameworkElement, IDisposable
                 _controller.IsVisible = false;
                 _isHostVisible = false;
             }
+            DebugLogPlacement("hidden", hostRect, controllerBounds, attachedToWindow, hasPlacement, force);
             return;
         }
 
@@ -628,17 +676,30 @@ public sealed partial class WebView : FrameworkElement, IDisposable
             force = true;
         }
 
-        var effectiveControllerBounds = rect;
-
-        if (!force && rect == _lastHostRect && effectiveControllerBounds == _lastControllerBounds)
+        if (!force && hostRect == _lastHostRect && controllerBounds == _lastControllerBounds)
             return;
 
-        if (force || _controller.Bounds != effectiveControllerBounds)
-            _controller.Bounds = effectiveControllerBounds;
+        UpdateCompositionVisualPlacement(hostRect, controllerBounds);
+
+        var sizedControllerBounds = new Rectangle(0, 0, controllerBounds.Width, controllerBounds.Height);
+        if (force || _controller.Bounds != sizedControllerBounds)
+            _controller.Bounds = sizedControllerBounds;
 
         _controller.NotifyParentWindowPositionChanged();
-        _lastHostRect = rect;
-        _lastControllerBounds = effectiveControllerBounds;
+        _lastHostRect = hostRect;
+        _lastControllerBounds = controllerBounds;
+        DebugLogPlacement("update", hostRect, controllerBounds, attachedToWindow, hasPlacement, force);
+    }
+
+    private void UpdateCompositionVisualPlacement(Rectangle hostRect, Rectangle controllerBounds)
+    {
+        if (_compositionVisualOwner == null || _compositionRootVisualHandle == nint.Zero)
+            return;
+
+        _compositionVisualOwner.SetWebViewCompositionVisualPlacement(
+            _compositionRootVisualHandle,
+            hostRect,
+            new System.Drawing.Point(controllerBounds.X, controllerBounds.Y));
     }
 
     private bool IsAttachedToParentWindow()
@@ -772,6 +833,59 @@ public sealed partial class WebView : FrameworkElement, IDisposable
     #endregion
 
     #region Input Forwarding
+
+    protected override void OnRender(object drawingContext)
+    {
+        base.OnRender(drawingContext);
+
+        if (_isWindowlessComposition && drawingContext is Interop.RenderTargetDrawingContext renderTargetDrawingContext)
+        {
+            var punchRect = new Rect(0, 0, ActualWidth, ActualHeight);
+            renderTargetDrawingContext.PunchTransparentRect(punchRect);
+
+            if (_debugEnabled)
+            {
+                var roundedPunchRect = new Rectangle(
+                    0,
+                    0,
+                    (int)Math.Round(ActualWidth),
+                    (int)Math.Round(ActualHeight));
+                if (roundedPunchRect != _lastDebugPunchRect)
+                {
+                    _lastDebugPunchRect = roundedPunchRect;
+                    DebugLog("punch", $"local={FormatRect(roundedPunchRect)}");
+                }
+            }
+        }
+    }
+
+    protected override void OnPostRender(object drawingContext)
+    {
+        base.OnPostRender(drawingContext);
+
+        if (!_debugEnabled || drawingContext is not Media.DrawingContext dc)
+            return;
+
+        var localRect = new Rect(0, 0, ActualWidth, ActualHeight);
+        dc.DrawRectangle(null, s_debugFramePen, localRect);
+
+        var overlayText = BuildDebugOverlayText();
+        if (string.IsNullOrWhiteSpace(overlayText))
+            return;
+
+        dc.DrawRectangle(
+            s_debugTextBackgroundBrush,
+            null,
+            new Rect(4, 4, Math.Max(180, ActualWidth - 8), Math.Min(52, Math.Max(24, ActualHeight - 8))));
+
+        var formattedText = new Media.FormattedText(overlayText, "Consolas", 11)
+        {
+            Foreground = s_debugTextBrush,
+            MaxTextWidth = Math.Max(1, ActualWidth - 12),
+            MaxTextHeight = Math.Max(18, ActualHeight - 12)
+        };
+        dc.DrawText(formattedText, new Jalium.UI.Point(8, 8));
+    }
 
     private void OnMouseMoveHandler(object sender, MouseEventArgs e)
     {
@@ -945,6 +1059,78 @@ public sealed partial class WebView : FrameworkElement, IDisposable
         return Path.Combine(localAppData, "Jalium.UI", "WebView2");
     }
 
+    private static bool IsDebugEnabled()
+    {
+        var value = Environment.GetEnvironmentVariable("JALIUM_WEBVIEW_DEBUG");
+        return !string.IsNullOrWhiteSpace(value)
+               && !string.Equals(value, "0", StringComparison.OrdinalIgnoreCase)
+               && !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetDebugLogPath()
+    {
+        return Path.Combine(GetWebViewUserDataFolder(), "webview-debug.log");
+    }
+
+    private void DebugLog(string stage, string message)
+    {
+        if (!_debugEnabled)
+            return;
+
+        var line = $"{DateTime.Now:O} [{_debugInstanceId}] {stage} {message}";
+        Trace.WriteLine(line);
+
+        try
+        {
+            var path = GetDebugLogPath();
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.AppendAllText(path, line + Environment.NewLine);
+        }
+        catch
+        {
+            // Debug logging must never break rendering.
+        }
+    }
+
+    private void DebugLogPlacement(
+        string stage,
+        Rectangle hostRect,
+        Rectangle controllerBounds,
+        bool attachedToWindow,
+        bool hasPlacement,
+        bool force)
+    {
+        if (!_debugEnabled)
+            return;
+
+        var signature =
+            $"{stage}|{hostRect}|{controllerBounds}|{attachedToWindow}|{hasPlacement}|{force}|{_isHostVisible}|{ActualWidth:F1}|{ActualHeight:F1}|{_initError}";
+        if (string.Equals(signature, _lastDebugPlacementSignature, StringComparison.Ordinal))
+            return;
+
+        _lastDebugPlacementSignature = signature;
+        DebugLog(
+            "place",
+            $"stage={stage} host={FormatRect(hostRect)} ctrl={FormatRect(controllerBounds)} attached={attachedToWindow} placement={hasPlacement} force={force} visible={_isHostVisible} actual={ActualWidth:F1}x{ActualHeight:F1} dpi={_parentWindow?.DpiScale:F2}");
+    }
+
+    private string BuildDebugOverlayText()
+    {
+        if (!_debugEnabled)
+            return string.Empty;
+
+        var host = FormatRect(_lastHostRect);
+        var controller = FormatRect(_lastControllerBounds);
+        var initState = _isInitialized ? "init" : "cold";
+        var visState = _isHostVisible ? "vis" : "hidden";
+        return $"wv:{_debugInstanceId} {initState} {visState}\nhost={host} ctrl={controller} local={Math.Round(ActualWidth)}x{Math.Round(ActualHeight)}";
+    }
+
+    private static string FormatRect(Rectangle rect)
+    {
+        return $"[{rect.X},{rect.Y},{rect.Width}x{rect.Height}]";
+    }
+
     private bool IsInitializationStale(int attachmentVersion)
     {
         return _disposed
@@ -956,6 +1142,7 @@ public sealed partial class WebView : FrameworkElement, IDisposable
 
     private void ReleaseControllerResources(bool clearEnvironment, bool invalidateInitialization)
     {
+        DebugLog("release", $"clearEnv={clearEnvironment} invalidateInit={invalidateInitialization}");
         if (invalidateInitialization)
             _visualAttachmentVersion++;
 
@@ -1024,6 +1211,7 @@ public sealed partial class WebView : FrameworkElement, IDisposable
         _initError = ex == null
             ? message
             : $"{message} {ex.GetType().Name}: {ex.Message}";
+        DebugLog("error", _initError);
     }
 
     private void SetInitializationErrorFromException(Exception ex)

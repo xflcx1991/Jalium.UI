@@ -16,6 +16,7 @@
     </ResourceDictionary.ThemeDictionaries>
 
     <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="Colors.jalxaml" />
         <!-- Control Styles -->
         <ResourceDictionary Source="Controls/Button.jalxaml" />
         <ResourceDictionary Source="Controls/TextControls.jalxaml" />

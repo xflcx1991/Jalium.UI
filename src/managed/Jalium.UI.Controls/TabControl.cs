@@ -116,11 +116,6 @@ public sealed class TabControl : Selector
 
     public TabControl()
     {
-        // Use theme colors by default
-        Background = new SolidColorBrush(ThemeColors.TabContentBackground);
-        TabStripBackground = new SolidColorBrush(ThemeColors.TabStripBackground);
-        TabStripBorderBrush = new SolidColorBrush(ThemeColors.TabStripBorder);
-
         Focusable = true;
 
         // Subscribe to collection changes
@@ -501,7 +496,7 @@ public sealed class TabControl : Selector
         }
 
         // Draw tab strip background
-        var tabStripBrush = TabStripBackground ?? s_tabStripBackgroundBrush;
+        var tabStripBrush = ResolveTabStripBackground();
         Rect tabStripRect;
 
         switch (TabStripPlacement)
@@ -523,7 +518,7 @@ public sealed class TabControl : Selector
         dc.DrawRectangle(tabStripBrush, null, tabStripRect);
 
         // Draw border line
-        var borderBrush = TabStripBorderBrush ?? s_tabStripBorderBrush;
+        var borderBrush = ResolveTabStripBorderBrush();
         var borderPen = new Pen(borderBrush, 1);
         switch (TabStripPlacement)
         {
@@ -542,6 +537,20 @@ public sealed class TabControl : Selector
         }
 
         base.OnRender(drawingContextObj);
+    }
+
+    private Brush ResolveTabStripBackground()
+    {
+        return TabStripBackground
+            ?? TryFindResource("TabStripBackground") as Brush
+            ?? s_tabStripBackgroundBrush;
+    }
+
+    private Brush ResolveTabStripBorderBrush()
+    {
+        return TabStripBorderBrush
+            ?? TryFindResource("TabStripBorder") as Brush
+            ?? s_tabStripBorderBrush;
     }
 }
 
@@ -650,14 +659,6 @@ public sealed class TabItem : HeaderedContentControl
 
     public TabItem()
     {
-        // Use theme colors by default
-        Background = new SolidColorBrush(Color.Transparent);
-        Foreground = new SolidColorBrush(ThemeColors.TextSecondary);
-        IndicatorBrush = new SolidColorBrush(ThemeColors.TabItemIndicator);
-        SelectedBackground = new SolidColorBrush(ThemeColors.TabItemSelectedBackground);
-        HoverBackground = new SolidColorBrush(ThemeColors.TabItemHoverBackground);
-        Padding = new Thickness(16, 10, 16, 10);
-
         AddHandler(MouseDownEvent, new RoutedEventHandler(OnMouseDownHandler));
     }
 
@@ -748,11 +749,11 @@ public sealed class TabItem : HeaderedContentControl
         Brush bgBrush;
         if (IsSelected)
         {
-            bgBrush = SelectedBackground ?? s_selectedBackgroundBrush;
+            bgBrush = ResolveSelectedBackground();
         }
         else if (IsMouseOver)
         {
-            bgBrush = HoverBackground ?? s_hoverBackgroundBrush;
+            bgBrush = ResolveHoverBackground();
         }
         else
         {
@@ -769,11 +770,11 @@ public sealed class TabItem : HeaderedContentControl
             Brush textBrush;
             if (IsSelected || IsMouseOver)
             {
-                textBrush = s_textPrimaryBrush;
+                textBrush = ResolvePrimaryTextBrush();
             }
             else
             {
-                textBrush = Foreground ?? s_textSecondaryBrush;
+                textBrush = ResolveSecondaryTextBrush();
             }
 
             var fontSize = FontSize > 0 ? FontSize : 13;
@@ -796,13 +797,51 @@ public sealed class TabItem : HeaderedContentControl
         // Draw selection indicator
         if (IsSelected)
         {
-            var indicatorBrush = IndicatorBrush ?? s_indicatorBrush;
+            var indicatorBrush = ResolveIndicatorBrush();
             var indicatorHeight = IndicatorHeight;
             var indicatorRect = new Rect(0, ActualHeight - indicatorHeight, ActualWidth, indicatorHeight);
             dc.DrawRectangle(indicatorBrush, null, indicatorRect);
         }
 
         // Don't call base - we handle all rendering
+    }
+
+    private Brush ResolveSelectedBackground()
+    {
+        return SelectedBackground
+            ?? TryFindResource("TabItemSelectedBackground") as Brush
+            ?? s_selectedBackgroundBrush;
+    }
+
+    private Brush ResolveHoverBackground()
+    {
+        return HoverBackground
+            ?? TryFindResource("TabItemHoverBackground") as Brush
+            ?? s_hoverBackgroundBrush;
+    }
+
+    private Brush ResolvePrimaryTextBrush()
+    {
+        return TryFindResource("TextPrimary") as Brush ?? s_textPrimaryBrush;
+    }
+
+    private Brush ResolveSecondaryTextBrush()
+    {
+        if (HasLocalValue(Control.ForegroundProperty) && Foreground != null)
+        {
+            return Foreground;
+        }
+
+        return TryFindResource("TextSecondary") as Brush
+            ?? Foreground
+            ?? s_textSecondaryBrush;
+    }
+
+    private Brush ResolveIndicatorBrush()
+    {
+        return IndicatorBrush
+            ?? TryFindResource("TabItemIndicator") as Brush
+            ?? s_indicatorBrush;
     }
 }
 

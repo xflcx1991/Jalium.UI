@@ -252,6 +252,10 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
         DependencyProperty.Register(nameof(AdornmentMinLineHeight), typeof(double), typeof(EditControl),
             new PropertyMetadata(30.0, OnVisualPropertyChanged));
 
+    public static readonly DependencyProperty LeadingGutterInsetProperty =
+        DependencyProperty.Register(nameof(LeadingGutterInset), typeof(double), typeof(EditControl),
+            new PropertyMetadata(0.0, OnLeadingGutterInsetChanged));
+
     public static readonly DependencyProperty IsScrollInertiaEnabledProperty =
         DependencyProperty.Register(nameof(IsScrollInertiaEnabled), typeof(bool), typeof(EditControl),
             new PropertyMetadata(true, OnScrollInertiaSettingsChanged));
@@ -362,6 +366,16 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
     {
         get => (double)GetValue(AdornmentMinLineHeightProperty)!;
         set => SetValue(AdornmentMinLineHeightProperty, value);
+    }
+
+    /// <summary>
+    /// Reserves horizontal space before line numbers (inside the editor bounds).
+    /// Useful for custom gutters such as breakpoint toggles.
+    /// </summary>
+    public double LeadingGutterInset
+    {
+        get => (double)GetValue(LeadingGutterInsetProperty)!;
+        set => SetValue(LeadingGutterInsetProperty, Math.Max(0, value));
     }
 
     public bool IsScrollInertiaEnabled
@@ -539,12 +553,6 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
 
     public EditControl()
     {
-        // Dark theme defaults
-        Background = new SolidColorBrush(Color.FromRgb(30, 30, 30));
-        Foreground = new SolidColorBrush(Color.FromRgb(212, 212, 212));
-        FontFamily = "Cascadia Code";
-        FontSize = 14;
-
         Focusable = true;
         ClipToBounds = true;
         Cursor = Jalium.UI.Cursors.IBeam;
@@ -558,6 +566,7 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
         _view.Document = _document;
         _view.Folding = _foldingManager;
         _view.ClassificationBrushResolver = ResolveClassificationBrush;
+        _view.LeadingGutterInset = Math.Max(0, LeadingGutterInset);
         _findReplace.Document = _document;
         _foldingManager.Document = _document;
 
@@ -3303,6 +3312,15 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
             editor.InvalidateVisual();
     }
 
+    private static void OnLeadingGutterInsetChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is not EditControl editor)
+            return;
+
+        editor._view.LeadingGutterInset = Math.Max(0, editor.LeadingGutterInset);
+        editor.InvalidateVisual();
+    }
+
     private static void OnScrollInertiaSettingsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is not EditControl editor)
@@ -3589,10 +3607,43 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
     private static bool IsSymbolCharacter(char c) =>
         char.IsLetterOrDigit(c) || c is '_' or '-';
 
+    private Brush ResolveThemeBrush(string primaryKey, Brush fallback, string? secondaryKey = null)
+    {
+        if (TryFindResource(primaryKey) is Brush primary)
+            return primary;
+        if (!string.IsNullOrWhiteSpace(secondaryKey) && TryFindResource(secondaryKey) is Brush secondary)
+            return secondary;
+        return fallback;
+    }
+
+    private Pen ResolveThemePen(string primaryKey, Pen fallback, string? secondaryKey = null, double? thickness = null)
+    {
+        if (TryFindResource(primaryKey) is Brush primary)
+            return CreatePen(primary, fallback, thickness);
+        if (!string.IsNullOrWhiteSpace(secondaryKey) && TryFindResource(secondaryKey) is Brush secondary)
+            return CreatePen(secondary, fallback, thickness);
+        if (thickness.HasValue && fallback.Brush is Brush fallbackBrush && Math.Abs(thickness.Value - fallback.Thickness) > double.Epsilon)
+            return CreatePen(fallbackBrush, fallback, thickness);
+        return fallback;
+    }
+
+    private static Pen CreatePen(Brush brush, Pen template, double? thickness = null)
+    {
+        return new Pen(brush, thickness ?? template.Thickness)
+        {
+            LineJoin = template.LineJoin,
+            StartLineCap = template.StartLineCap,
+            EndLineCap = template.EndLineCap
+        };
+    }
+
     private void DrawSearchHighlights(DrawingContext dc)
     {
         if (_findReplace.Results.Count == 0 || _view.LineHeight <= 0)
             return;
+
+        var searchResultBrush = ResolveThemeBrush("OneEditorFindMatch", s_defaultSearchResultBrush, "HighlightBackground");
+        var activeSearchResultBrush = ResolveThemeBrush("OneEditorFindMatch", s_defaultActiveSearchResultBrush, "SelectionBackground");
 
         for (int i = 0; i < _findReplace.Results.Count; i++)
         {
@@ -3600,7 +3651,7 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
             bool isActive = _activeFindResult.HasValue &&
                 _activeFindResult.Value.Offset == result.Offset &&
                 _activeFindResult.Value.Length == result.Length;
-            DrawDocumentRangeHighlight(dc, result.Offset, result.Length, isActive ? s_defaultActiveSearchResultBrush : s_defaultSearchResultBrush);
+            DrawDocumentRangeHighlight(dc, result.Offset, result.Length, isActive ? activeSearchResultBrush : searchResultBrush);
         }
     }
 
@@ -3636,7 +3687,9 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
         double charWidth = Math.Abs(nextPoint.Y - point.Y) <= 0.1
             ? Math.Max(1, nextPoint.X - point.X)
             : Math.Max(1, _view.CharWidth);
-        dc.DrawRectangle(s_defaultBracketHighlightBrush, s_defaultBracketHighlightPen, new Rect(x, y, charWidth, _view.LineHeight));
+        var bracketHighlightBrush = ResolveThemeBrush("OneAccentSubtle", s_defaultBracketHighlightBrush, "SelectionBackground");
+        var bracketHighlightPen = ResolveThemePen("OneBorderFocused", s_defaultBracketHighlightPen, "AccentBrush");
+        dc.DrawRectangle(bracketHighlightBrush, bracketHighlightPen, new Rect(x, y, charWidth, _view.LineHeight));
     }
 
     private void DrawScopeGuides(DrawingContext dc, double contentWidth, double contentHeight)
@@ -3650,6 +3703,8 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
         int firstVisibleLine = _view.FirstVisibleLineNumber;
         int lastVisibleLine = _view.LastVisibleLineNumber;
         var hoveredSection = _hoveredScopeGuideSection;
+        var scopeGuidePen = ResolveThemePen("OneEditorIndentGuide", s_scopeGuidePen, "ControlBorder");
+        var scopeGuideActivePen = ResolveThemePen("OneBorderFocused", s_scopeGuideActivePen, "AccentBrush");
         var foldings = _foldingManager.Foldings;
         for (int i = 0; i < foldings.Count; i++)
         {
@@ -3666,7 +3721,7 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
             if (!TryGetScopeGuideGeometry(section, contentWidth, contentHeight, out double guideX, out double guideStartY, out double guideEndY))
                 continue;
 
-            var guidePen = ReferenceEquals(section, hoveredSection) ? s_scopeGuideActivePen : s_scopeGuidePen;
+            var guidePen = ReferenceEquals(section, hoveredSection) ? scopeGuideActivePen : scopeGuidePen;
             dc.DrawLine(guidePen, new Point(guideX, guideStartY), new Point(guideX, guideEndY));
         }
     }
@@ -3886,7 +3941,7 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
 
         var tooltip = new FormattedText(previewText, fontFamily, Math.Max(11, fontSize - 1))
         {
-            Foreground = s_scopeGuideTooltipTextBrush,
+            Foreground = ResolveThemeBrush("OnePopupText", s_scopeGuideTooltipTextBrush, "TextPrimary"),
             MaxTextWidth = Math.Max(24, contentWidth - ScopeGuideTooltipPaddingX * 2 - 8),
             MaxTextHeight = Math.Max(24, contentHeight - ScopeGuideTooltipPaddingY * 2 - 8),
             Trimming = TextTrimming.None
@@ -3908,7 +3963,9 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
             tooltipY = Math.Max(2, Math.Min(contentHeight - tooltipHeight - 2, _lastPointerPosition.Y + ScopeGuideTooltipOffsetY));
 
         var tooltipRect = new Rect(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
-        dc.DrawRoundedRectangle(s_scopeGuideTooltipBackgroundBrush, s_scopeGuideTooltipBorderPen, tooltipRect, 3, 3);
+        var tooltipBackgroundBrush = ResolveThemeBrush("OnePopupBackground", s_scopeGuideTooltipBackgroundBrush, "TooltipBackground");
+        var tooltipBorderPen = ResolveThemePen("OnePopupBorder", s_scopeGuideTooltipBorderPen, "TooltipBorder");
+        dc.DrawRoundedRectangle(tooltipBackgroundBrush, tooltipBorderPen, tooltipRect, 3, 3);
         dc.DrawText(tooltip, new Point(tooltipRect.X + ScopeGuideTooltipPaddingX, tooltipRect.Y + ScopeGuideTooltipPaddingY));
         return true;
     }
@@ -3944,7 +4001,7 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
 
         var tooltip = new FormattedText(tooltipText, fontFamily, Math.Max(11, fontSize - 1))
         {
-            Foreground = s_scopeGuideTooltipTextBrush
+            Foreground = ResolveThemeBrush("OnePopupText", s_scopeGuideTooltipTextBrush, "TextPrimary")
         };
         TextMeasurement.MeasureText(tooltip);
 
@@ -3963,7 +4020,9 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
             tooltipY = Math.Max(2, contentHeight - tooltipHeight - 2);
 
         var tooltipRect = new Rect(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
-        dc.DrawRoundedRectangle(s_scopeGuideTooltipBackgroundBrush, s_scopeGuideTooltipBorderPen, tooltipRect, 3, 3);
+        var tooltipBackgroundBrush = ResolveThemeBrush("OnePopupBackground", s_scopeGuideTooltipBackgroundBrush, "TooltipBackground");
+        var tooltipBorderPen = ResolveThemePen("OnePopupBorder", s_scopeGuideTooltipBorderPen, "TooltipBorder");
+        dc.DrawRoundedRectangle(tooltipBackgroundBrush, tooltipBorderPen, tooltipRect, 3, 3);
         double textX = tooltipRect.X + ScopeGuideTooltipPaddingX;
         double textY = tooltipRect.Y + (tooltipRect.Height - tooltip.Height) * 0.5;
         dc.DrawText(tooltip, new Point(textX, textY));
@@ -4146,6 +4205,10 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
         int firstVisibleLine = _view.FirstVisibleLineNumber;
         int lastVisibleLine = _view.LastVisibleLineNumber;
         int previousStartLine = -1;
+        var foldedHintBackgroundBrush = ResolveThemeBrush("OneSurfaceDefault", s_foldedHintBackgroundBrush, "ControlBackground");
+        var foldedHintSelectedBackgroundBrush = ResolveThemeBrush("OneSurfaceSelected", s_foldedHintSelectedBackgroundBrush, "SelectionBackground");
+        var foldedHintBorderPen = ResolveThemePen("OneBorderDefault", s_foldedHintBorderPen, "ControlBorder");
+        var foldedHintSelectedBorderPen = ResolveThemePen("OneBorderFocused", s_foldedHintSelectedBorderPen, "AccentBrush");
         var foldings = _foldingManager.Foldings;
         for (int i = 0; i < foldings.Count; i++)
         {
@@ -4168,8 +4231,8 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
 
             bool isSelected = IsFoldingSectionSelected(section);
             dc.DrawRoundedRectangle(
-                isSelected ? s_foldedHintSelectedBackgroundBrush : s_foldedHintBackgroundBrush,
-                isSelected ? s_foldedHintSelectedBorderPen : s_foldedHintBorderPen,
+                isSelected ? foldedHintSelectedBackgroundBrush : foldedHintBackgroundBrush,
+                isSelected ? foldedHintSelectedBorderPen : foldedHintBorderPen,
                 hintRect,
                 2,
                 2);
@@ -4230,11 +4293,11 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
         return true;
     }
 
-    private static FormattedText CreateFoldedSectionHintLayout(string text, string fontFamily, double fontSize)
+    private FormattedText CreateFoldedSectionHintLayout(string text, string fontFamily, double fontSize)
     {
         var formatted = new FormattedText(text, fontFamily, Math.Max(10, fontSize - 1))
         {
-            Foreground = s_foldedHintTextBrush
+            Foreground = ResolveThemeBrush("OneTextSecondary", s_foldedHintTextBrush, "TextSecondary")
         };
         TextMeasurement.MeasureText(formatted);
         return formatted;
@@ -4513,15 +4576,20 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
         if (!ShowMinimap || _minimapRect.IsEmpty || _document.LineCount <= 0)
             return;
 
+        var minimapBackgroundBrush = ResolveThemeBrush("OneMinimapBackground", s_minimapBackgroundBrush, "WindowBackground");
+        var minimapForegroundBrush = ResolveThemeBrush("OneMinimapSlider", s_minimapForegroundBrush, "AccentBrush");
+        var minimapViewportBrush = ResolveThemeBrush("OneScrollbarThumbHover", s_minimapViewportBrush, "SelectionBackground");
+        var minimapViewportBorderPen = ResolveThemePen("OneBorderDefault", s_minimapViewportBorderPen, "ControlBorder");
+
         _minimapRenderer.Render(
             dc,
             _document,
             _view,
             SyntaxHighlighter,
             _minimapRect,
-            s_minimapBackgroundBrush,
-            s_minimapForegroundBrush,
-            s_minimapViewportBrush);
+            minimapBackgroundBrush,
+            minimapForegroundBrush,
+            minimapViewportBrush);
         _minimapViewportRect = _minimapRenderer.GetViewportRect(_document, _view, _minimapRect);
         if (!_minimapViewportRect.IsEmpty)
         {
@@ -4530,7 +4598,7 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
                 _minimapViewportRect.Y + 0.5,
                 Math.Max(0, _minimapViewportRect.Width - 1),
                 Math.Max(0, _minimapViewportRect.Height - 1));
-            dc.DrawRectangle(null, s_minimapViewportBorderPen, borderRect);
+            dc.DrawRectangle(null, minimapViewportBorderPen, borderRect);
         }
 
         DrawMinimapHoverTooltip(dc);
@@ -4557,7 +4625,7 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
         double fontSize = FontSize > 0 ? FontSize : 14;
         var tooltip = new FormattedText(tooltipText, fontFamily, Math.Max(11, fontSize - 1))
         {
-            Foreground = s_minimapTooltipTextBrush,
+            Foreground = ResolveThemeBrush("OnePopupText", s_minimapTooltipTextBrush, "TextPrimary"),
             MaxTextWidth = availableTextWidth,
             MaxTextHeight = Math.Max(18, _minimapRect.Height - 4),
             Trimming = TextTrimming.CharacterEllipsis,
@@ -4577,7 +4645,9 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
         double tooltipY = Math.Clamp(desiredTooltipY, 2, tooltipMaxY);
 
         var tooltipRect = new Rect(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
-        dc.DrawRoundedRectangle(s_minimapTooltipBackgroundBrush, s_minimapTooltipBorderPen, tooltipRect, 3, 3);
+        var tooltipBackgroundBrush = ResolveThemeBrush("OnePopupBackground", s_minimapTooltipBackgroundBrush, "TooltipBackground");
+        var tooltipBorderPen = ResolveThemePen("OnePopupBorder", s_minimapTooltipBorderPen, "TooltipBorder");
+        dc.DrawRoundedRectangle(tooltipBackgroundBrush, tooltipBorderPen, tooltipRect, 3, 3);
         dc.DrawText(tooltip, new Point(tooltipRect.X + MinimapTooltipPaddingX, tooltipRect.Y + MinimapTooltipPaddingY));
     }
 
@@ -4615,6 +4685,10 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
 
     private void DrawScrollBars(DrawingContext dc)
     {
+        var scrollBarTrackBrush = ResolveThemeBrush("OneScrollbarBackground", s_scrollBarTrackBrush, "ControlBackground");
+        var scrollBarThumbBrush = ResolveThemeBrush("OneScrollbarThumb", s_scrollBarThumbBrush, "AccentBrush");
+        var scrollBarActiveThumbBrush = ResolveThemeBrush("OneScrollbarThumbActive", s_scrollBarActiveThumbBrush, "AccentBrushPressed");
+
         static Rect InsetRect(Rect rect, double inset)
         {
             if (rect.Width <= 0 || rect.Height <= 0)
@@ -4651,9 +4725,9 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
         {
             var verticalTrackRect = InsetRect(_verticalScrollTrackRect, ScrollBarInnerPadding);
             DrawBackdropBlur(verticalTrackRect);
-            DrawRoundedBar(s_scrollBarTrackBrush, verticalTrackRect);
+            DrawRoundedBar(scrollBarTrackBrush, verticalTrackRect);
             DrawRoundedBar(
-                _scrollBarDragMode == ScrollBarDragMode.Vertical ? s_scrollBarActiveThumbBrush : s_scrollBarThumbBrush,
+                _scrollBarDragMode == ScrollBarDragMode.Vertical ? scrollBarActiveThumbBrush : scrollBarThumbBrush,
                 InsetRect(_verticalScrollThumbRect, ScrollBarInnerPadding));
         }
 
@@ -4661,9 +4735,9 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
         {
             var horizontalTrackRect = InsetRect(_horizontalScrollTrackRect, ScrollBarInnerPadding);
             DrawBackdropBlur(horizontalTrackRect);
-            DrawRoundedBar(s_scrollBarTrackBrush, horizontalTrackRect);
+            DrawRoundedBar(scrollBarTrackBrush, horizontalTrackRect);
             DrawRoundedBar(
-                _scrollBarDragMode == ScrollBarDragMode.Horizontal ? s_scrollBarActiveThumbBrush : s_scrollBarThumbBrush,
+                _scrollBarDragMode == ScrollBarDragMode.Horizontal ? scrollBarActiveThumbBrush : scrollBarThumbBrush,
                 InsetRect(_horizontalScrollThumbRect, ScrollBarInnerPadding));
         }
 
@@ -4676,7 +4750,7 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
                 ScrollBarThickness);
             var cornerTrackRect = InsetRect(corner, ScrollBarInnerPadding);
             DrawBackdropBlur(cornerTrackRect);
-            DrawRoundedBar(s_scrollBarTrackBrush, cornerTrackRect);
+            DrawRoundedBar(scrollBarTrackBrush, cornerTrackRect);
         }
     }
 

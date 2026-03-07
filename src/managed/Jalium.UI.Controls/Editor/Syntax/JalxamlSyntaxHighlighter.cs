@@ -62,6 +62,77 @@ public sealed class JalxamlSyntaxHighlighter : ISyntaxHighlighter
         "Delay",
     };
 
+    private static readonly HashSet<string> s_razorDirectiveKeywords = new(StringComparer.Ordinal)
+    {
+        "if",
+        "else",
+        "for",
+        "foreach",
+        "while",
+        "switch",
+        "code",
+    };
+
+    private static readonly HashSet<string> s_razorExpressionKeywords = new(StringComparer.Ordinal)
+    {
+        "true",
+        "false",
+        "null",
+        "new",
+        "this",
+        "base",
+        "typeof",
+        "nameof",
+        "global",
+    };
+
+    private static readonly HashSet<string> s_razorExpressionControlKeywords = new(StringComparer.Ordinal)
+    {
+        "if",
+        "else",
+        "for",
+        "foreach",
+        "while",
+        "switch",
+        "case",
+        "default",
+        "return",
+        "break",
+        "continue",
+        "try",
+        "catch",
+        "finally",
+        "do",
+        "await",
+    };
+
+    private static readonly HashSet<string> s_razorCodeKeywords = new(StringComparer.Ordinal)
+    {
+        "void",
+        "var",
+        "string",
+        "object",
+        "bool",
+        "byte",
+        "char",
+        "decimal",
+        "double",
+        "float",
+        "int",
+        "long",
+        "short",
+        "uint",
+        "ulong",
+        "ushort",
+        "null",
+        "true",
+        "false",
+        "new",
+        "this",
+        "base",
+        "return",
+    };
+
     public object? GetInitialState() => JalxamlHighlighterState.Default;
 
     public static JalxamlSyntaxHighlighter Create() => new();
@@ -193,12 +264,7 @@ public sealed class JalxamlSyntaxHighlighter : ISyntaxHighlighter
                 continue;
             }
 
-            // Text content outside tags
-            int textStart = pos;
-            while (pos < lineText.Length && lineText[pos] != '<')
-                pos++;
-            if (pos > textStart)
-                tokens.Add(new SyntaxToken(textStart, pos - textStart, TokenClassification.PlainText));
+            pos = ScanTextContent(lineText, pos, tokens);
         }
 
         var endState = new JalxamlHighlighterState
@@ -505,7 +571,7 @@ public sealed class JalxamlSyntaxHighlighter : ISyntaxHighlighter
         }
 
         // Plain string value
-        return ScanPlainStringValue(text, quotePos, pos, tokens, ref inAttrValue);
+        return ScanQuotedAttributeValue(text, quotePos, pos, '"', tokens, ref inAttrValue);
     }
 
     /// <summary>
@@ -541,23 +607,8 @@ public sealed class JalxamlSyntaxHighlighter : ISyntaxHighlighter
     /// </summary>
     private static int ScanAttributeValueSingleQuote(string text, int pos, List<SyntaxToken> tokens)
     {
-        int start = pos;
-        pos++; // skip opening '
-        while (pos < text.Length && text[pos] != '\'')
-            pos++;
-        if (pos < text.Length)
-        {
-            int closingQuotePos = pos;
-            pos++;
-            if (!TryEmitNumericQuotedValueTokens(text, start, closingQuotePos, tokens))
-                tokens.Add(new SyntaxToken(start, pos - start, TokenClassification.String));
-        }
-        else
-        {
-            tokens.Add(new SyntaxToken(start, pos - start, TokenClassification.String));
-        }
-
-        return pos;
+        bool inAttrValue = false;
+        return ScanQuotedAttributeValue(text, pos, pos + 1, '\'', tokens, ref inAttrValue);
     }
 
     /// <summary>
@@ -639,6 +690,81 @@ public sealed class JalxamlSyntaxHighlighter : ISyntaxHighlighter
         pos = ScanMarkupExtensionParams(text, pos, tokens, ref meDepth, ref inAttrValue, isBindingExtension);
 
         return pos;
+    }
+
+    /// <summary>
+    /// Scans a quoted attribute value and emits Razor-aware tokens for inline
+    /// path/expression syntax while preserving the surrounding quote tokens.
+    /// </summary>
+    private static int ScanQuotedAttributeValue(
+        string text,
+        int quotePos,
+        int pos,
+        char quoteChar,
+        List<SyntaxToken> tokens,
+        ref bool inAttrValue)
+    {
+        tokens.Add(new SyntaxToken(quotePos, 1, TokenClassification.String));
+
+        int contentStart = pos;
+        bool sawRazor = false;
+
+        while (pos < text.Length)
+        {
+            if (text[pos] == quoteChar)
+            {
+                EmitQuotedValueContent(text, contentStart, pos, tokens, sawRazor);
+                tokens.Add(new SyntaxToken(pos, 1, TokenClassification.String));
+                inAttrValue = false;
+                return pos + 1;
+            }
+
+            if (TryGetRazorEscapeLength(text, pos, out int escapeLength))
+            {
+                pos += escapeLength;
+                continue;
+            }
+
+            if (text[pos] == '@')
+            {
+                var razorTokens = new List<SyntaxToken>();
+                int razorEnd = ScanRazorInline(text, pos, razorTokens, allowDirective: false);
+                if (razorEnd > pos)
+                {
+                    EmitQuotedValueContent(text, contentStart, pos, tokens, sawRazor);
+                    sawRazor = true;
+                    tokens.AddRange(razorTokens);
+                    pos = razorEnd;
+                    contentStart = pos;
+                    continue;
+                }
+            }
+
+            pos++;
+        }
+
+        EmitQuotedValueContent(text, contentStart, pos, tokens, sawRazor);
+        inAttrValue = true;
+        return pos;
+    }
+
+    private static void EmitQuotedValueContent(
+        string text,
+        int start,
+        int end,
+        List<SyntaxToken> tokens,
+        bool sawRazor)
+    {
+        if (end <= start)
+            return;
+
+        if (!sawRazor && IsNumericAttributeLiteral(text.AsSpan(start, end - start)))
+        {
+            tokens.Add(new SyntaxToken(start, end - start, TokenClassification.Number));
+            return;
+        }
+
+        tokens.Add(new SyntaxToken(start, end - start, TokenClassification.String));
     }
 
     /// <summary>
@@ -845,7 +971,409 @@ public sealed class JalxamlSyntaxHighlighter : ISyntaxHighlighter
         return pos;
     }
 
+    /// <summary>
+    /// Scans text content outside tags and extracts Razor path / expression / directive tokens.
+    /// </summary>
+    private static int ScanTextContent(string text, int pos, List<SyntaxToken> tokens)
+    {
+        int segmentStart = pos;
+
+        while (pos < text.Length && text[pos] != '<')
+        {
+            if (TryGetRazorEscapeLength(text, pos, out int escapeLength))
+            {
+                pos += escapeLength;
+                continue;
+            }
+
+            if (text[pos] == '@')
+            {
+                var razorTokens = new List<SyntaxToken>();
+                int razorEnd = ScanRazorInline(text, pos, razorTokens, allowDirective: true);
+                if (razorEnd > pos)
+                {
+                    if (pos > segmentStart)
+                        tokens.Add(new SyntaxToken(segmentStart, pos - segmentStart, TokenClassification.PlainText));
+
+                    tokens.AddRange(razorTokens);
+                    pos = razorEnd;
+                    segmentStart = pos;
+                    continue;
+                }
+            }
+
+            if (text[pos] is '{' or '}')
+            {
+                if (pos > segmentStart)
+                    tokens.Add(new SyntaxToken(segmentStart, pos - segmentStart, TokenClassification.PlainText));
+
+                tokens.Add(new SyntaxToken(pos, 1, TokenClassification.Operator));
+                pos++;
+                segmentStart = pos;
+                continue;
+            }
+
+            pos++;
+        }
+
+        if (pos > segmentStart)
+            tokens.Add(new SyntaxToken(segmentStart, pos - segmentStart, TokenClassification.PlainText));
+
+        return pos;
+    }
+
+    private static int ScanRazorInline(string text, int pos, List<SyntaxToken> tokens, bool allowDirective)
+    {
+        if (pos >= text.Length || text[pos] != '@')
+            return pos;
+
+        if (TryGetRazorEscapeLength(text, pos, out _))
+            return pos;
+
+        if (pos + 1 < text.Length && text[pos + 1] == '(')
+        {
+            tokens.Add(new SyntaxToken(pos, 1, TokenClassification.Operator));
+            tokens.Add(new SyntaxToken(pos + 1, 1, TokenClassification.Punctuation));
+            return ScanRazorExpression(text, pos + 2, tokens, initialParenDepth: 1);
+        }
+
+        if (pos + 1 < text.Length && text[pos + 1] == '{')
+        {
+            tokens.Add(new SyntaxToken(pos, 1, TokenClassification.Operator));
+            tokens.Add(new SyntaxToken(pos + 1, 1, TokenClassification.Punctuation));
+            return ScanRazorCodeBlock(text, pos + 2, tokens, initialBraceDepth: 1);
+        }
+
+        if (allowDirective && TryScanRazorDirective(text, pos, tokens, out int directiveEnd))
+            return directiveEnd;
+
+        if (TryScanRazorPath(text, pos + 1, out int pathEnd))
+        {
+            tokens.Add(new SyntaxToken(pos, 1, TokenClassification.Operator));
+            tokens.Add(new SyntaxToken(pos + 1, pathEnd - (pos + 1), TokenClassification.BindingPath));
+            return pathEnd;
+        }
+
+        return pos;
+    }
+
+    private static int ScanRazorCodeBlock(string text, int pos, List<SyntaxToken> tokens, int initialBraceDepth)
+    {
+        int braceDepth = initialBraceDepth;
+
+        while (pos < text.Length)
+        {
+            char c = text[pos];
+
+            if (char.IsWhiteSpace(c))
+            {
+                int whitespaceStart = pos;
+                while (pos < text.Length && char.IsWhiteSpace(text[pos]))
+                    pos++;
+
+                tokens.Add(new SyntaxToken(whitespaceStart, pos - whitespaceStart, TokenClassification.PlainText));
+                continue;
+            }
+
+            if (c == '"' || c == '\'')
+            {
+                int stringStart = pos;
+                char quote = c;
+                pos++;
+
+                bool escaped = false;
+                while (pos < text.Length)
+                {
+                    char inner = text[pos];
+                    if (escaped)
+                    {
+                        escaped = false;
+                        pos++;
+                        continue;
+                    }
+
+                    if (inner == '\\')
+                    {
+                        escaped = true;
+                        pos++;
+                        continue;
+                    }
+
+                    pos++;
+                    if (inner == quote)
+                        break;
+                }
+
+                tokens.Add(new SyntaxToken(stringStart, pos - stringStart, TokenClassification.String));
+                continue;
+            }
+
+            if (TryScanRazorPath(text, pos, out int identifierEnd))
+            {
+                string identifier = text[pos..identifierEnd];
+                int lookahead = identifierEnd;
+                while (lookahead < text.Length && char.IsWhiteSpace(text[lookahead]))
+                    lookahead++;
+
+                var classification = s_razorExpressionControlKeywords.Contains(identifier)
+                    ? TokenClassification.ControlKeyword
+                    : s_razorCodeKeywords.Contains(identifier)
+                        ? TokenClassification.Keyword
+                        : lookahead < text.Length && text[lookahead] == '('
+                            ? TokenClassification.Method
+                            : TokenClassification.Identifier;
+
+                tokens.Add(new SyntaxToken(pos, identifierEnd - pos, classification));
+                pos = identifierEnd;
+                continue;
+            }
+
+            if (char.IsDigit(c) || (c == '-' && pos + 1 < text.Length && char.IsDigit(text[pos + 1])))
+            {
+                int numberStart = pos;
+                pos++;
+                while (pos < text.Length && (char.IsDigit(text[pos]) || text[pos] == '.' ||
+                       text[pos] == '_' || text[pos] == 'e' || text[pos] == 'E' ||
+                       text[pos] == '+' || text[pos] == '-'))
+                {
+                    pos++;
+                }
+
+                tokens.Add(new SyntaxToken(numberStart, pos - numberStart, TokenClassification.Number));
+                continue;
+            }
+
+            if (c == '{')
+            {
+                tokens.Add(new SyntaxToken(pos, 1, TokenClassification.Punctuation));
+                pos++;
+                braceDepth++;
+                continue;
+            }
+
+            if (c == '}')
+            {
+                tokens.Add(new SyntaxToken(pos, 1, TokenClassification.Punctuation));
+                pos++;
+                braceDepth--;
+                if (braceDepth <= 0)
+                    return pos;
+                continue;
+            }
+
+            if (c is '(' or ')' or '[' or ']' or ',' or '.' or ';')
+            {
+                tokens.Add(new SyntaxToken(pos, 1, TokenClassification.Punctuation));
+                pos++;
+                continue;
+            }
+
+            if (c is '?' or ':' or '+' or '-' or '*' or '/' or '%' or '=' or '!' or '<' or '>' or '&' or '|' or '^')
+            {
+                int operatorStart = pos;
+                pos++;
+                while (pos < text.Length && text[pos] is '=' or '&' or '|' or '>' or '<')
+                    pos++;
+
+                tokens.Add(new SyntaxToken(operatorStart, pos - operatorStart, TokenClassification.Operator));
+                continue;
+            }
+
+            tokens.Add(new SyntaxToken(pos, 1, TokenClassification.PlainText));
+            pos++;
+        }
+
+        return pos;
+    }
+
+    private static bool TryScanRazorDirective(string text, int pos, List<SyntaxToken> tokens, out int end)
+    {
+        end = pos;
+        if (pos + 1 >= text.Length || text[pos] != '@' || !IsRazorIdentifierStart(text[pos + 1]))
+            return false;
+
+        int keywordStart = pos + 1;
+        int keywordEnd = ScanRazorIdentifier(text, keywordStart);
+        string keyword = text[keywordStart..keywordEnd];
+        if (!s_razorDirectiveKeywords.Contains(keyword))
+            return false;
+
+        tokens.Add(new SyntaxToken(pos, 1, TokenClassification.Operator));
+        tokens.Add(new SyntaxToken(keywordStart, keywordEnd - keywordStart,
+            keyword is "if" or "else" or "for" or "foreach" or "while" or "switch"
+                ? TokenClassification.ControlKeyword
+                : TokenClassification.Keyword));
+
+        int cursor = keywordEnd;
+        if (keyword is "if" or "for" or "foreach" or "while" or "switch")
+        {
+            while (cursor < text.Length && char.IsWhiteSpace(text[cursor]))
+                cursor++;
+
+            if (cursor < text.Length && text[cursor] == '(')
+            {
+                tokens.Add(new SyntaxToken(cursor, 1, TokenClassification.Punctuation));
+                cursor = ScanRazorExpression(text, cursor + 1, tokens, initialParenDepth: 1);
+            }
+        }
+
+        while (cursor < text.Length && char.IsWhiteSpace(text[cursor]))
+            cursor++;
+
+        if (cursor < text.Length && text[cursor] == '{')
+        {
+            tokens.Add(new SyntaxToken(cursor, 1, TokenClassification.Operator));
+            cursor++;
+        }
+
+        end = cursor;
+        return true;
+    }
+
+    private static int ScanRazorExpression(string text, int pos, List<SyntaxToken> tokens, int initialParenDepth)
+    {
+        int parenDepth = initialParenDepth;
+
+        while (pos < text.Length)
+        {
+            char c = text[pos];
+
+            if (char.IsWhiteSpace(c))
+            {
+                int whitespaceStart = pos;
+                while (pos < text.Length && char.IsWhiteSpace(text[pos]))
+                    pos++;
+
+                tokens.Add(new SyntaxToken(whitespaceStart, pos - whitespaceStart, TokenClassification.PlainText));
+                continue;
+            }
+
+            if (c == '"' || c == '\'')
+            {
+                int stringStart = pos;
+                char quote = c;
+                pos++;
+
+                bool escaped = false;
+                while (pos < text.Length)
+                {
+                    char inner = text[pos];
+                    if (escaped)
+                    {
+                        escaped = false;
+                        pos++;
+                        continue;
+                    }
+
+                    if (inner == '\\')
+                    {
+                        escaped = true;
+                        pos++;
+                        continue;
+                    }
+
+                    pos++;
+                    if (inner == quote)
+                        break;
+                }
+
+                tokens.Add(new SyntaxToken(stringStart, pos - stringStart, TokenClassification.String));
+                continue;
+            }
+
+            if (TryScanRazorPath(text, pos, out int pathEnd))
+            {
+                string identifier = text[pos..pathEnd];
+                var classification = s_razorExpressionControlKeywords.Contains(identifier)
+                    ? TokenClassification.ControlKeyword
+                    : s_razorExpressionKeywords.Contains(identifier)
+                        ? TokenClassification.Keyword
+                        : TokenClassification.BindingPath;
+                tokens.Add(new SyntaxToken(pos, pathEnd - pos, classification));
+                pos = pathEnd;
+                continue;
+            }
+
+            if (char.IsDigit(c) || (c == '-' && pos + 1 < text.Length && char.IsDigit(text[pos + 1])))
+            {
+                int numberStart = pos;
+                pos++;
+                while (pos < text.Length && (char.IsDigit(text[pos]) || text[pos] == '.' ||
+                       text[pos] == '_' || text[pos] == 'e' || text[pos] == 'E' ||
+                       text[pos] == '+' || text[pos] == '-'))
+                {
+                    pos++;
+                }
+
+                tokens.Add(new SyntaxToken(numberStart, pos - numberStart, TokenClassification.Number));
+                continue;
+            }
+
+            if (c == '(')
+            {
+                tokens.Add(new SyntaxToken(pos, 1, TokenClassification.Punctuation));
+                pos++;
+                parenDepth++;
+                continue;
+            }
+
+            if (c == ')')
+            {
+                tokens.Add(new SyntaxToken(pos, 1, TokenClassification.Punctuation));
+                pos++;
+                parenDepth--;
+                if (parenDepth <= 0)
+                    return pos;
+                continue;
+            }
+
+            if (c is '[' or ']' or '{' or '}' or ',' or '.')
+            {
+                tokens.Add(new SyntaxToken(pos, 1, TokenClassification.Punctuation));
+                pos++;
+                continue;
+            }
+
+            if (c is '?' or ':' or '+' or '-' or '*' or '/' or '%' or '=' or '!' or '<' or '>' or '&' or '|' or '^')
+            {
+                int operatorStart = pos;
+                pos++;
+                while (pos < text.Length && text[pos] is '=' or '&' or '|' or '>' or '<')
+                    pos++;
+
+                tokens.Add(new SyntaxToken(operatorStart, pos - operatorStart, TokenClassification.Operator));
+                continue;
+            }
+
+            tokens.Add(new SyntaxToken(pos, 1, TokenClassification.PlainText));
+            pos++;
+        }
+
+        return pos;
+    }
+
     #region Helpers
+
+    private static bool TryGetRazorEscapeLength(string text, int pos, out int escapeLength)
+    {
+        escapeLength = 0;
+        if (pos < 0 || pos >= text.Length)
+            return false;
+
+        if (text[pos] == '\\' && pos + 1 < text.Length && text[pos + 1] == '@')
+        {
+            escapeLength = 2;
+            return true;
+        }
+
+        if (text[pos] == '@' && pos + 1 < text.Length && text[pos + 1] == '@')
+        {
+            escapeLength = 2;
+            return true;
+        }
+
+        return false;
+    }
 
     private static int SkipWhitespace(string text, int pos)
     {
@@ -860,6 +1388,31 @@ public sealed class JalxamlSyntaxHighlighter : ISyntaxHighlighter
             pos++;
         return pos;
     }
+
+    private static bool TryScanRazorPath(string text, int pos, out int end)
+    {
+        end = pos;
+        if (pos >= text.Length || !IsRazorIdentifierStart(text[pos]))
+            return false;
+
+        end = pos + 1;
+        while (end < text.Length && IsRazorIdentifierPart(text[end]))
+            end++;
+        return true;
+    }
+
+    private static int ScanRazorIdentifier(string text, int pos)
+    {
+        while (pos < text.Length && (char.IsLetter(text[pos]) || text[pos] == '_'))
+            pos++;
+        return pos;
+    }
+
+    private static bool IsRazorIdentifierStart(char c) =>
+        c == '_' || c == '$' || char.IsLetter(c);
+
+    private static bool IsRazorIdentifierPart(char c) =>
+        char.IsLetterOrDigit(c) || c is '.' or '_' or '[' or ']' or '$';
 
     private static bool IsNameStartChar(char c) =>
         char.IsLetter(c) || c == '_';

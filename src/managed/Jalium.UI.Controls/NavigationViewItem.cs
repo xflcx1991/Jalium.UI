@@ -389,9 +389,6 @@ public sealed class NavigationViewItemHeader : ContentControl
     public NavigationViewItemHeader()
     {
         Focusable = false;
-        Height = 40;
-        Margin = new Thickness(12, 8, 12, 4);
-        Foreground = s_defaultFgBrush;
     }
 
     /// <summary>
@@ -413,7 +410,7 @@ public sealed class NavigationViewItemHeader : ContentControl
         if (!string.IsNullOrEmpty(text))
         {
             var fontMetrics = TextMeasurement.GetFontMetrics("Segoe UI Semibold", 14);
-            var brush = Foreground ?? s_defaultFgBrush;
+            var brush = ResolveForegroundBrush();
             var formattedText = new FormattedText(text, "Segoe UI Semibold", 14)
             {
                 Foreground = brush
@@ -430,6 +427,18 @@ public sealed class NavigationViewItemHeader : ContentControl
         if (Content is TextBlock textBlock) return textBlock.Text;
         return Content.ToString();
     }
+
+    private Brush ResolveForegroundBrush()
+    {
+        if (HasLocalValue(Control.ForegroundProperty) && Foreground != null)
+        {
+            return Foreground;
+        }
+
+        return TryFindResource("TextSecondary") as Brush
+            ?? Foreground
+            ?? s_defaultFgBrush;
+    }
 }
 
 /// <summary>
@@ -445,9 +454,6 @@ public sealed class NavigationViewItemSeparator : Control
     public NavigationViewItemSeparator()
     {
         Focusable = false;
-        Height = 1;
-        Margin = new Thickness(16, 8, 16, 8);
-        Background = s_defaultBackgroundBrush;
     }
 
     protected override void OnRender(object drawingContextObj)
@@ -458,7 +464,19 @@ public sealed class NavigationViewItemSeparator : Control
             return;
         }
 
-        var brush = Background ?? s_defaultBackgroundBrush;
+        var brush = ResolveBackgroundBrush();
         dc.DrawRectangle(brush, null, new Rect(0, 0, ActualWidth, 1));
+    }
+
+    private Brush ResolveBackgroundBrush()
+    {
+        if (HasLocalValue(Control.BackgroundProperty) && Background != null)
+        {
+            return Background;
+        }
+
+        return TryFindResource("ControlBorder") as Brush
+            ?? Background
+            ?? s_defaultBackgroundBrush;
     }
 }

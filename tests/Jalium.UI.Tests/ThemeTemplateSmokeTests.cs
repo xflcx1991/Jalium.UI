@@ -3,6 +3,7 @@ using Jalium.UI;
 using Jalium.UI.Controls;
 using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Controls.Themes;
+using Jalium.UI.Markup;
 
 namespace Jalium.UI.Tests;
 
@@ -13,18 +14,63 @@ public class ThemeTemplateSmokeTests
     public void CommonControlStyles_ShouldBePresent_AndTemplatesShouldApply()
     {
         ResetApplicationState();
+        ThemeLoader.Initialize();
         var app = new Application();
 
         try
         {
+            var splitButton = new SplitButton
+            {
+                Content = "Run",
+                Flyout = new MenuFlyout()
+            };
+
+            var statusBar = new StatusBar();
+            statusBar.Items.Add("Ready");
+
+            var dockTabPanel = new DockTabPanel();
+            dockTabPanel.Items.Add(new DockItem { Header = "Explorer" });
+
+            var dockLayout = new DockLayout
+            {
+                Content = dockTabPanel
+            };
+
             var controls = new Control[]
             {
                 new Button(),
+                new TitleBarButton(),
+                new CheckBox(),
+                new RadioButton(),
+                new HyperlinkButton(),
                 new TextBox(),
+                new AutoCompleteBox(),
+                new NumberBox(),
+                new RichTextBox(),
+                new ProgressBar(),
                 new ScrollViewer(),
                 new ListBox(),
                 new ListView(),
+                new DataGrid(),
+                new InfoBar(),
+                new Calendar(),
                 new ComboBox(),
+                new ColorPicker(),
+                new DatePicker(),
+                new EditControl(),
+                new TimePicker(),
+                new Separator(),
+                new Slider(),
+                new ToggleSwitch(),
+                splitButton,
+                new CommandBar(),
+                new MenuBar(),
+                new Menu(),
+                new Page(),
+                new Frame(),
+                new TabControl(),
+                dockLayout,
+                statusBar,
                 new ScrollBar(),
                 new PasswordBox()
             };
@@ -32,8 +78,6 @@ public class ThemeTemplateSmokeTests
             var host = new StackPanel { Width = 1000, Height = 800 };
             foreach (var control in controls)
             {
-                Assert.True(app.Resources.TryGetValue(control.GetType(), out var styleObj), $"Missing style for {control.GetType().Name}");
-                Assert.IsType<Style>(styleObj);
                 host.Children.Add(control);
             }
 

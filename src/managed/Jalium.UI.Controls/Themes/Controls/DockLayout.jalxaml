@@ -4,35 +4,35 @@
 
     <!-- DockLayout -->
     <Style TargetType="DockLayout">
-        <Setter Property="Background" Value="{StaticResource WindowBackground}" />
+        <Setter Property="Background" Value="{DynamicResource WindowBackground}" />
     </Style>
 
     <!-- DockTabPanel -->
     <Style TargetType="DockTabPanel">
-        <Setter Property="Background" Value="{StaticResource DockContentBackground}" />
-        <Setter Property="TabStripBackground" Value="{StaticResource DockTabStripBackground}" />
-        <Setter Property="TabStripBorderBrush" Value="{StaticResource DockTabStripBorder}" />
+        <Setter Property="Background" Value="{DynamicResource DockContentBackground}" />
+        <Setter Property="TabStripBackground" Value="{DynamicResource DockTabStripBackground}" />
+        <Setter Property="TabStripBorderBrush" Value="{DynamicResource DockTabStripBorder}" />
         <Setter Property="TabStripHeight" Value="28" />
         <Setter Property="FontSize" Value="12" />
     </Style>
 
     <!-- DockItem -->
     <Style TargetType="DockItem">
-        <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
-        <Setter Property="SelectedBackground" Value="{StaticResource DockTabItemSelectedBackground}" />
-        <Setter Property="HoverBackground" Value="{StaticResource DockTabItemHoverBackground}" />
-        <Setter Property="IndicatorBrush" Value="{StaticResource AccentBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="SelectedBackground" Value="{DynamicResource DockTabItemSelectedBackground}" />
+        <Setter Property="HoverBackground" Value="{DynamicResource DockTabItemHoverBackground}" />
+        <Setter Property="IndicatorBrush" Value="{DynamicResource AccentBrush}" />
         <Setter Property="Padding" Value="10,5,10,5" />
         <Style.Triggers>
             <PropertyTrigger Property="IsSelected" Value="True">
-                <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
             </PropertyTrigger>
         </Style.Triggers>
     </Style>
 
     <!-- DockSplitBar (internal) -->
     <Style TargetType="DockSplitBar">
-        <Setter Property="Background" Value="{StaticResource DockSplitterBackground}" />
+        <Setter Property="Background" Value="{DynamicResource DockSplitterBackground}" />
     </Style>
 
 </ResourceDictionary>

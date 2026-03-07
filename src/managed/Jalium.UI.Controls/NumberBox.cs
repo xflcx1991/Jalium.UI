@@ -64,7 +64,6 @@ public sealed class NumberBox : TextBoxBase, IImeSupport
     private static readonly SolidColorBrush s_spinPressedBrush = new(Color.FromRgb(50, 50, 50));
     private static readonly SolidColorBrush s_spinHoveredBrush = new(Color.FromRgb(70, 70, 70));
     private static readonly SolidColorBrush s_spinNormalBrush = new(Color.FromRgb(60, 60, 60));
-    private static readonly Pen s_arrowPen = new(s_whiteBrush, 1.5);
 
     #endregion
 
@@ -317,9 +316,6 @@ public sealed class NumberBox : TextBoxBase, IImeSupport
     /// </summary>
     public NumberBox()
     {
-        // Dark theme appearance
-        Height = DefaultHeight;
-
         // Set IBeam cursor for text input
         Cursor = Jalium.UI.Cursors.IBeam;
 
@@ -1085,7 +1081,7 @@ public sealed class NumberBox : TextBoxBase, IImeSupport
                 dc.DrawRoundedRectangle(Background, null, inputRect, cornerRadius);
             }
 
-            var borderBrush = IsKeyboardFocused ? s_focusBorderBrush : BorderBrush;
+            var borderBrush = IsKeyboardFocused ? ResolveFocusedBorderBrush() : BorderBrush;
             if (borderBrush != null && border.TotalWidth > 0)
             {
                 var pen = new Pen(borderBrush, border.Left);
@@ -1150,7 +1146,7 @@ public sealed class NumberBox : TextBoxBase, IImeSupport
         {
             var placeholderFormatted = new FormattedText(PlaceholderText, FontFamily ?? "Segoe UI", FontSize > 0 ? FontSize : 14)
             {
-                Foreground = s_placeholderBrush,
+                Foreground = ResolvePlaceholderBrush(),
                 MaxTextWidth = Math.Max(0, contentRect.Width),
                 MaxTextHeight = lineHeight,
                 Trimming = TextTrimming
@@ -1273,7 +1269,7 @@ public sealed class NumberBox : TextBoxBase, IImeSupport
         dc.DrawRectangle(buttonBg, null, rect);
 
         // Arrow
-        var arrowPen = s_arrowPen;
+        var arrowPen = new Pen(ResolveSecondaryTextBrush(), 1.5);
         var centerX = rect.X + rect.Width / 2;
         var centerY = rect.Y + rect.Height / 2;
         var arrowSize = 4;
@@ -1288,6 +1284,21 @@ public sealed class NumberBox : TextBoxBase, IImeSupport
             dc.DrawLine(arrowPen, new Point(centerX - arrowSize, centerY - arrowSize / 2), new Point(centerX, centerY + arrowSize / 2));
             dc.DrawLine(arrowPen, new Point(centerX, centerY + arrowSize / 2), new Point(centerX + arrowSize, centerY - arrowSize / 2));
         }
+    }
+
+    private Brush ResolveFocusedBorderBrush()
+    {
+        return TryFindResource("ControlBorderFocused") as Brush ?? s_focusBorderBrush;
+    }
+
+    private Brush ResolvePlaceholderBrush()
+    {
+        return TryFindResource("TextPlaceholder") as Brush ?? s_placeholderBrush;
+    }
+
+    private Brush ResolveSecondaryTextBrush()
+    {
+        return TryFindResource("TextSecondary") as Brush ?? s_whiteBrush;
     }
 
     #endregion

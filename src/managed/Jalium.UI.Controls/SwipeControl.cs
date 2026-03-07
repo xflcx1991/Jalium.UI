@@ -8,6 +8,8 @@ namespace Jalium.UI.Controls;
 /// </summary>
 public sealed class SwipeControl : ContentControl
 {
+    private static readonly SolidColorBrush s_defaultSwipeBackgroundBrush = new(Color.FromRgb(0, 120, 212));
+    private static readonly SolidColorBrush s_defaultSwipeForegroundBrush = new(Color.FromRgb(255, 255, 255));
     private double _translateX;
     private bool _isDragging;
     private Point _dragStart;
@@ -136,8 +138,8 @@ public sealed class SwipeControl : ContentControl
         for (int i = 0; i < items.Count; i++)
         {
             var item = items[i];
-            var bg = item.Background ?? new SolidColorBrush(Color.FromRgb(0, 120, 212));
-            var fg = item.Foreground ?? new SolidColorBrush(Color.FromRgb(255, 255, 255));
+            var bg = ResolveSwipeItemBackground(item);
+            var fg = ResolveSwipeItemForeground(item);
 
             // Background
             dc.DrawRectangle(bg, null, new Rect(x + i * itemWidth, y, itemWidth, height));
@@ -158,6 +160,21 @@ public sealed class SwipeControl : ContentControl
                 dc.DrawText(textFormatted, new Point(centerX - textFormatted.Width / 2, centerY + 4));
             }
         }
+    }
+
+    private Brush ResolveSwipeItemBackground(SwipeItem item)
+    {
+        return item.Background
+            ?? TryFindResource("AccentBrush") as Brush
+            ?? s_defaultSwipeBackgroundBrush;
+    }
+
+    private Brush ResolveSwipeItemForeground(SwipeItem item)
+    {
+        return item.Foreground
+            ?? TryFindResource("TextOnAccent") as Brush
+            ?? TryFindResource("TextPrimary") as Brush
+            ?? s_defaultSwipeForegroundBrush;
     }
 
     private void OnSwipeMouseDown(object sender, RoutedEventArgs e)

@@ -14,6 +14,7 @@ namespace Jalium.UI.Controls;
 public sealed class HyperlinkButton : ButtonBase
 {
     // Cached brushes for OnRender
+    private static readonly SolidColorBrush s_defaultBrush = new(Color.FromRgb(0, 102, 204));
     private static readonly SolidColorBrush s_hoverBrush = new(Color.FromRgb(0, 51, 153));
 
     #region Dependency Properties
@@ -75,11 +76,6 @@ public sealed class HyperlinkButton : ButtonBase
     /// </summary>
     public HyperlinkButton()
     {
-        // Default hyperlink appearance
-        Foreground = new SolidColorBrush(Color.FromRgb(0, 102, 204));
-        Background = null;
-        Padding = new Thickness(0);
-        BorderThickness = new Thickness(0);
         Cursor = Hand; // Hand cursor for clickable hyperlinks
     }
 
@@ -226,12 +222,11 @@ public sealed class HyperlinkButton : ButtonBase
         }
 
         // Determine foreground color based on state
-        var fgBrush = Foreground;
-        if (_isHovered || IsPressed)
-        {
-            // Darken on hover/press
-            fgBrush = s_hoverBrush;
-        }
+        var fgBrush = IsPressed
+            ? ResolveHyperlinkBrush("HyperlinkForegroundPressed", s_hoverBrush)
+            : _isHovered
+                ? ResolveHyperlinkBrush("HyperlinkForegroundHover", s_hoverBrush)
+                : Foreground ?? ResolveHyperlinkBrush("HyperlinkForeground", s_defaultBrush);
 
         // Draw content
         if (Content is string text && fgBrush != null)
@@ -255,6 +250,11 @@ public sealed class HyperlinkButton : ButtonBase
                 dc.DrawLine(underlinePen, new Point(textX, underlineY), new Point(textX + formattedText.Width, underlineY));
             }
         }
+    }
+
+    private SolidColorBrush ResolveHyperlinkBrush(string resourceKey, SolidColorBrush fallback)
+    {
+        return TryFindResource(resourceKey) as SolidColorBrush ?? fallback;
     }
 
     #endregion

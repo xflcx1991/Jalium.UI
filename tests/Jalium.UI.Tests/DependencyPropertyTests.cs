@@ -80,6 +80,18 @@ public class DependencyPropertyTests
         Assert.Equal(100, value);
     }
 
+    [Fact]
+    public void CoerceValue_ReentrantSameProperty_ShouldNotReenterCoercion()
+    {
+        var obj = new ReentrantCoerceDependencyObject();
+
+        obj.SetValue(ReentrantCoerceDependencyObject.ReentrantValueProperty, 42);
+        var value = (int)obj.GetValue(ReentrantCoerceDependencyObject.ReentrantValueProperty)!;
+
+        Assert.Equal(42, value);
+        Assert.Equal(3, obj.CoerceInvocationCount);
+    }
+
     private class TestDependencyObject : DependencyObject
     {
         public static readonly DependencyProperty NameProperty =
@@ -108,6 +120,28 @@ public class DependencyPropertyTests
         {
             var value = (int)baseValue;
             return Math.Clamp(value, 0, 100);
+        }
+    }
+
+    private class ReentrantCoerceDependencyObject : DependencyObject
+    {
+        public static readonly DependencyProperty ReentrantValueProperty =
+            DependencyProperty.Register("ReentrantValue", typeof(int), typeof(ReentrantCoerceDependencyObject),
+                new PropertyMetadata(0, null, CoerceReentrantValue));
+
+        public int CoerceInvocationCount { get; private set; }
+
+        private static object CoerceReentrantValue(DependencyObject d, object baseValue)
+        {
+            var obj = (ReentrantCoerceDependencyObject)d;
+            obj.CoerceInvocationCount++;
+
+            if (obj.CoerceInvocationCount < 5)
+            {
+                _ = obj.GetValue(ReentrantValueProperty);
+            }
+
+            return baseValue;
         }
     }
 }

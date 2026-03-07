@@ -78,6 +78,7 @@ JALXAML supports Razor-style syntax as additive sugar on top of existing `{Bindi
 
 - `@Path`
 - `@(expr)`
+- `@{ ... }`
 - mixed text templates (for string/object targets)
 - `@if(expr){<Element />}` block directives
 - escapes: `@@` and `\@`

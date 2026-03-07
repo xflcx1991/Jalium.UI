@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
@@ -8,7 +10,7 @@ namespace Jalium.UI.Controls;
 /// </summary>
 public sealed class MenuBar : Control
 {
-    private readonly List<MenuBarItem> _items = new();
+    private readonly ObservableCollection<MenuBarItem> _items = new();
     private StackPanel? _panel;
 
     /// <summary>
@@ -16,12 +18,15 @@ public sealed class MenuBar : Control
     /// </summary>
     public IList<MenuBarItem> Items => _items;
 
+    internal ObservableCollection<MenuBarItem> ItemCollection => _items;
+
     /// <summary>
     /// Initializes a new instance of the MenuBar class.
     /// </summary>
     public MenuBar()
     {
         Focusable = true;
+        _items.CollectionChanged += OnItemsCollectionChanged;
     }
 
     /// <inheritdoc />
@@ -66,7 +71,7 @@ public sealed class MenuBar : Control
     /// </summary>
     public void UpdateItems()
     {
-        _panel = null;
+        RefreshPanelChildren();
         InvalidateMeasure();
         InvalidateVisual();
     }
@@ -76,12 +81,39 @@ public sealed class MenuBar : Control
         if (_panel != null) return;
 
         _panel = new StackPanel { Orientation = Orientation.Horizontal };
+        AddVisualChild(_panel);
+        RefreshPanelChildren();
+    }
+
+    private void RefreshPanelChildren()
+    {
+        if (_panel == null)
+            return;
+
+        _panel.Children.Clear();
         foreach (var item in _items)
         {
             item.ParentMenuBar = this;
             _panel.Children.Add(item);
         }
-        AddVisualChild(_panel);
+    }
+
+    private void OnItemsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.OldItems != null)
+        {
+            foreach (var oldItem in e.OldItems.OfType<MenuBarItem>())
+            {
+                if (ReferenceEquals(oldItem.ParentMenuBar, this))
+                {
+                    oldItem.ParentMenuBar = null;
+                }
+            }
+        }
+
+        RefreshPanelChildren();
+        InvalidateMeasure();
+        InvalidateVisual();
     }
 
     internal void CloseAllMenus(MenuBarItem? except = null)

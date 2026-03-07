@@ -28,8 +28,9 @@ public sealed class MenuFlyoutSeparator : Control
         if (drawingContext is not DrawingContext dc) return;
         base.OnRender(drawingContext);
 
-        var brush = new Jalium.UI.Media.SolidColorBrush(
-            Jalium.UI.Media.Color.FromRgb(67, 67, 70));
+        var brush = Foreground
+            ?? TryFindResource("MenuFlyoutPresenterBorderBrush") as Brush
+            ?? new Jalium.UI.Media.SolidColorBrush(Jalium.UI.Media.Color.FromRgb(67, 67, 70));
         var pen = new Jalium.UI.Media.Pen(brush, 1);
 
         dc.DrawLine(pen, new Point(12, 4.5), new Point(RenderSize.Width - 12, 4.5));

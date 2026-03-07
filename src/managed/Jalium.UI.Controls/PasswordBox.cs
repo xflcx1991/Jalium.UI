@@ -158,14 +158,12 @@ public sealed class PasswordBox : Control, IImeSupport
 
     private static readonly SolidColorBrush s_placeholderBrush = new(Color.FromRgb(128, 128, 128));
     private static readonly SolidColorBrush s_focusBorderBrush = new(Color.FromRgb(0, 120, 212));
-    private static readonly Pen s_focusPen = new(s_focusBorderBrush, 1);
     private static readonly SolidColorBrush s_whiteBrush = new(Color.White);
     private static readonly SolidColorBrush s_compositionBgBrush = new(Color.FromRgb(60, 60, 80));
     private static readonly SolidColorBrush s_compositionTextBrush = new(Color.FromRgb(255, 255, 200));
     private static readonly SolidColorBrush s_compositionUnderlineBrush = new(Color.FromRgb(200, 200, 100));
     private static readonly Pen s_compositionUnderlinePen = new(s_compositionUnderlineBrush, 1);
     private static readonly SolidColorBrush s_revealIconBrush = new(Color.FromRgb(150, 150, 150));
-    private static readonly Pen s_revealIconPen = new(s_revealIconBrush, 1.5);
 
     #endregion
 
@@ -442,14 +440,6 @@ public sealed class PasswordBox : Control, IImeSupport
     {
         Focusable = true;
 
-        // Dark theme appearance
-        Background = new SolidColorBrush(Color.FromRgb(32, 32, 32));
-        BorderBrush = new SolidColorBrush(Color.FromRgb(70, 70, 70));
-        Foreground = new SolidColorBrush(Color.White);
-        BorderThickness = new Thickness(1);
-        Padding = new Thickness(6, 4, 6, 4);
-        FontSize = 14;
-
         // Set IBeam cursor for text input
         Cursor = Jalium.UI.Cursors.IBeam;
 
@@ -664,7 +654,7 @@ public sealed class PasswordBox : Control, IImeSupport
         {
             if (!string.IsNullOrEmpty(PlaceholderText))
             {
-                var placeholderBrush = s_placeholderBrush;
+                var placeholderBrush = ResolvePlaceholderBrush();
                 var formattedPlaceholder = new FormattedText(PlaceholderText, FontFamily ?? "Segoe UI", FontSize)
                 {
                     Foreground = placeholderBrush,
@@ -697,7 +687,7 @@ public sealed class PasswordBox : Control, IImeSupport
         // Draw focus indicator
         if (IsKeyboardFocused)
         {
-            var focusPen = s_focusPen;
+            var focusPen = new Pen(ResolveFocusedBorderBrush(), 1);
             if (CornerRadius.TopLeft > 0)
             {
                 dc.DrawRoundedRectangle(null, focusPen, bounds, CornerRadius.TopLeft, CornerRadius.TopLeft);
@@ -713,6 +703,21 @@ public sealed class PasswordBox : Control, IImeSupport
         {
             DrawRevealButton(dc, bounds);
         }
+    }
+
+    private Brush ResolveFocusedBorderBrush()
+    {
+        return TryFindResource("ControlBorderFocused") as Brush ?? s_focusBorderBrush;
+    }
+
+    private Brush ResolvePlaceholderBrush()
+    {
+        return TryFindResource("TextPlaceholder") as Brush ?? s_placeholderBrush;
+    }
+
+    private Brush ResolveSecondaryTextBrush()
+    {
+        return TryFindResource("TextSecondary") as Brush ?? s_revealIconBrush;
     }
 
     private void DrawText(DrawingContext dc, Rect contentRect, double lineHeight)
@@ -819,8 +824,8 @@ public sealed class PasswordBox : Control, IImeSupport
         var buttonRect = new Rect(bounds.Right - buttonSize - 4, (bounds.Height - buttonSize) / 2, buttonSize, buttonSize);
 
         // Draw eye icon placeholder
-        var iconBrush = s_revealIconBrush;
-        var iconPen = s_revealIconPen;
+        var iconBrush = ResolveSecondaryTextBrush();
+        var iconPen = new Pen(iconBrush, 1.5);
         var centerX = buttonRect.X + buttonRect.Width / 2;
         var centerY = buttonRect.Y + buttonRect.Height / 2;
 

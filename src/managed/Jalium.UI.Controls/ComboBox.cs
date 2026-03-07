@@ -13,8 +13,11 @@ public class ComboBox : Selector
 {
     private Popup? _popup;
     private ToggleButton? _toggleButton;
+    private TextBox? _editableTextBox;
+    private ContentPresenter? _selectionPresenter;
     private StackPanel? _itemsPanel;
     private bool _isDropDownOpen;
+    private bool _isUpdatingEditableText;
 
     // Animation
     private Shapes.Path? _arrowPath;
@@ -44,11 +47,25 @@ public class ComboBox : Selector
             new PropertyMetadata(200.0));
 
     /// <summary>
+    /// Identifies the IsEditable dependency property.
+    /// </summary>
+    public static readonly DependencyProperty IsEditableProperty =
+        DependencyProperty.Register(nameof(IsEditable), typeof(bool), typeof(ComboBox),
+            new PropertyMetadata(false, OnIsEditableChanged));
+
+    /// <summary>
+    /// Identifies the Text dependency property.
+    /// </summary>
+    public static readonly DependencyProperty TextProperty =
+        DependencyProperty.Register(nameof(Text), typeof(string), typeof(ComboBox),
+            new PropertyMetadata(string.Empty, OnTextChanged));
+
+    /// <summary>
     /// Identifies the Placeholder dependency property.
     /// </summary>
     public static readonly DependencyProperty PlaceholderTextProperty =
         DependencyProperty.Register(nameof(PlaceholderText), typeof(string), typeof(ComboBox),
-            new PropertyMetadata("Select an item..."));
+            new PropertyMetadata("Select an item...", OnPlaceholderTextChanged));
 
     /// <summary>
     /// Identifies the SelectionBoxItem dependency property.
@@ -63,6 +80,31 @@ public class ComboBox : Selector
         {
             // Trigger UI update when selection box item changes
             comboBox.InvalidateVisual();
+        }
+    }
+
+    private static void OnIsEditableChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is ComboBox comboBox)
+        {
+            comboBox.UpdateEditableModeVisualState();
+            comboBox.UpdateSelectionBoxItem();
+        }
+    }
+
+    private static void OnTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is ComboBox comboBox)
+        {
+            comboBox.OnTextChanged();
+        }
+    }
+
+    private static void OnPlaceholderTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is ComboBox comboBox)
+        {
+            comboBox.UpdatePlaceholderState();
         }
     }
 
@@ -86,6 +128,24 @@ public class ComboBox : Selector
     {
         get => (double)GetValue(MaxDropDownHeightProperty);
         set => SetValue(MaxDropDownHeightProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets whether users can type text directly into the control.
+    /// </summary>
+    public bool IsEditable
+    {
+        get => (bool)GetValue(IsEditableProperty);
+        set => SetValue(IsEditableProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the current text in the combo box.
+    /// </summary>
+    public string Text
+    {
+        get => (string)(GetValue(TextProperty) ?? string.Empty);
+        set => SetValue(TextProperty, value);
     }
 
     /// <summary>
@@ -155,9 +215,16 @@ public class ComboBox : Selector
             _popup.Closed -= OnPopupClosed;
         }
 
+        if (_editableTextBox != null)
+        {
+            _editableTextBox.TextChanged -= OnEditableTextBoxTextChanged;
+        }
+
         // Get template parts
         _toggleButton = GetTemplateChild("PART_ToggleButton") as ToggleButton;
         _popup = GetTemplateChild("PART_Popup") as Popup;
+        _editableTextBox = GetTemplateChild("PART_EditableTextBox") as TextBox;
+        _selectionPresenter = GetTemplateChild("PART_SelectionPresenter") as ContentPresenter;
 
         // Wire up toggle button
         if (_toggleButton != null)
@@ -172,6 +239,11 @@ public class ComboBox : Selector
             _popup.Closed += OnPopupClosed;
         }
 
+        if (_editableTextBox != null)
+        {
+            _editableTextBox.TextChanged += OnEditableTextBoxTextChanged;
+        }
+
         UpdatePopupPlacementAndWidth();
 
         // Find the arrow Path inside ToggleButton's template for rotation animation
@@ -183,6 +255,8 @@ public class ComboBox : Selector
         }
 
         // Update selection box
+        UpdatePlaceholderState();
+        UpdateEditableModeVisualState();
         UpdateSelectionBoxItem();
     }
 
@@ -241,6 +315,12 @@ public class ComboBox : Selector
 
     private void OnMouseDownHandler(object sender, RoutedEventArgs e)
     {
+        if (IsEditable && IsEventFromEditableTextBox(e))
+        {
+            // Let the inner TextBox handle focus/caret behavior.
+            return;
+        }
+
         // Toggle dropdown
         IsDropDownOpen = !IsDropDownOpen;
         e.Handled = true;
@@ -250,6 +330,21 @@ public class ComboBox : Selector
     {
         if (!IsEnabled) return;
         if (e is not KeyEventArgs keyArgs) return;
+
+        if (IsEditable && IsEventFromEditableTextBox(e))
+        {
+            // Preserve TextBox editing behavior in editable mode.
+            if (keyArgs.Key == Key.F4)
+            {
+                if (IsDropDownOpen)
+                    CloseDropDown();
+                else
+                    OpenDropDown();
+                e.Handled = true;
+            }
+
+            return;
+        }
 
         switch (keyArgs.Key)
         {
@@ -343,12 +438,150 @@ public class ComboBox : Selector
         var selectedItem = SelectedItem;
         if (selectedItem != null)
         {
-            SelectionBoxItem = GetItemText(selectedItem);
+            var selectedText = GetItemText(selectedItem);
+            SelectionBoxItem = selectedText;
+
+            if (IsEditable && !string.Equals(Text, selectedText, StringComparison.Ordinal))
+            {
+                Text = selectedText;
+            }
         }
         else
         {
+            if (IsEditable)
+            {
+                SelectionBoxItem = string.IsNullOrEmpty(Text) ? PlaceholderText : Text;
+            }
+            else
+            {
+                SelectionBoxItem = PlaceholderText;
+            }
+        }
+
+        UpdateEditableTextBoxText();
+    }
+
+    private void OnTextChanged()
+    {
+        if (IsEditable)
+        {
+            SelectionBoxItem = string.IsNullOrEmpty(Text) ? PlaceholderText : Text;
+            UpdateEditableTextBoxText();
+            SyncSelectionWithText(Text);
+        }
+    }
+
+    private void UpdatePlaceholderState()
+    {
+        if (_editableTextBox != null)
+        {
+            _editableTextBox.PlaceholderText = PlaceholderText;
+        }
+
+        if (SelectedItem == null && (!IsEditable || string.IsNullOrEmpty(Text)))
+        {
             SelectionBoxItem = PlaceholderText;
         }
+    }
+
+    private void UpdateEditableModeVisualState()
+    {
+        if (_selectionPresenter != null)
+        {
+            _selectionPresenter.Visibility = IsEditable ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        if (_editableTextBox != null)
+        {
+            _editableTextBox.Visibility = IsEditable ? Visibility.Visible : Visibility.Collapsed;
+            _editableTextBox.PlaceholderText = PlaceholderText;
+        }
+
+        UpdateEditableTextBoxText();
+    }
+
+    private void UpdateEditableTextBoxText()
+    {
+        if (!IsEditable || _editableTextBox == null) return;
+
+        if (!string.Equals(_editableTextBox.Text, Text, StringComparison.Ordinal))
+        {
+            _isUpdatingEditableText = true;
+            try
+            {
+                _editableTextBox.Text = Text;
+            }
+            finally
+            {
+                _isUpdatingEditableText = false;
+            }
+        }
+    }
+
+    private void OnEditableTextBoxTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!IsEditable || _isUpdatingEditableText || _editableTextBox == null) return;
+
+        var editableText = _editableTextBox.Text ?? string.Empty;
+        if (!string.Equals(Text, editableText, StringComparison.Ordinal))
+        {
+            Text = editableText;
+        }
+    }
+
+    private void SyncSelectionWithText(string text)
+    {
+        if (!IsEditable) return;
+
+        if (string.IsNullOrEmpty(text))
+        {
+            if (SelectedIndex != -1)
+            {
+                SelectedIndex = -1;
+            }
+            return;
+        }
+
+        var matchedIndex = -1;
+        var itemCount = GetItemCount();
+        for (int i = 0; i < itemCount; i++)
+        {
+            if (string.Equals(GetItemText(GetItemAt(i)), text, StringComparison.OrdinalIgnoreCase))
+            {
+                matchedIndex = i;
+                break;
+            }
+        }
+
+        if (matchedIndex >= 0)
+        {
+            if (SelectedIndex != matchedIndex)
+            {
+                SelectedIndex = matchedIndex;
+            }
+        }
+        else if (SelectedIndex != -1)
+        {
+            SelectedIndex = -1;
+        }
+    }
+
+    private bool IsEventFromEditableTextBox(RoutedEventArgs e)
+    {
+        if (_editableTextBox == null || e.OriginalSource is not Visual sourceVisual)
+        {
+            return false;
+        }
+
+        for (Visual? current = sourceVisual; current != null; current = current.VisualParent)
+        {
+            if (ReferenceEquals(current, _editableTextBox))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void OpenDropDown()

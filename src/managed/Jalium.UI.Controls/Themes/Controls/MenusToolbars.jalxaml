@@ -133,6 +133,24 @@
     </Style>
 
     <!-- ============================================== -->
+    <!-- StatusBar Style -->
+    <!-- ============================================== -->
+    <Style TargetType="StatusBar">
+        <Setter Property="Background" Value="{DynamicResource CommandBarBackground}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}" />
+        <Setter Property="BorderThickness" Value="0,1,0,0" />
+        <Setter Property="Padding" Value="8,0,8,0" />
+        <Setter Property="Height" Value="24" />
+        <Setter Property="SeparatorBrush" Value="{DynamicResource ControlBorder}" />
+    </Style>
+
+    <Style TargetType="StatusBarItem">
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="Padding" Value="8,2,8,2" />
+    </Style>
+
+    <!-- ============================================== -->
     <!-- MenuBar Style -->
     <!-- ============================================== -->
     <Style TargetType="MenuBar">
@@ -142,11 +160,43 @@
     </Style>
 
     <!-- ============================================== -->
+    <!-- Menu Style -->
+    <!-- ============================================== -->
+    <Style TargetType="Menu">
+        <Setter Property="Background" Value="{DynamicResource MenuBarBackground}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource CommandBarBorderBrush}" />
+        <Setter Property="Height" Value="28" />
+    </Style>
+
+    <!-- ============================================== -->
     <!-- MenuBarItem Style -->
     <!-- ============================================== -->
     <Style TargetType="MenuBarItem">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="Padding" Value="12,4,12,4" />
+    </Style>
+
+    <!-- ============================================== -->
+    <!-- MenuItem Style -->
+    <!-- ============================================== -->
+    <Style TargetType="MenuItem">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Height" Value="28" />
+        <Setter Property="Padding" Value="8,0,8,0" />
+    </Style>
+
+    <!-- ============================================== -->
+    <!-- ContextMenu Style -->
+    <!-- ============================================== -->
+    <Style TargetType="ContextMenu">
+        <Setter Property="Background" Value="{DynamicResource MenuFlyoutPresenterBackground}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource MenuFlyoutPresenterBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="2" />
+        <Setter Property="CornerRadius" Value="4" />
     </Style>
 
     <!-- ============================================== -->
@@ -179,6 +229,22 @@
     <!-- SwipeControl Style -->
     <!-- ============================================== -->
     <Style TargetType="SwipeControl">
+        <Setter Property="Background" Value="{DynamicResource SurfaceBackground}" />
+    </Style>
+
+    <!-- ============================================== -->
+    <!-- ToolBar Style -->
+    <!-- ============================================== -->
+    <Style TargetType="ToolBar">
+        <Setter Property="Background" Value="{DynamicResource CommandBarBackground}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="Padding" Value="4" />
+    </Style>
+
+    <!-- ============================================== -->
+    <!-- ToolBarTray Style -->
+    <!-- ============================================== -->
+    <Style TargetType="ToolBarTray">
         <Setter Property="Background" Value="{DynamicResource SurfaceBackground}" />
     </Style>
 

@@ -132,7 +132,6 @@ public sealed class TimePicker : Control
     private static readonly SolidColorBrush s_whiteBrush = new(Color.White);
     private static readonly SolidColorBrush s_placeholderBrush = new(Color.FromRgb(128, 128, 128));
     private static readonly SolidColorBrush s_iconBrush = new(Color.FromRgb(160, 160, 160));
-    private static readonly Pen s_iconPen = new(s_iconBrush, 1.5);
 
     #endregion
 
@@ -141,12 +140,6 @@ public sealed class TimePicker : Control
     public TimePicker()
     {
         Focusable = true;
-        Height = DefaultHeight;
-        Background = new SolidColorBrush(Color.FromRgb(45, 45, 45));
-        BorderBrush = new SolidColorBrush(Color.FromRgb(100, 100, 100));
-        BorderThickness = new Thickness(1);
-        Padding = new Thickness(8, 4, 8, 4);
-        CornerRadius = new CornerRadius(4);
 
         AddHandler(MouseDownEvent, new RoutedEventHandler(OnMouseDownHandler));
         AddHandler(KeyDownEvent, new RoutedEventHandler(OnKeyDownHandler));
@@ -219,8 +212,8 @@ public sealed class TimePicker : Control
             Height = ItemHeight,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Center,
-            Background = new SolidColorBrush(Color.FromRgb(0, 120, 212)),
-            Foreground = new SolidColorBrush(Color.White),
+            Background = ResolvePopupBrush("AccentBrush", new SolidColorBrush(Color.FromRgb(0, 120, 212))),
+            Foreground = ResolvePopupBrush("TextPrimary", new SolidColorBrush(Color.White)),
             FontSize = 18,
             CornerRadius = new CornerRadius(0, 0, 6, 6),
             BorderThickness = new Thickness(0)
@@ -234,8 +227,8 @@ public sealed class TimePicker : Control
 
         _flyoutBorder = new Border
         {
-            Background = new SolidColorBrush(Color.FromRgb(45, 45, 45)),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(67, 67, 70)),
+            Background = ResolvePopupBrush("SurfaceBackground", new SolidColorBrush(Color.FromRgb(45, 45, 45))),
+            BorderBrush = ResolvePopupBrush("ControlBorder", new SolidColorBrush(Color.FromRgb(67, 67, 70))),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
             Margin = new Thickness(0, 4, 0, 0),
@@ -257,7 +250,7 @@ public sealed class TimePicker : Control
         return new Border
         {
             Width = 1,
-            Background = new SolidColorBrush(Color.FromRgb(67, 67, 70))
+            Background = ResolvePopupBrush("ControlBorder", new SolidColorBrush(Color.FromRgb(67, 67, 70)))
         };
     }
 
@@ -313,7 +306,7 @@ public sealed class TimePicker : Control
         {
             Text = text,
             FontSize = 16,
-            Foreground = new SolidColorBrush(Color.White),
+            Foreground = ResolvePopupBrush("TextPrimary", new SolidColorBrush(Color.White)),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -352,7 +345,7 @@ public sealed class TimePicker : Control
                 if (_hourColumn.Children[i] is Border border)
                 {
                     var hourValue = minHour + i;
-                    border.Background = hourValue == _pendingHour ? SelectedItemBg : TransparentBg;
+                    border.Background = hourValue == _pendingHour ? ResolveSelectedItemBackground() : TransparentBg;
                 }
             }
         }
@@ -366,7 +359,7 @@ public sealed class TimePicker : Control
                 if (_minuteColumn.Children[i] is Border border)
                 {
                     var minuteValue = i * increment;
-                    border.Background = minuteValue == _pendingMinute ? SelectedItemBg : TransparentBg;
+                    border.Background = minuteValue == _pendingMinute ? ResolveSelectedItemBackground() : TransparentBg;
                 }
             }
         }
@@ -378,7 +371,7 @@ public sealed class TimePicker : Control
             {
                 if (_periodColumn.Children[i] is Border border)
                 {
-                    border.Background = i == _pendingPeriodIndex ? SelectedItemBg : TransparentBg;
+                    border.Background = i == _pendingPeriodIndex ? ResolveSelectedItemBackground() : TransparentBg;
                 }
             }
         }
@@ -684,7 +677,7 @@ public sealed class TimePicker : Control
         }
 
         // Draw border
-        var borderBrush = IsFocused ? s_focusBorderBrush : BorderBrush;
+        var borderBrush = IsFocused ? ResolveFocusedBorderBrush() : BorderBrush;
         if (borderBrush != null && BorderThickness.TotalWidth > 0)
         {
             var pen = new Pen(borderBrush, BorderThickness.Left);
@@ -703,7 +696,7 @@ public sealed class TimePicker : Control
         else
         {
             displayText = PlaceholderText ?? "Select a time";
-            textBrush = s_placeholderBrush;
+            textBrush = ResolvePlaceholderBrush();
         }
 
         var textFormatted = new FormattedText(displayText, FontFamily ?? "Segoe UI", FontSize > 0 ? FontSize : 14)
@@ -720,9 +713,34 @@ public sealed class TimePicker : Control
         DrawDropdownButton(dc, _dropdownButtonRect);
     }
 
+    private Brush ResolveFocusedBorderBrush()
+    {
+        return TryFindResource("ControlBorderFocused") as Brush ?? s_focusBorderBrush;
+    }
+
+    private Brush ResolvePlaceholderBrush()
+    {
+        return TryFindResource("TextPlaceholder") as Brush ?? s_placeholderBrush;
+    }
+
+    private Brush ResolveSecondaryTextBrush()
+    {
+        return TryFindResource("TextSecondary") as Brush ?? s_iconBrush;
+    }
+
+    private Brush ResolveSelectedItemBackground()
+    {
+        return TryFindResource("AccentBrush") as Brush ?? SelectedItemBg;
+    }
+
+    private Brush ResolvePopupBrush(string resourceKey, Brush fallback)
+    {
+        return TryFindResource(resourceKey) as Brush ?? fallback;
+    }
+
     private void DrawDropdownButton(DrawingContext dc, Rect rect)
     {
-        var iconPen = s_iconPen;
+        var iconPen = new Pen(ResolveSecondaryTextBrush(), 1.5);
 
         var centerX = rect.X + rect.Width / 2;
         var centerY = rect.Y + rect.Height / 2;

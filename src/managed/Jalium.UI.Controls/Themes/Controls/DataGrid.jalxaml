@@ -14,7 +14,7 @@
         <Setter Property="ColumnHeaderHeight" Value="32" />
         <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource ControlBorder}" />
         <Setter Property="VerticalGridLinesBrush" Value="{StaticResource ControlBorder}" />
-        <Setter Property="AlternatingRowBackground" Value="#232323" />
+        <Setter Property="AlternatingRowBackground" Value="{StaticResource ControlBackgroundPressed}" />
         <Setter Property="RowBackground" Value="Transparent" />
         <Setter Property="Template">
             <ControlTemplate TargetType="DataGrid">
@@ -31,7 +31,7 @@
                         <!-- Column headers area (ClipToBounds to clip when synced with horizontal scroll) -->
                         <Border Name="PART_ColumnHeadersBorder"
                                 Grid.Row="0"
-                                Background="#2D2D2D"
+                                Background="{StaticResource ControlBackground}"
                                 BorderBrush="{StaticResource ControlBorder}"
                                 BorderThickness="0,0,0,1"
                                 ClipToBounds="True">
@@ -79,7 +79,7 @@
             </PropertyTrigger>
             <PropertyTrigger Property="IsSelected" Value="True">
                 <Setter Property="Background" Value="{StaticResource AccentBrush}" />
-                <Setter Property="Foreground" Value="#FFFFFF" />
+                <Setter Property="Foreground" Value="{StaticResource TextOnAccent}" />
             </PropertyTrigger>
         </Style.Triggers>
     </Style>
@@ -108,7 +108,7 @@
     <!-- DataGridColumnHeader Style -->
     <!-- ============================================== -->
     <Style TargetType="DataGridColumnHeader">
-        <Setter Property="Background" Value="#2D2D2D" />
+        <Setter Property="Background" Value="{StaticResource ControlBackground}" />
         <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
         <Setter Property="Padding" Value="8,6,4,6" />
         <Setter Property="Template">

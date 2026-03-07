@@ -150,7 +150,6 @@ public sealed class DatePicker : Control
     private static readonly SolidColorBrush s_whiteBrush = new(Color.White);
     private static readonly SolidColorBrush s_placeholderBrush = new(Color.FromRgb(128, 128, 128));
     private static readonly SolidColorBrush s_iconBrush = new(Color.FromRgb(160, 160, 160));
-    private static readonly Pen s_iconPen = new(s_iconBrush, 1.5);
 
     #endregion
 
@@ -180,12 +179,6 @@ public sealed class DatePicker : Control
     public DatePicker()
     {
         Focusable = true;
-        Height = DefaultHeight;
-        Background = new SolidColorBrush(Color.FromRgb(45, 45, 45));
-        BorderBrush = new SolidColorBrush(Color.FromRgb(100, 100, 100));
-        BorderThickness = new Thickness(1);
-        Padding = new Thickness(8, 4, 8, 4);
-        CornerRadius = new CornerRadius(4);
 
         AddHandler(MouseDownEvent, new RoutedEventHandler(OnMouseDownHandler));
         AddHandler(KeyDownEvent, new RoutedEventHandler(OnKeyDownHandler));
@@ -205,8 +198,8 @@ public sealed class DatePicker : Control
 
         _calendarBorder = new Border
         {
-            Background = new SolidColorBrush(Color.FromRgb(45, 45, 45)),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(67, 67, 70)),
+            Background = ResolvePopupBrush("SurfaceBackground", "ControlBackground", new SolidColorBrush(Color.FromRgb(45, 45, 45))),
+            BorderBrush = ResolvePopupBrush("ControlBorder", "MenuFlyoutPresenterBorderBrush", new SolidColorBrush(Color.FromRgb(67, 67, 70))),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
             Padding = new Thickness(4),
@@ -222,6 +215,15 @@ public sealed class DatePicker : Control
             StaysOpen = false
         };
         _popup.Closed += OnPopupClosed;
+    }
+
+    private Brush ResolvePopupBrush(string primaryKey, string secondaryKey, Brush fallback)
+    {
+        if (TryFindResource(primaryKey) is Brush primary)
+            return primary;
+        if (TryFindResource(secondaryKey) is Brush secondary)
+            return secondary;
+        return fallback;
     }
 
     private void OpenDropDown()
@@ -466,7 +468,7 @@ public sealed class DatePicker : Control
         }
 
         // Draw border
-        var borderBrush = IsFocused ? s_focusBorderBrush : BorderBrush;
+        var borderBrush = IsFocused ? ResolveFocusedBorderBrush() : BorderBrush;
         if (borderBrush != null && BorderThickness.TotalWidth > 0)
         {
             var pen = new Pen(borderBrush, BorderThickness.Left);
@@ -486,7 +488,7 @@ public sealed class DatePicker : Control
         else
         {
             displayText = PlaceholderText ?? "Select a date";
-            textBrush = s_placeholderBrush;
+            textBrush = ResolvePlaceholderBrush();
         }
 
         var textFormatted = new FormattedText(displayText, FontFamily ?? "Segoe UI", FontSize > 0 ? FontSize : 14)
@@ -505,7 +507,7 @@ public sealed class DatePicker : Control
 
     private void DrawDropdownButton(DrawingContext dc, Rect rect)
     {
-        var iconPen = s_iconPen;
+        var iconPen = new Pen(ResolveSecondaryTextBrush(), 1.5);
 
         var centerX = rect.X + rect.Width / 2;
         var centerY = rect.Y + rect.Height / 2;
@@ -521,6 +523,21 @@ public sealed class DatePicker : Control
         // Draw calendar hangers
         dc.DrawLine(iconPen, new Point(calRect.Left + 3, calRect.Top - 2), new Point(calRect.Left + 3, calRect.Top + 2));
         dc.DrawLine(iconPen, new Point(calRect.Right - 3, calRect.Top - 2), new Point(calRect.Right - 3, calRect.Top + 2));
+    }
+
+    private Brush ResolveFocusedBorderBrush()
+    {
+        return TryFindResource("ControlBorderFocused") as Brush ?? s_focusBorderBrush;
+    }
+
+    private Brush ResolvePlaceholderBrush()
+    {
+        return TryFindResource("TextPlaceholder") as Brush ?? s_placeholderBrush;
+    }
+
+    private Brush ResolveSecondaryTextBrush()
+    {
+        return TryFindResource("TextSecondary") as Brush ?? s_iconBrush;
     }
 
     #endregion

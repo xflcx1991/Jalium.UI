@@ -1,3 +1,4 @@
+using System.Drawing;
 using Jalium.UI;
 
 namespace Jalium.UI.Interop;
@@ -375,6 +376,15 @@ public sealed class RenderTarget : IDisposable
     }
 
     /// <summary>
+    /// Punches a transparent rectangular hole in the current render target.
+    /// </summary>
+    public void PunchTransparentRect(float x, float y, float width, float height)
+    {
+        ThrowIfDisposed();
+        NativeMethods.PunchTransparentRect(_handle, x, y, width, height);
+    }
+
+    /// <summary>
     /// Pushes an opacity value.
     /// </summary>
     public void PushOpacity(float opacity)
@@ -470,6 +480,29 @@ public sealed class RenderTarget : IDisposable
 
         var resultCode = NativeMethods.RenderTargetDestroyWebViewVisual(_handle, visualTarget);
         ThrowIfNativeFailure("DestroyWebViewVisual", resultCode);
+    }
+
+    /// <summary>
+    /// Updates the placement and visible clip of a composition visual created for WebView hosting.
+    /// </summary>
+    public void SetWebViewCompositionVisualPlacement(nint visualTarget, Rectangle bounds, System.Drawing.Point contentOffset)
+    {
+        ThrowIfDisposed();
+        if (visualTarget == nint.Zero)
+        {
+            return;
+        }
+
+        var resultCode = NativeMethods.RenderTargetSetWebViewVisualPlacement(
+            _handle,
+            visualTarget,
+            bounds.X,
+            bounds.Y,
+            bounds.Width,
+            bounds.Height,
+            contentOffset.X,
+            contentOffset.Y);
+        ThrowIfNativeFailure("SetWebViewVisualPlacement", resultCode);
     }
 
     /// <summary>

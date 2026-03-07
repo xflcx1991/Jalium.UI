@@ -110,6 +110,11 @@ public sealed partial class DockItem : HeaderedContentControl
 
     // Reorder preview drag state
     private bool _isReorderDragging;
+    private readonly TranslateTransform _reorderDragTransform = new();
+    private bool _hasReorderVisualState;
+    private object? _reorderOriginalRenderTransform;
+    private double _reorderOriginalOpacity = 1.0;
+    private int _reorderOriginalZIndex;
 
     // Floating window drag state (used when dragging a tab in a floating window)
     private bool _isDraggingFloatingWindow;
@@ -302,10 +307,15 @@ public sealed partial class DockItem : HeaderedContentControl
             }
 
             var posInPanel = mouseArgs.GetPosition((UIElement)OwnerPanel);
+            UpdateReorderDragVisual(posInPanel);
 
-            // Vertical escape: if cursor moves too far from tab strip, tear off instead
-            var tabStripHeight = OwnerPanel.TabStripHeight;
-            if (posInPanel.Y < -20 || posInPanel.Y > tabStripHeight + 20)
+            // Escape from the tab-strip band: if cursor moves too far away on the cross-axis,
+            // switch from reorder preview to tear-off behavior.
+            var tabStripRect = OwnerPanel.GetTabStripInteractionRect();
+            var escapedStrip = OwnerPanel.IsVerticalTabStrip
+                ? (posInPanel.X < tabStripRect.X - 20 || posInPanel.X > tabStripRect.Right + 20)
+                : (posInPanel.Y < tabStripRect.Y - 20 || posInPanel.Y > tabStripRect.Bottom + 20);
+            if (escapedStrip)
             {
                 CancelReorderDrag();
                 if (CanDragFloatingWindow())
@@ -363,12 +373,15 @@ public sealed partial class DockItem : HeaderedContentControl
             {
                 _isMouseDown = false;
 
-                // Horizontal drag → enter reorder preview mode
-                if (Math.Abs(dx) > Math.Abs(dy) && OwnerPanel.Items.Count > 1)
+                // Primary-axis drag (X for horizontal strip, Y for vertical strip) enters reorder mode.
+                var isPrimaryDrag = OwnerPanel.IsVerticalTabStrip
+                    ? Math.Abs(dy) > Math.Abs(dx)
+                    : Math.Abs(dx) > Math.Abs(dy);
+                if (isPrimaryDrag && OwnerPanel.Items.Count > 1)
                 {
                     StartReorderDrag();
                 }
-                // Vertical drag → tear off / move floating window
+                // Cross-axis drag tears off / moves floating window.
                 else if (CanDragFloatingWindow())
                 {
                     StartFloatingWindowDrag();
@@ -392,9 +405,61 @@ public sealed partial class DockItem : HeaderedContentControl
         }
     }
 
+    private void BeginReorderDragVisual()
+    {
+        if (_hasReorderVisualState)
+            return;
+
+        _reorderOriginalRenderTransform = RenderTransform;
+        _reorderOriginalOpacity = Opacity;
+        _reorderOriginalZIndex = Panel.GetZIndex(this);
+        _hasReorderVisualState = true;
+
+        _reorderDragTransform.X = 0;
+        _reorderDragTransform.Y = 0;
+        RenderTransform = _reorderDragTransform;
+        Opacity = Math.Min(_reorderOriginalOpacity, 0.94);
+        Panel.SetZIndex(this, 10000);
+    }
+
+    private void UpdateReorderDragVisual(Point panelPosition)
+    {
+        if (OwnerPanel == null || !_hasReorderVisualState)
+            return;
+
+        var deltaX = panelPosition.X - _mouseDownPos.X;
+        var deltaY = panelPosition.Y - _mouseDownPos.Y;
+
+        // Keep drag preview inside the strip flow direction to avoid jumpy visuals.
+        if (OwnerPanel.IsVerticalTabStrip)
+        {
+            _reorderDragTransform.X = 0;
+            _reorderDragTransform.Y = deltaY;
+        }
+        else
+        {
+            _reorderDragTransform.X = deltaX;
+            _reorderDragTransform.Y = 0;
+        }
+    }
+
+    private void EndReorderDragVisual()
+    {
+        _reorderDragTransform.X = 0;
+        _reorderDragTransform.Y = 0;
+
+        if (!_hasReorderVisualState)
+            return;
+
+        RenderTransform = _reorderOriginalRenderTransform;
+        Opacity = _reorderOriginalOpacity;
+        Panel.SetZIndex(this, _reorderOriginalZIndex);
+        _hasReorderVisualState = false;
+    }
+
     /// <summary>
     /// Enters reorder preview mode. Captures the mouse and records which tab is being dragged.
-    /// The tab doesn't move until the mouse is released.
+    /// The tab follows the cursor along the strip while the move target is tracked.
     /// </summary>
     private void StartReorderDrag()
     {
@@ -405,17 +470,19 @@ public sealed partial class DockItem : HeaderedContentControl
 
         _isReorderDragging = true;
         CaptureMouse();
+        BeginReorderDragVisual();
 
         OwnerPanel.ReorderDragItemIndex = index;
         OwnerPanel.ReorderInsertIndex = -1;
     }
 
     /// <summary>
-    /// Finishes reorder preview: performs the actual tab move to the indicated position.
+    /// Finishes reorder preview and commits the tab move to the tracked insertion position.
     /// </summary>
     private void FinishReorderDrag()
     {
         _isReorderDragging = false;
+        EndReorderDragVisual();
         ReleaseMouseCapture();
 
         if (OwnerPanel == null) return;
@@ -445,6 +512,7 @@ public sealed partial class DockItem : HeaderedContentControl
     private void CancelReorderDrag()
     {
         _isReorderDragging = false;
+        EndReorderDragVisual();
         ReleaseMouseCapture();
 
         if (OwnerPanel != null)
@@ -619,7 +687,7 @@ public sealed partial class DockItem : HeaderedContentControl
     /// </summary>
     private static bool DockToSide(DockTabPanel targetPanel, DockItem newItem, DockPosition position)
     {
-        var newTabPanel = new DockTabPanel();
+        var newTabPanel = CreateCompatibleDockTabPanel(targetPanel);
         newTabPanel.Items.Add(newItem);
 
         var parent = targetPanel.VisualParent;
@@ -664,9 +732,6 @@ public sealed partial class DockItem : HeaderedContentControl
     /// </summary>
     private static bool DockToEdge(DockLayout layout, DockItem newItem, DockPosition position)
     {
-        var newTabPanel = new DockTabPanel();
-        newTabPanel.Items.Add(newItem);
-
         var canonicalPos = position switch
         {
             DockPosition.EdgeLeft => DockPosition.Left,
@@ -683,6 +748,9 @@ public sealed partial class DockItem : HeaderedContentControl
         var insertBefore = canonicalPos is DockPosition.Left or DockPosition.Top;
 
         var existingContent = layout.Content as UIElement;
+        var styleSource = FindFirstDockTabPanel(existingContent);
+        var newTabPanel = CreateCompatibleDockTabPanel(styleSource);
+        newTabPanel.Items.Add(newItem);
         layout.Content = null;
 
         if (existingContent is DockSplitPanel existingSplit && existingSplit.Orientation == orientation)
@@ -755,7 +823,8 @@ public sealed partial class DockItem : HeaderedContentControl
         };
 
         // Wrap content in a DockTabPanel for consistent look
-        var tabPanel = new DockTabPanel { IsFloating = true };
+        var tabPanel = CreateCompatibleDockTabPanel(panel);
+        tabPanel.IsFloating = true;
         var newItem = CreateTransferredDockItem(content, headerText);
         tabPanel.Items.Add(newItem);
         floatingWindow.Content = tabPanel;
@@ -784,6 +853,35 @@ public sealed partial class DockItem : HeaderedContentControl
         // Immediately start floating drag on the new DockItem so user can
         // seamlessly continue dragging the floating window without releasing the mouse
         newItem.BeginFloatingDrag(floatingWindow);
+    }
+
+    private static DockTabPanel CreateCompatibleDockTabPanel(DockTabPanel? source)
+    {
+        var panel = new DockTabPanel();
+        if (source == null)
+            return panel;
+
+        panel.TabStripPlacement = source.TabStripPlacement;
+        panel.TabStripHeight = source.TabStripHeight;
+        panel.TabStripBackground = source.TabStripBackground;
+        panel.TabStripBorderBrush = source.TabStripBorderBrush;
+        return panel;
+    }
+
+    private static DockTabPanel? FindFirstDockTabPanel(UIElement? root)
+    {
+        if (root is DockTabPanel tabPanel)
+            return tabPanel;
+        if (root is not DockSplitPanel splitPanel)
+            return null;
+
+        foreach (var child in splitPanel.Children)
+        {
+            if (FindFirstDockTabPanel(child) is DockTabPanel found)
+                return found;
+        }
+
+        return null;
     }
 
     private DockItem CreateTransferredDockItem(object? content, string headerText)
@@ -963,8 +1061,19 @@ public sealed partial class DockItem : HeaderedContentControl
         if (CanClose)
             desiredWidth += 20;
 
-        var width = double.IsInfinity(availableSize.Width) ? desiredWidth : Math.Min(desiredWidth, availableSize.Width);
-        return new Size(Math.Max(width, 40), availableSize.Height);
+        var isVerticalStrip = OwnerPanel?.IsVerticalTabStrip == true;
+        var width = double.IsInfinity(availableSize.Width)
+            ? desiredWidth
+            : isVerticalStrip
+                ? availableSize.Width
+                : Math.Min(desiredWidth, availableSize.Width);
+
+        var minHeight = Math.Max(20, Math.Ceiling(fontSize + 10));
+        var height = double.IsInfinity(availableSize.Height)
+            ? minHeight
+            : Math.Max(minHeight, availableSize.Height);
+
+        return new Size(Math.Max(width, 40), height);
     }
 
     protected override Size ArrangeOverride(Size finalSize)
@@ -981,31 +1090,51 @@ public sealed partial class DockItem : HeaderedContentControl
         }
 
         var bounds = new Rect(0, 0, ActualWidth, ActualHeight);
-        var activeTextBrush = ResolveBrush("OneTabActiveText", "OneTextPrimary", s_fallbackActiveTextBrush);
-        var inactiveTextBrush = Foreground ?? ResolveBrush("OneTabInactiveText", "TextSecondary", s_fallbackInactiveTextBrush);
-        var closeButtonHoverBrush = ResolveBrush("OneSurfaceHover", "ControlBackgroundHover", s_fallbackCloseButtonHoverBrush);
-        var closeButtonPressedBrush = ResolveBrush("OneSurfaceActive", "ControlBackgroundPressed", s_fallbackCloseButtonPressedBrush);
-        var indicatorBrush = IndicatorBrush ?? ResolveBrush("OneTabActiveBorder", "AccentBrush", s_fallbackIndicatorBrush);
-        var dragDimBrush = ResolveBrush("OneOverlayBackdrop", "HighlightBackground", s_fallbackDragDimBrush);
+        var activeTextBrush = ResolveActiveTextBrush();
+        var inactiveTextBrush = ResolveInactiveTextBrush();
+        var closeButtonHoverBrush = ResolveCloseButtonHoverBrush();
+        var closeButtonPressedBrush = ResolveCloseButtonPressedBrush();
+        var indicatorBrush = ResolveIndicatorBrush();
+        var dragDimBrush = ResolveDragDimBrush();
         var padding = GetEffectivePadding();
 
         // Background based on state
         Brush bgBrush;
         if (IsSelected)
-            bgBrush = SelectedBackground ?? ResolveBrush("OneTabActiveBackground", "DockTabItemSelectedBackground", s_fallbackSelectedBackgroundBrush);
+            bgBrush = ResolveSelectedBackgroundBrush();
         else if (IsMouseOver)
-            bgBrush = HoverBackground ?? ResolveBrush("OneTabHoverBackground", "DockTabItemHoverBackground", s_fallbackHoverBackgroundBrush);
+            bgBrush = ResolveHoverBackgroundBrush();
         else
             bgBrush = Background ?? s_transparentBrush;
 
-        // Active/hover tab fill uses the same top radius as DockTabPanel border path.
+        var placement = OwnerPanel?.TabStripPlacement ?? Dock.Top;
+        var activeCorners = placement switch
+        {
+            Dock.Bottom => new CornerRadius(0, 0, 4, 4),
+            Dock.Left => new CornerRadius(4, 0, 0, 4),
+            Dock.Right => new CornerRadius(0, 4, 4, 0),
+            _ => new CornerRadius(4, 4, 0, 0),
+        };
+
         if (IsSelected)
-            dc.DrawRoundedRectangle(bgBrush, null,
-                new Rect(0, 0, ActualWidth, ActualHeight + 1), new CornerRadius(4, 4, 0, 0));
+        {
+            var selectedRect = placement switch
+            {
+                Dock.Bottom => new Rect(0, -1, ActualWidth, ActualHeight + 1),
+                Dock.Left => new Rect(0, 0, ActualWidth + 1, ActualHeight),
+                Dock.Right => new Rect(-1, 0, ActualWidth + 1, ActualHeight),
+                _ => new Rect(0, 0, ActualWidth, ActualHeight + 1),
+            };
+            dc.DrawRoundedRectangle(bgBrush, null, selectedRect, activeCorners);
+        }
         else if (IsMouseOver)
-            dc.DrawRoundedRectangle(bgBrush, null, bounds, new CornerRadius(4, 4, 0, 0));
+        {
+            dc.DrawRoundedRectangle(bgBrush, null, bounds, activeCorners);
+        }
         else
+        {
             dc.DrawRectangle(bgBrush, null, bounds);
+        }
 
         // Header text
         var headerText = Header?.ToString() ?? "";
@@ -1065,32 +1194,15 @@ public sealed partial class DockItem : HeaderedContentControl
 
         // Selected tab border is now drawn by DockTabPanel as part of the unified border path
 
-        // Reorder insertion indicator line
-        if (OwnerPanel != null && OwnerPanel.ReorderInsertIndex >= 0)
+        // Dragging tab preview: highlight the tab itself instead of drawing an insertion line.
+        if (_isReorderDragging)
         {
-            var myIndex = OwnerPanel.Items.IndexOf(this);
-            var insertIndex = OwnerPanel.ReorderInsertIndex;
-            var lineWidth = 2.0;
-            if (insertIndex == myIndex)
+            var dragPen = new Pen(indicatorBrush, 1)
             {
-                // Draw indicator on LEFT edge of this tab
-                dc.DrawRectangle(indicatorBrush, null, new Rect(0, 0, lineWidth, ActualHeight));
-            }
-            else if (insertIndex == OwnerPanel.Items.Count && myIndex == OwnerPanel.Items.Count - 1)
-            {
-                // Draw indicator on RIGHT edge of the last tab
-                dc.DrawRectangle(indicatorBrush, null, new Rect(ActualWidth - lineWidth, 0, lineWidth, ActualHeight));
-            }
-        }
-
-        // Dim the dragged tab during reorder preview
-        if (OwnerPanel != null && OwnerPanel.ReorderDragItemIndex >= 0)
-        {
-            var myIndex = OwnerPanel.Items.IndexOf(this);
-            if (myIndex == OwnerPanel.ReorderDragItemIndex)
-            {
-                dc.DrawRectangle(dragDimBrush, null, bounds);
-            }
+                LineJoin = PenLineJoin.Round
+            };
+            dc.DrawRoundedRectangle(null, dragPen, bounds, activeCorners);
+            dc.DrawRectangle(dragDimBrush, null, bounds);
         }
     }
 
@@ -1100,6 +1212,63 @@ public sealed partial class DockItem : HeaderedContentControl
         if (padding.Left == 0 && padding.Top == 0 && padding.Right == 0 && padding.Bottom == 0)
             return new Thickness(10, 5, 10, 5);
         return padding;
+    }
+
+    private Brush ResolveSelectedBackgroundBrush()
+    {
+        if (HasLocalValue(SelectedBackgroundProperty) && SelectedBackground != null)
+            return SelectedBackground;
+
+        return ResolveBrush("OneTabActiveBackground", "DockTabItemSelectedBackground", s_fallbackSelectedBackgroundBrush);
+    }
+
+    private Brush ResolveHoverBackgroundBrush()
+    {
+        if (HasLocalValue(HoverBackgroundProperty) && HoverBackground != null)
+            return HoverBackground;
+
+        return ResolveBrush("OneTabHoverBackground", "DockTabItemHoverBackground", s_fallbackHoverBackgroundBrush);
+    }
+
+    private Brush ResolveActiveTextBrush()
+    {
+        if (TryFindResource("OneTabActiveText") is Brush primary)
+            return primary;
+        if (TryFindResource("OneTextPrimary") is Brush onePrimary)
+            return onePrimary;
+        if (TryFindResource("TextPrimary") is Brush secondary)
+            return secondary;
+        return s_fallbackActiveTextBrush;
+    }
+
+    private Brush ResolveInactiveTextBrush()
+    {
+        if (HasLocalValue(Control.ForegroundProperty) && Foreground != null)
+        {
+            return Foreground;
+        }
+
+        return ResolveBrush("OneTabInactiveText", "TextSecondary", s_fallbackInactiveTextBrush);
+    }
+
+    private Brush ResolveCloseButtonHoverBrush()
+    {
+        return ResolveBrush("OneSurfaceHover", "ControlBackgroundHover", s_fallbackCloseButtonHoverBrush);
+    }
+
+    private Brush ResolveCloseButtonPressedBrush()
+    {
+        return ResolveBrush("OneSurfaceActive", "ControlBackgroundPressed", s_fallbackCloseButtonPressedBrush);
+    }
+
+    private Brush ResolveIndicatorBrush()
+    {
+        return IndicatorBrush ?? ResolveBrush("OneTabActiveBorder", "AccentBrush", s_fallbackIndicatorBrush);
+    }
+
+    private Brush ResolveDragDimBrush()
+    {
+        return ResolveBrush("OneOverlayBackdrop", "HighlightBackground", s_fallbackDragDimBrush);
     }
 
     private Brush ResolveBrush(string primaryKey, string secondaryKey, Brush fallback)

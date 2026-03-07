@@ -70,7 +70,6 @@ public sealed class Frame : ContentControl
     /// </summary>
     public Frame()
     {
-        Background = new SolidColorBrush(Color.Transparent);
     }
 
     #region Navigation Methods

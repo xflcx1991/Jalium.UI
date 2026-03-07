@@ -229,6 +229,31 @@ public sealed class ToggleSwitch : Control
         return (OnBackground as SolidColorBrush)?.Color ?? OnColor;
     }
 
+    private Color GetOffBorderColor()
+    {
+        return ResolveThemeColor("ToggleUncheckedBorder", OffBorderColor);
+    }
+
+    private Color GetOnBorderColor()
+    {
+        return ResolveThemeColor("ToggleCheckedBorder", OnBorderColor);
+    }
+
+    private Brush ResolveDisabledTrackBackground()
+    {
+        return TryFindResource("ToggleDisabledBackground") as Brush ?? s_disabledBgBrush;
+    }
+
+    private Brush ResolveDisabledTrackBorderBrush()
+    {
+        return TryFindResource("ToggleDisabledBorder") as Brush ?? s_disabledBorderBrush;
+    }
+
+    private Color ResolveThemeColor(string resourceKey, Color fallback)
+    {
+        return (TryFindResource(resourceKey) as SolidColorBrush)?.Color ?? fallback;
+    }
+
     private static Color LerpColor(Color a, Color b, double t)
     {
         t = Math.Clamp(t, 0.0, 1.0);
@@ -310,7 +335,7 @@ public sealed class ToggleSwitch : Control
         var offBg = GetOffColor();
         var onBg = GetOnColor();
         _switchTrack.Background = new SolidColorBrush(LerpColor(offBg, onBg, progress));
-        _switchTrack.BorderBrush = new SolidColorBrush(LerpColor(OffBorderColor, OnBorderColor, progress));
+        _switchTrack.BorderBrush = new SolidColorBrush(LerpColor(GetOffBorderColor(), GetOnBorderColor(), progress));
     }
 
     #endregion
@@ -541,8 +566,8 @@ public sealed class ToggleSwitch : Control
             // Apply disabled colors
             if (_switchTrack != null)
             {
-                _switchTrack.Background = s_disabledBgBrush;
-                _switchTrack.BorderBrush = s_disabledBorderBrush;
+                _switchTrack.Background = ResolveDisabledTrackBackground();
+                _switchTrack.BorderBrush = ResolveDisabledTrackBorderBrush();
             }
 
             _thumbWidthSpring.Target = ThumbDefaultSize;

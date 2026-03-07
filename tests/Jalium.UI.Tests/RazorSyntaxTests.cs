@@ -53,6 +53,61 @@ public class RazorSyntaxTests
     }
 
     [Fact]
+    public void RazorCodeBlock_ShouldSupportLocalFunctionsAndSubsequentExpressions()
+    {
+        const string xaml = """
+            <TextBlock xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                       Text='@{ string Describe(int value) => value > 0 ? "Positive" : "Zero"; var next = Count + 1; }@(Describe(next - 1))@(next * 2)' />
+            """;
+
+        var model = new CounterNotifyModel { Count = 0 };
+        var textBlock = (TextBlock)XamlReader.Parse(xaml);
+        textBlock.DataContext = model;
+
+        Assert.Equal("Zero2", textBlock.Text);
+
+        model.Count = 2;
+        Assert.Equal("Positive6", textBlock.Text);
+    }
+
+    [Fact]
+    public void RazorCodeBlock_ShouldSupportWriteInsideLoops()
+    {
+        const string xaml = """
+            <TextBlock xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
+              @{ for (var i = 0; i != Count; i++) { Write(i); } }
+            </TextBlock>
+            """;
+
+        var model = new CounterNotifyModel { Count = 3 };
+        var textBlock = (TextBlock)XamlReader.Parse(xaml);
+        textBlock.DataContext = model;
+
+        Assert.Equal("012", textBlock.Text);
+
+        model.Count = 4;
+        Assert.Equal("0123", textBlock.Text);
+    }
+
+    [Fact]
+    public void RazorCodeBlock_ShouldAllowSingleComputedNonStringValue()
+    {
+        const string xaml = """
+            <Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    Width='@{ var computed = Count * 25; }@computed' />
+            """;
+
+        var model = new CounterNotifyModel { Count = 4 };
+        var border = (Border)XamlReader.Parse(xaml);
+        border.DataContext = model;
+
+        Assert.Equal(100d, border.Width);
+
+        model.Count = 5;
+        Assert.Equal(125d, border.Width);
+    }
+
+    [Fact]
     public void RazorMixedTextNode_ShouldUpdateDynamicSegment()
     {
         var model = new UserContainer { User = new UserNotifyModel { Name = "Alice" } };

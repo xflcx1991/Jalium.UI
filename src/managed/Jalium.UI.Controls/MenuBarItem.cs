@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Interop;
 using Jalium.UI.Media;
@@ -12,7 +14,7 @@ public sealed class MenuBarItem : Control
     private static readonly SolidColorBrush s_fallbackHoverBrush = new(Color.FromRgb(61, 61, 61));
     private static readonly SolidColorBrush s_fallbackTextBrush = new(Color.FromRgb(255, 255, 255));
 
-    private readonly List<Control> _items = new();
+    private readonly ObservableCollection<Control> _items = new();
     private MenuFlyout? _flyout;
 
     #region Dependency Properties
@@ -42,6 +44,8 @@ public sealed class MenuBarItem : Control
     /// </summary>
     public IList<Control> Items => _items;
 
+    internal ObservableCollection<Control> ItemCollection => _items;
+
     /// <summary>
     /// Gets a value indicating whether the drop-down menu is open.
     /// </summary>
@@ -60,6 +64,7 @@ public sealed class MenuBarItem : Control
     public MenuBarItem()
     {
         Focusable = true;
+        _items.CollectionChanged += OnItemsCollectionChanged;
         AddHandler(MouseDownEvent, new RoutedEventHandler(OnMouseDownHandler));
         AddHandler(MouseEnterEvent, new RoutedEventHandler(OnMouseEnterHandler));
         AddHandler(MouseLeaveEvent, new RoutedEventHandler(OnMouseLeaveHandler));
@@ -99,7 +104,7 @@ public sealed class MenuBarItem : Control
         if (!string.IsNullOrEmpty(Title))
         {
             var fontSize = FontSize > 0 ? FontSize : 14;
-            var textBrush = Foreground ?? ResolveBrush("OneTextPrimary", "TextPrimary", s_fallbackTextBrush);
+            var textBrush = ResolveForegroundBrush();
             var textFormatted = new Jalium.UI.Media.FormattedText(
                 Title, FontFamily ?? "Segoe UI", fontSize) { Foreground = textBrush };
             TextMeasurement.MeasureText(textFormatted);
@@ -107,6 +112,16 @@ public sealed class MenuBarItem : Control
                 new Point((RenderSize.Width - textFormatted.Width) / 2,
                           (RenderSize.Height - textFormatted.Height) / 2));
         }
+    }
+
+    private Brush ResolveForegroundBrush()
+    {
+        if (HasLocalValue(Control.ForegroundProperty) && Foreground != null)
+        {
+            return Foreground;
+        }
+
+        return ResolveBrush("OneTextPrimary", "TextPrimary", s_fallbackTextBrush);
     }
 
     private Brush ResolveBrush(string primaryKey, string secondaryKey, Brush fallback)
@@ -162,5 +177,17 @@ public sealed class MenuBarItem : Control
     private void OnMouseLeaveHandler(object sender, RoutedEventArgs e)
     {
         InvalidateVisual();
+    }
+
+    private void OnItemsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (_flyout == null)
+            return;
+
+        _flyout.Items.Clear();
+        foreach (var item in _items)
+        {
+            _flyout.Items.Add(item);
+        }
     }
 }

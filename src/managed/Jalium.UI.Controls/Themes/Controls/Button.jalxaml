@@ -61,6 +61,71 @@
     </Style>
 
     <!-- ============================================== -->
+    <!-- SplitButton Style -->
+    <!-- ============================================== -->
+    <Style TargetType="SplitButton">
+        <Setter Property="Background" Value="{DynamicResource ControlBackground}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="12,6,12,6" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="FontFamily" Value="{DynamicResource BodyFontFamily}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="MinWidth" Value="96" />
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <ControlTemplate TargetType="SplitButton">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="32" />
+                    </Grid.ColumnDefinitions>
+
+                    <Button Name="PrimaryButton"
+                            Grid.Column="0"
+                            Content="{TemplateBinding Content}"
+                            Background="{TemplateBinding Background}"
+                            Foreground="{TemplateBinding Foreground}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="1,1,0,1"
+                            CornerRadius="4,0,0,4"
+                            Padding="{TemplateBinding Padding}"
+                            MinHeight="{TemplateBinding MinHeight}"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+
+                    <Button Name="SecondaryButton"
+                            Grid.Column="1"
+                            Content="&#xE70D;"
+                            FontFamily="Segoe MDL2 Assets"
+                            FontSize="11"
+                            Background="{TemplateBinding Background}"
+                            Foreground="{TemplateBinding Foreground}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="0,4,4,0"
+                            Padding="0"
+                            MinWidth="32"
+                            MinHeight="{TemplateBinding MinHeight}"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center" />
+                </Grid>
+            </ControlTemplate>
+        </Setter>
+
+        <Style.Triggers>
+            <PropertyTrigger Property="IsEnabled" Value="False">
+                <Setter Property="Background" Value="{DynamicResource ControlBackgroundDisabled}" />
+                <Setter Property="Foreground" Value="{DynamicResource TextDisabled}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderDisabled}" />
+            </PropertyTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ============================================== -->
     <!-- RepeatButton Style -->
     <!-- ============================================== -->
     <Style TargetType="RepeatButton">

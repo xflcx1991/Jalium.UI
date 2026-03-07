@@ -108,6 +108,8 @@
   <ItemGroup>
     <ProjectReference Include="..\jalium.native.core\jalium.native.core.vcxproj">
       <Project>{A1B2C3D4-1234-5678-9ABC-DEF012345678}</Project>
+      <SetConfiguration>Configuration=$(Configuration)</SetConfiguration>
+      <SetPlatform>Platform=$(Platform)</SetPlatform>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

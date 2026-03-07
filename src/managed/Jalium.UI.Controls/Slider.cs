@@ -231,7 +231,6 @@ public sealed class Slider : Control
     public Slider()
     {
         Focusable = true;
-        Height = 24;
 
         // Register input event handlers
         AddHandler(MouseDownEvent, new RoutedEventHandler(OnMouseDownHandler));

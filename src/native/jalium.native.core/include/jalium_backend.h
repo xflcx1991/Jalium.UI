@@ -77,6 +77,28 @@ public:
         return JALIUM_ERROR_NOT_SUPPORTED;
     }
 
+    /// Updates the placement of a previously created composition visual node.
+    /// x/y/width/height describe the visible host region, and contentOffsetX/Y shift
+    /// the content inside that clipped region when the control is partially occluded.
+    virtual JaliumResult SetWebViewVisualPlacement(
+        void* visual,
+        int32_t x,
+        int32_t y,
+        int32_t width,
+        int32_t height,
+        int32_t contentOffsetX,
+        int32_t contentOffsetY)
+    {
+        (void)visual;
+        (void)x;
+        (void)y;
+        (void)width;
+        (void)height;
+        (void)contentOffsetX;
+        (void)contentOffsetY;
+        return JALIUM_ERROR_NOT_SUPPORTED;
+    }
+
     /// Resizes the render target.
     virtual JaliumResult Resize(int32_t width, int32_t height) = 0;
 
@@ -165,6 +187,9 @@ public:
 
     /// Pops a clip.
     virtual void PopClip() = 0;
+
+    /// Punches a transparent rectangular hole in the current render target.
+    virtual void PunchTransparentRect(float x, float y, float w, float h) = 0;
 
     /// Pushes an opacity.
     virtual void PushOpacity(float opacity) = 0;

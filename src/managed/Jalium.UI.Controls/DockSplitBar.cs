@@ -135,11 +135,11 @@ internal sealed class DockSplitBar : Control
 
         Brush bgBrush;
         if (_isDragging)
-            bgBrush = ResolveBrush("OneTabActiveBorder", "AccentBrush", s_fallbackDraggingBrush);
+            bgBrush = ResolveDraggingBrush();
         else if (IsMouseOver)
-            bgBrush = ResolveBrush("OneSurfaceHover", "DockSplitterHover", s_fallbackHoverBrush);
+            bgBrush = ResolveHoverBrush();
         else
-            bgBrush = Background ?? ResolveBrush("OneBorderSubtle", "DockSplitterBackground", s_fallbackBackgroundBrush);
+            bgBrush = ResolveBackgroundBrush();
 
         // Fill the splitter interior first, keeping 1px edges for border continuity.
         Rect fillRect;
@@ -153,7 +153,7 @@ internal sealed class DockSplitBar : Control
         dc.DrawRectangle(bgBrush, null, fillRect);
 
         // Draw subtle edge lines so DockTabPanel borders are not visually "covered" by the splitter.
-        var edgeBrush = ResolveBrush("OneBorderDefault", "DockTabStripBorder", s_fallbackEdgeBrush);
+        var edgeBrush = ResolveEdgeBrush();
         if (isVerticalBar)
         {
             dc.DrawRectangle(edgeBrush, null, new Rect(0, 0, 1, ActualHeight));
@@ -167,6 +167,32 @@ internal sealed class DockSplitBar : Control
             dc.DrawRectangle(edgeBrush, null, new Rect(0, Math.Max(0, ActualHeight - 1), ActualWidth, 1));
             dc.DrawRectangle(edgeBrush, null, new Rect(0, 0, 1, ActualHeight));
         }
+    }
+
+    private Brush ResolveDraggingBrush()
+    {
+        return ResolveBrush("OneTabActiveBorder", "AccentBrush", s_fallbackDraggingBrush);
+    }
+
+    private Brush ResolveHoverBrush()
+    {
+        return ResolveBrush("OneSurfaceHover", "DockSplitterHover", s_fallbackHoverBrush);
+    }
+
+    private Brush ResolveBackgroundBrush()
+    {
+        if (TryFindResource("OneBorderSubtle") is Brush primary)
+            return primary;
+        if (Background != null)
+            return Background;
+        if (TryFindResource("DockSplitterBackground") is Brush secondary)
+            return secondary;
+        return s_fallbackBackgroundBrush;
+    }
+
+    private Brush ResolveEdgeBrush()
+    {
+        return ResolveBrush("OneBorderDefault", "DockTabStripBorder", s_fallbackEdgeBrush);
     }
 
     private Brush ResolveBrush(string primaryKey, string secondaryKey, Brush fallback)

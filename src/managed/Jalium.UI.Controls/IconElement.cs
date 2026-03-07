@@ -8,6 +8,8 @@ namespace Jalium.UI.Controls;
 /// </summary>
 public abstract class IconElement : FrameworkElement
 {
+    private static readonly SolidColorBrush s_defaultForegroundBrush = new(Color.FromRgb(255, 255, 255));
+
     /// <summary>
     /// Identifies the Foreground dependency property.
     /// </summary>
@@ -42,7 +44,7 @@ public abstract class IconElement : FrameworkElement
             current = current.VisualParent;
         }
 
-        return new SolidColorBrush(Color.FromRgb(255, 255, 255));
+        return TryFindResource("TextPrimary") as Brush ?? s_defaultForegroundBrush;
     }
 
     private static void OnForegroundChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

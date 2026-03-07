@@ -63,7 +63,7 @@
     <MSBuild Projects="@(JaliumNativeProject)"
              Targets="Build"
              BuildInParallel="true"
-             Properties="Configuration=$(JaliumNativeConfiguration);Platform=$(JaliumNativePlatform);SolutionDir=$(JaliumNativeRootPath)\" />
+             Properties="Configuration=$(JaliumNativeConfiguration);Platform=$(JaliumNativePlatform);SolutionDir=$(JaliumNativeRootPath)\;ShouldUnsetParentConfigurationAndPlatform=false" />
   </Target>
 
   <!-- 包含 targets 文件到 NuGet 包 -->

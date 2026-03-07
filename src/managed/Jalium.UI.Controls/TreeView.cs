@@ -322,8 +322,6 @@ public class TreeViewItem : HeaderedItemsControl
 
     public TreeViewItem()
     {
-        Padding = new Thickness(4, 2, 4, 2);
-
         Items.CollectionChanged += OnChildItemsChanged;
     }
 

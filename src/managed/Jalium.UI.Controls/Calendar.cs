@@ -16,11 +16,8 @@ public sealed class Calendar : Control
     private static readonly SolidColorBrush s_headerBgBrush = new(Color.FromRgb(55, 55, 55));
     private static readonly SolidColorBrush s_hoverBrush = new(Color.FromArgb(40, 255, 255, 255));
     private static readonly SolidColorBrush s_arrowNormalBrush = new(Color.FromRgb(200, 200, 200));
-    private static readonly Pen s_arrowNormalPen = new(s_arrowNormalBrush, 2);
-    private static readonly Pen s_arrowHoveredPen = new(s_whiteBrush, 2);
     private static readonly SolidColorBrush s_dayHeaderBrush = new(Color.FromRgb(160, 160, 160));
     private static readonly SolidColorBrush s_accentBrush = new(Color.FromRgb(0, 120, 212));
-    private static readonly Pen s_todayPen = new(s_accentBrush, 2);
     private static readonly SolidColorBrush s_unselectableBrush = new(Color.FromRgb(80, 80, 80));
     private static readonly SolidColorBrush s_otherMonthBrush = new(Color.FromRgb(100, 100, 100));
 
@@ -220,10 +217,6 @@ public sealed class Calendar : Control
     public Calendar()
     {
         Focusable = true;
-        Background = new SolidColorBrush(Color.FromRgb(45, 45, 45));
-        BorderBrush = new SolidColorBrush(Color.FromRgb(67, 67, 70));
-        BorderThickness = new Thickness(1);
-        CornerRadius = new CornerRadius(4);
 
         AddHandler(MouseDownEvent, new RoutedEventHandler(OnMouseDownHandler));
         AddHandler(KeyDownEvent, new RoutedEventHandler(OnKeyDownHandler));
@@ -524,7 +517,7 @@ public sealed class Calendar : Control
         var headerRect = new Rect(x, y, width, HeaderHeight);
 
         // Draw header background
-        dc.DrawRectangle(s_headerBgBrush, null, headerRect);
+        dc.DrawRectangle(ResolveCalendarBrush("ControlBackground", s_headerBgBrush), null, headerRect);
 
         // Draw previous button
         _prevButtonRect = new Rect(x + 4, y + 4, 28, 28);
@@ -538,7 +531,7 @@ public sealed class Calendar : Control
         var monthYearText = DisplayDate.ToString("MMMM yyyy");
         var formattedText = new FormattedText(monthYearText, FontFamily ?? "Segoe UI", FontSize > 0 ? FontSize : 14)
         {
-            Foreground = Foreground ?? s_whiteBrush,
+            Foreground = ResolvePrimaryTextBrush(),
             FontWeight = 600
         };
         TextMeasurement.MeasureText(formattedText);
@@ -554,10 +547,12 @@ public sealed class Calendar : Control
     {
         if (isHovered)
         {
-            dc.DrawRoundedRectangle(s_hoverBrush, null, rect, new CornerRadius(4));
+            dc.DrawRoundedRectangle(ResolveCalendarBrush("HighlightBackground", s_hoverBrush), null, rect, new CornerRadius(4));
         }
 
-        var arrowPen = isHovered ? s_arrowHoveredPen : s_arrowNormalPen;
+        var arrowPen = isHovered
+            ? new Pen(ResolvePrimaryTextBrush(), 2)
+            : new Pen(ResolveCalendarBrush("TextSecondary", s_arrowNormalBrush), 2);
 
         var centerX = rect.X + rect.Width / 2;
         var centerY = rect.Y + rect.Height / 2;
@@ -586,7 +581,7 @@ public sealed class Calendar : Control
 
             var formattedText = new FormattedText(dayName, FontFamily ?? "Segoe UI", 11)
             {
-                Foreground = s_dayHeaderBrush
+                Foreground = ResolveCalendarBrush("TextSecondary", s_dayHeaderBrush)
             };
             TextMeasurement.MeasureText(formattedText);
 
@@ -626,7 +621,7 @@ public sealed class Calendar : Control
         // Draw hover highlight
         if (isHovered && !isSelected && isSelectable)
         {
-            dc.DrawEllipse(s_hoverBrush, null,
+            dc.DrawEllipse(ResolveCalendarBrush("HighlightBackground", s_hoverBrush), null,
                 new Point(rect.X + rect.Width / 2, rect.Y + rect.Height / 2),
                 rect.Width / 2 - 2, rect.Height / 2 - 2);
         }
@@ -634,13 +629,15 @@ public sealed class Calendar : Control
         // Draw selection or today highlight
         if (isSelected)
         {
-            dc.DrawEllipse(s_accentBrush, null,
+            var accentBrush = ResolveCalendarBrush("AccentBrush", s_accentBrush);
+            dc.DrawEllipse(accentBrush, null,
                 new Point(rect.X + rect.Width / 2, rect.Y + rect.Height / 2),
                 rect.Width / 2 - 2, rect.Height / 2 - 2);
         }
         else if (isToday && IsTodayHighlighted)
         {
-            dc.DrawEllipse(null, s_todayPen,
+            var accentPen = new Pen(ResolveCalendarBrush("AccentBrush", s_accentBrush), 2);
+            dc.DrawEllipse(null, accentPen,
                 new Point(rect.X + rect.Width / 2, rect.Y + rect.Height / 2),
                 rect.Width / 2 - 2, rect.Height / 2 - 2);
         }
@@ -651,19 +648,19 @@ public sealed class Calendar : Control
 
         if (isSelected)
         {
-            textBrush = s_whiteBrush;
+            textBrush = ResolveSelectedTextBrush();
         }
         else if (!isSelectable)
         {
-            textBrush = s_unselectableBrush;
+            textBrush = ResolveCalendarBrush("TextDisabled", s_unselectableBrush);
         }
         else if (!isCurrentMonth)
         {
-            textBrush = s_otherMonthBrush;
+            textBrush = ResolveCalendarBrush("TextSecondary", s_otherMonthBrush);
         }
         else
         {
-            textBrush = s_whiteBrush;
+            textBrush = ResolvePrimaryTextBrush();
         }
 
         var formattedText = new FormattedText(dayText, FontFamily ?? "Segoe UI", FontSize > 0 ? FontSize : 13)
@@ -675,6 +672,26 @@ public sealed class Calendar : Control
         var textX = rect.X + (rect.Width - formattedText.Width) / 2;
         var textY = rect.Y + (rect.Height - formattedText.Height) / 2;
         dc.DrawText(formattedText, new Point(textX, textY));
+    }
+
+    private SolidColorBrush ResolveCalendarBrush(string resourceKey, SolidColorBrush fallback)
+    {
+        return TryFindResource(resourceKey) as SolidColorBrush ?? fallback;
+    }
+
+    private Brush ResolvePrimaryTextBrush()
+    {
+        if (HasLocalValue(Control.ForegroundProperty) && Foreground != null)
+        {
+            return Foreground;
+        }
+
+        return ResolveCalendarBrush("TextPrimary", s_whiteBrush);
+    }
+
+    private Brush ResolveSelectedTextBrush()
+    {
+        return ResolveCalendarBrush("TextOnAccent", s_whiteBrush);
     }
 
     #endregion

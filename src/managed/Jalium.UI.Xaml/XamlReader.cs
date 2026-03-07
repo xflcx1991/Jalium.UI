@@ -188,7 +188,7 @@ public static class XamlReader
         }
 
         // Fallback 2: suffix match (handles namespace/path drift, e.g. Views/Foo.jalxaml vs Foo.jalxaml).
-        var fileName = resourceName.Replace('\\', '/').Split('/').LastOrDefault() ?? resourceName;
+        var fileName = GetResourceFileName(resourceName);
         var suffixes = new[]
         {
             $".{normalizedName}",
@@ -206,6 +206,21 @@ public static class XamlReader
         }
 
         return null;
+    }
+
+    private static string GetResourceFileName(string resourceName)
+    {
+        var fileName = resourceName.Replace('\\', '/').Split('/').LastOrDefault() ?? resourceName;
+        var extensionIndex = fileName.LastIndexOf('.');
+        if (extensionIndex <= 0)
+        {
+            return fileName;
+        }
+
+        var extension = fileName.Substring(extensionIndex);
+        var stem = fileName.Substring(0, extensionIndex);
+        var simpleStem = stem.Split('.').LastOrDefault();
+        return string.IsNullOrEmpty(simpleStem) ? fileName : $"{simpleStem}{extension}";
     }
 
     private static object LoadInternal(XmlReader reader, object? existingInstance, Uri? baseUri, Assembly? sourceAssembly,
@@ -287,6 +302,7 @@ public static class XamlReader
         var linePosition = lineInfo != null && lineInfo.HasLineInfo() ? lineInfo.LinePosition : 0;
 
         object instance;
+        Type? resolvedType = null;
 
         if (existingInstance != null)
         {
@@ -296,14 +312,21 @@ public static class XamlReader
         else
         {
             // Resolve the type and create new instance (AOT-safe: types are pre-registered)
-            var type = context.ResolveType(namespaceUri, elementName);
-            if (type == null)
+            resolvedType = context.ResolveType(namespaceUri, elementName);
+            if (resolvedType == null)
             {
                 throw new XamlParseException($"Cannot resolve type '{elementName}' in namespace '{namespaceUri}'.");
             }
 
-            instance = Activator.CreateInstance(type)
-                ?? throw new XamlParseException($"Failed to create instance of type '{type.FullName}'.");
+            if (resolvedType == typeof(string))
+            {
+                instance = string.Empty;
+            }
+            else
+            {
+                instance = Activator.CreateInstance(resolvedType)
+                    ?? throw new XamlParseException($"Failed to create instance of type '{resolvedType.FullName}'.");
+            }
         }
 
         // Push to parent stack for context tracking
@@ -330,7 +353,7 @@ public static class XamlReader
             // Parse child content normally
             else if (!reader.IsEmptyElement)
             {
-                ParseContent(reader, instance, context);
+                instance = ParseContent(reader, instance, context);
             }
 
             // Post-process Setter to convert Value based on Property type
@@ -493,7 +516,7 @@ public static class XamlReader
         return XamlTypeRegistry.GetType(typeName);
     }
 
-    private static void ParseContent(XmlReader reader, object instance, XamlParserContext context)
+    private static object ParseContent(XmlReader reader, object instance, XamlParserContext context)
     {
         int depth = reader.Depth;
         var ifDirectiveStack = new Stack<string>();
@@ -545,7 +568,7 @@ public static class XamlReader
                     }
 
                     // Content property
-                    SetContentProperty(instance, reader.Value, context);
+                    instance = SetContentProperty(instance, reader.Value, context);
                     break;
             }
         }
@@ -554,6 +577,8 @@ public static class XamlReader
         {
             throw new XamlParseException("Unclosed Razor @if block. Expected matching '}'.");
         }
+
+        return instance;
     }
 
     private static bool ShouldIncludeConditionalChild(
@@ -1537,12 +1562,12 @@ public static class XamlReader
 
     [UnconditionalSuppressMessage("AOT", "IL2070:Target method argument",
         Justification = "Types are registered in XamlTypeRegistry with DynamicallyAccessedMembers")]
-    private static void SetContentProperty(object instance, string content, XamlParserContext context)
+    private static object SetContentProperty(object instance, string content, XamlParserContext context)
     {
         content = content.Trim();
         if (string.IsNullOrEmpty(content))
         {
-            return;
+            return instance;
         }
 
         // Check for ContentPropertyAttribute
@@ -1556,12 +1581,12 @@ public static class XamlReader
             {
                 if (RazorBindingEngine.TryApplyRazorValue(instance, property, content, context, null))
                 {
-                    return;
+                    return instance;
                 }
 
                 var value = TypeConverterRegistry.ConvertValue(content, property.PropertyType);
                 property.SetValue(instance, value ?? content);
-                return;
+                return instance;
             }
         }
 
@@ -1570,20 +1595,35 @@ public static class XamlReader
         {
             if (RazorBindingEngine.TryApplyRazorValue(instance, typeof(ContentControl).GetProperty(nameof(ContentControl.Content))!, content, context, null))
             {
-                return;
+                return instance;
             }
 
             cc.Content = content;
+            return instance;
         }
         else if (instance is TextBlock tb)
         {
             if (RazorBindingEngine.TryApplyRazorValue(instance, typeof(TextBlock).GetProperty(nameof(TextBlock.Text))!, content, context, null))
             {
-                return;
+                return instance;
             }
 
             tb.Text = content;
+            return instance;
         }
+
+        if (instance is string)
+        {
+            return content;
+        }
+
+        var converter = TypeConverterRegistry.GetConverter(instance.GetType());
+        if (converter != null)
+        {
+            return converter.ConvertFrom(content) ?? instance;
+        }
+
+        return instance;
     }
 
     private static void PostProcessSetter(Setter setter, XamlParserContext context, int lineNumber, int linePosition)
@@ -2170,6 +2210,7 @@ public static class XamlTypeRegistry
         Register<ResourceDictionary>(types);
         Register<Binding>(types);
         Register<BindingBase>(types);
+        Register<string>(types);
         Register<Thickness>(types);
         Register<CornerRadius>(types);
         Register<GridLength>(types);
@@ -2183,16 +2224,19 @@ public static class XamlTypeRegistry
         Register<Page>(types);
         Register<Frame>(types);
         Register<Control>(types);
+        Register<AccessText>(types);
         Register<ContentControl>(types);
         Register<ContentPresenter>(types);
         Register<ItemsControl>(types);
         Register<ButtonBase>(types);
         Register<Button>(types);
+        Register<SplitButton>(types);
         Register<ToggleButton>(types);
         Register<TextBlock>(types);
         Register<TextBox>(types);
         Register<PasswordBox>(types);
         Register<NumberBox>(types);
+        Register<RichTextBox>(types);
         Register<CheckBox>(types);
         Register<RadioButton>(types);
         Register<ComboBox>(types);
@@ -2222,12 +2266,15 @@ public static class XamlTypeRegistry
         Register<WrapPanel>(types);
         Register<ScrollViewer>(types);
         Register<Image>(types);
+        Register<QRCode>(types);
         Register<ToolTip>(types);
         Register<Popup>(types);
         Register<TreeView>(types);
         Register<TreeViewItem>(types);
         Register<NavigationView>(types);
         Register<NavigationViewItem>(types);
+        Register<NavigationViewItemHeader>(types);
+        Register<NavigationViewItemSeparator>(types);
         Register<TitleBar>(types);
         Register<TitleBarButton>(types);
         Register<RowDefinition>(types);
@@ -2240,6 +2287,7 @@ public static class XamlTypeRegistry
         Register<Label>(types);
         Register<InkCanvas>(types);
         Register<EditControl>(types);
+        Register<Markdown>(types);
         Register<Calendar>(types);
         Register<CalendarButton>(types);
         Register<CalendarDayButton>(types);
@@ -2258,6 +2306,7 @@ public static class XamlTypeRegistry
         Register<Viewbox>(types);
         Register<GridSplitter>(types);
         Register<DockLayout>(types);
+        Register<DockSplitBar>(types);
         Register<DockSplitPanel>(types);
         Register<DockTabPanel>(types);
         Register<DockItem>(types);
@@ -2277,16 +2326,30 @@ public static class XamlTypeRegistry
         Register<CommandBarFlyout>(types);
         Register<MenuBar>(types);
         Register<MenuBarItem>(types);
+        Register<Menu>(types);
+        Register<MenuItem>(types);
+        Register<ContextMenu>(types);
         Register<MenuFlyout>(types);
         Register<MenuFlyoutItem>(types);
         Register<MenuFlyoutSubItem>(types);
         Register<MenuFlyoutSeparator>(types);
         Register<ToggleMenuFlyoutItem>(types);
         Register<SwipeControl>(types);
+        Register<Jalium.UI.Controls.ToolBar>(types);
+        Register<ToolBarTray>(types);
 
         // Jalium.UI.Controls.Primitives namespace
         Register<BulletDecorator>(types);
+        Register<DocumentPageView>(types);
         Register<ItemsPresenter>(types);
+        Register<ResizeGrip>(types);
+        Register<SelectiveScrollingGrid>(types);
+        Register<TabPanel>(types);
+        Register<TickBar>(types);
+        Register<ToolBarOverflowPanel>(types);
+        Register<ToolBarPanel>(types);
+        Register<UniformGrid>(types);
+        Register<VirtualizingStackPanel>(types);
     }
 
     private static void RegisterMediaTypes(Dictionary<string, Type> types)

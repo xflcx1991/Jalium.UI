@@ -7,6 +7,8 @@ namespace Jalium.UI.Controls;
 /// </summary>
 public sealed class ToggleMenuFlyoutItem : MenuFlyoutItem
 {
+    private static readonly SolidColorBrush s_defaultCheckGlyphBrush = new(Color.FromRgb(255, 255, 255));
+
     #region Dependency Properties
 
     /// <summary>
@@ -48,12 +50,23 @@ public sealed class ToggleMenuFlyoutItem : MenuFlyoutItem
         // Draw check mark when checked
         if (IsChecked)
         {
-            var checkBrush = new Jalium.UI.Media.SolidColorBrush(
-                Jalium.UI.Media.Color.FromRgb(255, 255, 255));
+            var checkBrush = ResolveCheckGlyphBrush();
             var checkText = new Jalium.UI.Media.FormattedText(
                 "\u2713", FontFamily, 14) { Foreground = checkBrush }; // ✓
             dc.DrawText(checkText, new Point(8, (RenderSize.Height - 14) / 2));
         }
+    }
+
+    private Brush ResolveCheckGlyphBrush()
+    {
+        if (HasLocalValue(Control.ForegroundProperty) && Foreground != null)
+        {
+            return Foreground;
+        }
+
+        return TryFindResource("TextPrimary") as Brush
+            ?? Foreground
+            ?? s_defaultCheckGlyphBrush;
     }
 
     private void OnToggleMouseDown(object sender, RoutedEventArgs e)

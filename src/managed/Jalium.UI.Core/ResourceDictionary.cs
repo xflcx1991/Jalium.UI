@@ -104,6 +104,18 @@ public sealed class ResourceDictionary : IDictionary<object, object?>, IDictiona
             changed = true;
         }
 
+        if (source._themeDictionaries != null && source._themeDictionaries.Count > 0)
+        {
+            _themeDictionaries ??= new Dictionary<object, ResourceDictionary>();
+            _themeDictionaries.Clear();
+
+            foreach (var kvp in source._themeDictionaries)
+            {
+                _themeDictionaries[kvp.Key] = kvp.Value;
+                changed = true;
+            }
+        }
+
         if (changed)
         {
             OnChanged();

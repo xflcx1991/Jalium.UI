@@ -10,6 +10,8 @@ namespace Jalium.UI.Controls;
 [ContentProperty("Children")]
 public sealed class DockSplitPanel : Panel
 {
+    private static readonly SolidColorBrush s_fallbackBackgroundBrush = new(ThemeColors.WindowBackground);
+
     #region Dependency Properties
 
     public static readonly DependencyProperty OrientationProperty =
@@ -325,6 +327,18 @@ public sealed class DockSplitPanel : Panel
         return availableSize;
     }
 
+    protected override void OnRender(object drawingContextObj)
+    {
+        if (drawingContextObj is not DrawingContext dc)
+        {
+            base.OnRender(drawingContextObj);
+            return;
+        }
+
+        dc.DrawRectangle(ResolveBackgroundBrush(), null, new Rect(RenderSize));
+        base.OnRender(drawingContextObj);
+    }
+
     protected override Size ArrangeOverride(Size finalSize)
     {
         var childCount = Children.Count;
@@ -491,6 +505,15 @@ public sealed class DockSplitPanel : Panel
         SetSize(child1, new GridLength(newSize1, GridUnitType.Star));
         SetSize(child2, new GridLength(newSize2, GridUnitType.Star));
         InvalidateMeasure();
+    }
+
+    private Brush ResolveBackgroundBrush()
+    {
+        if (TryFindResource("OneBackgroundPrimary") is Brush primary)
+            return primary;
+        if (TryFindResource("WindowBackground") is Brush secondary)
+            return secondary;
+        return s_fallbackBackgroundBrush;
     }
 
     #endregion

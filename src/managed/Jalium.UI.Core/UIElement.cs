@@ -2289,17 +2289,25 @@ public abstract partial class UIElement : Visual, IInputElement
     private Dictionary<DependencyProperty, ElementAnimation>? _activeAnimations;
     private bool _subscribedToRendering;
 
+    private enum ElementAnimationKind
+    {
+        Explicit,
+        AutomaticTransition
+    }
+
     private sealed class ElementAnimation
     {
         public IAnimationTimeline Animation { get; }
         public IAnimationClock Clock { get; }
         public object? BaseValue { get; }
+        public ElementAnimationKind Kind { get; }
 
-        public ElementAnimation(IAnimationTimeline animation, IAnimationClock clock, object? baseValue)
+        public ElementAnimation(IAnimationTimeline animation, IAnimationClock clock, object? baseValue, ElementAnimationKind kind)
         {
             Animation = animation;
             Clock = clock;
             BaseValue = baseValue;
+            Kind = kind;
         }
     }
 
@@ -2322,29 +2330,49 @@ public abstract partial class UIElement : Visual, IInputElement
     public void BeginAnimation(DependencyProperty dp, IAnimationTimeline? animation, HandoffBehavior handoffBehavior)
     {
         ArgumentNullException.ThrowIfNull(dp);
+        _ = BeginAnimationCore(
+            dp,
+            animation,
+            handoffBehavior,
+            ElementAnimationKind.Explicit,
+            clearAnimatedValueOnReplace: true,
+            allowAutomaticToReplaceExplicit: true);
+    }
 
+    private bool BeginAnimationCore(
+        DependencyProperty dp,
+        IAnimationTimeline? animation,
+        HandoffBehavior handoffBehavior,
+        ElementAnimationKind kind,
+        bool clearAnimatedValueOnReplace,
+        bool allowAutomaticToReplaceExplicit)
+    {
         _activeAnimations ??= new Dictionary<DependencyProperty, ElementAnimation>();
 
         // Stop any existing animation on this property
         if (_activeAnimations.TryGetValue(dp, out var existing))
         {
-            existing.Clock.Stop();
-            existing.Clock.Completed -= OnAnimationClockCompleted;
-            ClearAnimatedValue(dp);
-            _activeAnimations.Remove(dp);
+            if (existing.Kind == ElementAnimationKind.Explicit &&
+                kind == ElementAnimationKind.AutomaticTransition &&
+                !allowAutomaticToReplaceExplicit)
+            {
+                return false;
+            }
+
+            RemoveAnimationCore(dp, existing, clearAnimatedValueOnReplace);
         }
 
         if (animation == null)
         {
             UnsubscribeFromRenderingIfNeeded();
-            return;
+            return true;
         }
 
         // Store base value and create clock
         var baseValue = GetAnimationBaseValue(dp);
         var clock = animation.CreateClock();
 
-        _activeAnimations[dp] = new ElementAnimation(animation, clock, baseValue);
+        _activeAnimations[dp] = new ElementAnimation(animation, clock, baseValue, kind);
 
         // Subscribe to completion
         clock.Completed += OnAnimationClockCompleted;
@@ -2357,6 +2385,7 @@ public abstract partial class UIElement : Visual, IInputElement
 
         // Set initial animated value
         UpdateAnimatedValue(dp);
+        return true;
     }
 
     /// <summary>
@@ -2367,6 +2396,39 @@ public abstract partial class UIElement : Visual, IInputElement
     public bool HasAnimation(DependencyProperty dp)
     {
         return _activeAnimations?.ContainsKey(dp) == true;
+    }
+
+    private bool TryGetActiveAnimation(DependencyProperty dp, out ElementAnimation animation)
+    {
+        if (_activeAnimations != null && _activeAnimations.TryGetValue(dp, out var activeAnimation))
+        {
+            animation = activeAnimation;
+            return true;
+        }
+
+        animation = null!;
+        return false;
+    }
+
+    private void StopAnimationCore(DependencyProperty dp, ElementAnimationKind kind, bool clearAnimatedValue)
+    {
+        if (!TryGetActiveAnimation(dp, out var existing) || existing.Kind != kind)
+            return;
+
+        RemoveAnimationCore(dp, existing, clearAnimatedValue);
+        UnsubscribeFromRenderingIfNeeded();
+    }
+
+    private void RemoveAnimationCore(DependencyProperty dp, ElementAnimation animation, bool clearAnimatedValue)
+    {
+        animation.Clock.Stop();
+        animation.Clock.Completed -= OnAnimationClockCompleted;
+        _activeAnimations?.Remove(dp);
+
+        if (clearAnimatedValue)
+        {
+            ClearAnimatedValue(dp);
+        }
     }
 
     private void OnAnimationClockCompleted(object? sender, EventArgs e)
@@ -2400,9 +2462,7 @@ public abstract partial class UIElement : Visual, IInputElement
         if (fillBehavior == AnimationFillBehavior.Stop)
         {
             // Remove animation and restore base value
-            _activeAnimations.Remove(completedProperty);
-            clock.Completed -= OnAnimationClockCompleted;
-            ClearAnimatedValue(completedProperty);
+            RemoveAnimationCore(completedProperty, completedAnimation, clearAnimatedValue: true);
         }
         // For HoldEnd, keep the animation record but mark as completed
         // The final value remains via the animated value layer

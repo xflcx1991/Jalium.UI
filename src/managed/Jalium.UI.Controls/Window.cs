@@ -421,7 +421,6 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost
 
     public Window()
     {
-        Background = new SolidColorBrush(Color.White);
         Width = 800;
         Height = 600;
 

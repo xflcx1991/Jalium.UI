@@ -152,6 +152,12 @@ public static class ThemeManager
 
         if (_application != null)
         {
+            var refreshedGeneric = LoadGenericTheme();
+            if (refreshedGeneric != null)
+            {
+                ReplaceManagedDictionary(ref _genericThemeDictionary, refreshedGeneric);
+            }
+
             // Accent derived resources depend on current theme (notably disabled variants).
             ReplaceManagedDictionary(ref _accentDictionary, BuildAccentDictionary(CurrentAccentColor));
         }
@@ -334,19 +340,59 @@ public static class ThemeManager
     {
         var hover = Blend(accent, Color.White, 0.18);
         var pressed = Blend(accent, Color.Black, 0.24);
+        var light1 = Blend(accent, Color.White, 0.18);
+        var light2 = Blend(accent, Color.White, 0.34);
+        var light3 = Blend(accent, Color.White, 0.52);
+        var dark1 = Blend(accent, Color.Black, 0.12);
+        var dark2 = Blend(accent, Color.Black, 0.24);
+        var dark3 = Blend(accent, Color.Black, 0.36);
         var disabledBlendTarget = CurrentTheme == ThemeVariant.Dark
             ? Color.FromRgb(0x66, 0x66, 0x66)
             : Color.FromRgb(0xB8, 0xB8, 0xB8);
         var disabled = Blend(accent, disabledBlendTarget, 0.58);
         var selection = Color.FromArgb(0x99, accent.R, accent.G, accent.B);
         var weakSelection = Color.FromArgb(0x4D, accent.R, accent.G, accent.B);
+        var accentFillDefault = CurrentTheme == ThemeVariant.Dark ? light2 : dark1;
+        var accentFillSecondary = Color.FromArgb(0xE6, accentFillDefault.R, accentFillDefault.G, accentFillDefault.B);
+        var accentFillTertiary = Color.FromArgb(0xCC, accentFillDefault.R, accentFillDefault.G, accentFillDefault.B);
+        var accentTextPrimary = CurrentTheme == ThemeVariant.Dark ? light3 : dark2;
+        var accentTextSecondary = CurrentTheme == ThemeVariant.Dark ? light3 : dark3;
+        var accentTextTertiary = CurrentTheme == ThemeVariant.Dark ? light2 : dark1;
+        var systemFillAttention = CurrentTheme == ThemeVariant.Dark ? light2 : accent;
 
         var dictionary = new ResourceDictionary
         {
+            ["SystemAccentColor"] = accent,
+            ["SystemAccentColorLight1"] = light1,
+            ["SystemAccentColorLight2"] = light2,
+            ["SystemAccentColorLight3"] = light3,
+            ["SystemAccentColorDark1"] = dark1,
+            ["SystemAccentColorDark2"] = dark2,
+            ["SystemAccentColorDark3"] = dark3,
+            ["AccentTextFillColorPrimary"] = accentTextPrimary,
+            ["AccentTextFillColorSecondary"] = accentTextSecondary,
+            ["AccentTextFillColorTertiary"] = accentTextTertiary,
+            ["AccentTextFillColorDisabled"] = disabled,
+            ["AccentFillColorDefault"] = accentFillDefault,
+            ["AccentFillColorSecondary"] = accentFillSecondary,
+            ["AccentFillColorTertiary"] = accentFillTertiary,
+            ["AccentFillColorDisabled"] = disabled,
+            ["AccentFillColorSelectedTextBackground"] = accent,
+            ["SystemFillColorAttention"] = systemFillAttention,
             ["AccentBrush"] = new SolidColorBrush(accent),
             ["AccentBrushHover"] = new SolidColorBrush(hover),
             ["AccentBrushPressed"] = new SolidColorBrush(pressed),
             ["AccentBrushDisabled"] = new SolidColorBrush(disabled),
+            ["AccentTextFillColorPrimaryBrush"] = new SolidColorBrush(accentTextPrimary),
+            ["AccentTextFillColorSecondaryBrush"] = new SolidColorBrush(accentTextSecondary),
+            ["AccentTextFillColorTertiaryBrush"] = new SolidColorBrush(accentTextTertiary),
+            ["AccentTextFillColorDisabledBrush"] = new SolidColorBrush(disabled),
+            ["AccentFillColorDefaultBrush"] = new SolidColorBrush(accentFillDefault),
+            ["AccentFillColorSecondaryBrush"] = new SolidColorBrush(accentFillSecondary),
+            ["AccentFillColorTertiaryBrush"] = new SolidColorBrush(accentFillTertiary),
+            ["AccentFillColorDisabledBrush"] = new SolidColorBrush(disabled),
+            ["AccentFillColorSelectedTextBackgroundBrush"] = new SolidColorBrush(accent),
+            ["SystemFillColorAttentionBrush"] = new SolidColorBrush(systemFillAttention),
             ["SelectionBackground"] = new SolidColorBrush(selection),
             ["SelectionBackgroundWeak"] = new SolidColorBrush(weakSelection),
             ["AppBarButtonForeground"] = new SolidColorBrush(accent),
@@ -393,6 +439,56 @@ public static class ThemeManager
             var themeLoaderType = xamlAssembly.GetType(ThemeLoaderTypeName, throwOnError: false);
             var initializeMethod = themeLoaderType?.GetMethod("Initialize", BindingFlags.Public | BindingFlags.Static);
             initializeMethod?.Invoke(null, null);
+
+            if (XamlLoader == null && themeLoaderType != null)
+            {
+                var loadMethod = themeLoaderType.GetMethod(
+                    "LoadResourceDictionaryFromStream",
+                    BindingFlags.NonPublic | BindingFlags.Static);
+
+                if (loadMethod != null)
+                {
+                    XamlLoader = loadMethod.CreateDelegate<Func<Stream, string, Assembly, ResourceDictionary?>>();
+                }
+
+                var startupLoaderMethod = themeLoaderType.GetMethod(
+                    "LoadStartupObjectFromUri",
+                    BindingFlags.NonPublic | BindingFlags.Static);
+
+                if (Application.StartupObjectLoader == null && startupLoaderMethod != null)
+                {
+                    Application.StartupObjectLoader =
+                        startupLoaderMethod.CreateDelegate<Func<Application, Uri, object?>>();
+                }
+            }
+
+            TryRegisterTypeResolver(xamlAssembly);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private static void TryRegisterTypeResolver(Assembly xamlAssembly)
+    {
+        try
+        {
+            var typeResolverType = typeof(Application).Assembly.GetType("Jalium.UI.TypeResolver", throwOnError: false);
+            var resolveTypeByNameProperty = typeResolverType?.GetProperty(
+                "ResolveTypeByName",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            var xamlTypeRegistryType = xamlAssembly.GetType("Jalium.UI.Markup.XamlTypeRegistry", throwOnError: false);
+            var getTypeMethod = xamlTypeRegistryType?.GetMethod("GetType", BindingFlags.Public | BindingFlags.Static);
+
+            if (resolveTypeByNameProperty == null || getTypeMethod == null)
+                return;
+
+            var existingResolver = resolveTypeByNameProperty.GetValue(null);
+            if (existingResolver != null)
+                return;
+
+            var resolver = getTypeMethod.CreateDelegate<Func<string, Type?>>();
+            resolveTypeByNameProperty.SetValue(null, resolver);
         }
         catch (Exception)
         {

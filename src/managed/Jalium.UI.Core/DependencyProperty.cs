@@ -179,6 +179,12 @@ public class PropertyMetadata
     public bool Inherits { get; }
 
     /// <summary>
+    /// Gets or sets the factory used to create automatic transition animations for this property.
+    /// When null, the framework falls back to the global type-based animation factory.
+    /// </summary>
+    public AutomaticTransitionFactoryCallback? AutomaticTransitionFactory { get; set; }
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="PropertyMetadata"/> class.
     /// </summary>
     public PropertyMetadata()
@@ -231,6 +237,22 @@ public class PropertyMetadata
         Inherits = inherits;
     }
 }
+
+/// <summary>
+/// Creates an automatic transition animation for a dependency property.
+/// </summary>
+/// <param name="property">The property being transitioned.</param>
+/// <param name="fromValue">The currently displayed value.</param>
+/// <param name="toValue">The new target base value.</param>
+/// <param name="duration">The transition duration.</param>
+/// <param name="timingFunction">The framework timing preset.</param>
+/// <returns>An animation timeline, or null to fall back to the default type-based transition behavior.</returns>
+public delegate IAnimationTimeline? AutomaticTransitionFactoryCallback(
+    DependencyProperty property,
+    object? fromValue,
+    object? toValue,
+    TimeSpan duration,
+    TransitionTimingFunction timingFunction);
 
 /// <summary>
 /// Callback for property changed notifications.

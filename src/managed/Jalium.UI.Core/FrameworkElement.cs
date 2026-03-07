@@ -300,6 +300,24 @@ public class FrameworkElement : UIElement
         return localSource;
     }
 
+    internal override (object? value, BaseValueSource source) GetUncoercedBaseValueInternal(DependencyProperty dp)
+    {
+        ArgumentNullException.ThrowIfNull(dp);
+
+        var localValue = base.GetUncoercedBaseValueInternal(dp);
+        if (localValue.source != BaseValueSource.Default)
+        {
+            return localValue;
+        }
+
+        if (dp.DefaultMetadata.Inherits && VisualParent is FrameworkElement parent)
+        {
+            return (parent.GetValue(dp), BaseValueSource.Inherited);
+        }
+
+        return localValue;
+    }
+
     #endregion
 
     #region CLR Properties

@@ -20,8 +20,11 @@ internal sealed class LayoutManager
     /// Queues an element for re-measurement.
     /// Measure invalidation implies arrange invalidation (matching WPF behavior).
     /// </summary>
-    public void InvalidateMeasure(UIElement element)
+    public void InvalidateMeasure(UIElement? element)
     {
+        if (element is null)
+            return;
+
         if (_measureQueue.Add(element))
         {
             _arrangeQueue.Add(element);
@@ -32,8 +35,11 @@ internal sealed class LayoutManager
     /// <summary>
     /// Queues an element for re-arrangement.
     /// </summary>
-    public void InvalidateArrange(UIElement element)
+    public void InvalidateArrange(UIElement? element)
     {
+        if (element is null)
+            return;
+
         if (_arrangeQueue.Add(element))
         {
             PropagateInvalidArrangeUp(element);
@@ -43,8 +49,11 @@ internal sealed class LayoutManager
     /// <summary>
     /// Removes an element from all queues (e.g., when removed from tree).
     /// </summary>
-    public void Remove(UIElement element)
+    public void Remove(UIElement? element)
     {
+        if (element is null)
+            return;
+
         _measureQueue.Remove(element);
         _arrangeQueue.Remove(element);
     }
@@ -87,9 +96,7 @@ internal sealed class LayoutManager
                 // Process measure queue: sort by depth (shallowest first).
                 if (_measureQueue.Count > 0)
                 {
-                    _measureSorted.Clear();
-                    _measureSorted.AddRange(_measureQueue);
-                    _measureQueue.Clear();
+                    DrainQueue(_measureQueue, _measureSorted);
 
                     // Pre-compute depths for all elements before sorting
                     PrecomputeDepths(_measureSorted);
@@ -111,9 +118,7 @@ internal sealed class LayoutManager
                 // Process arrange queue: sort by depth (shallowest first).
                 if (_arrangeQueue.Count > 0)
                 {
-                    _arrangeSorted.Clear();
-                    _arrangeSorted.AddRange(_arrangeQueue);
-                    _arrangeQueue.Clear();
+                    DrainQueue(_arrangeQueue, _arrangeSorted);
 
                     PrecomputeDepths(_arrangeSorted);
                     _arrangeSorted.Sort((a, b) => GetCachedDepth(a).CompareTo(GetCachedDepth(b)));
@@ -138,6 +143,21 @@ internal sealed class LayoutManager
             _isUpdating = false;
             _depthCache.Clear();
         }
+    }
+
+    private static void DrainQueue(HashSet<UIElement> source, List<UIElement> destination)
+    {
+        destination.Clear();
+
+        foreach (var element in source)
+        {
+            if (element is not null)
+            {
+                destination.Add(element);
+            }
+        }
+
+        source.Clear();
     }
 
     private void PropagateInvalidArrangeUp(UIElement element)
@@ -180,8 +200,11 @@ internal sealed class LayoutManager
         }
     }
 
-    private int GetCachedDepth(Visual element)
+    private int GetCachedDepth(Visual? element)
     {
+        if (element is null)
+            return -1;
+
         if (_depthCache.TryGetValue(element, out int cached))
             return cached;
 

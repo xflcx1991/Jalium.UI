@@ -7,6 +7,8 @@ namespace Jalium.UI.Controls;
 /// </summary>
 public sealed class AppBarSeparator : Control, ICommandBarElement
 {
+    private static readonly SolidColorBrush s_fallbackSeparatorBrush = new(Color.FromRgb(80, 80, 80));
+
     #region Dependency Properties
 
     /// <summary>
@@ -68,8 +70,7 @@ public sealed class AppBarSeparator : Control, ICommandBarElement
         if (drawingContext is not DrawingContext dc) return;
         base.OnRender(drawingContext);
 
-        var brush = Foreground ?? new Jalium.UI.Media.SolidColorBrush(
-            Jalium.UI.Media.Color.FromRgb(80, 80, 80));
+        var brush = ResolveSeparatorBrush();
         var pen = new Jalium.UI.Media.Pen(brush, 1);
 
         var height = RenderSize.Height;
@@ -77,5 +78,17 @@ public sealed class AppBarSeparator : Control, ICommandBarElement
         var margin = 4.0;
 
         dc.DrawLine(pen, new Point(x, margin), new Point(x, height - margin));
+    }
+
+    private Brush ResolveSeparatorBrush()
+    {
+        if (HasLocalValue(Control.ForegroundProperty) && Foreground != null)
+        {
+            return Foreground;
+        }
+
+        return TryFindResource("AppBarSeparatorForeground") as Brush
+            ?? Foreground
+            ?? s_fallbackSeparatorBrush;
     }
 }

@@ -72,6 +72,7 @@ public abstract class ButtonBase : ContentControl
     {
         // Use ControlTemplate for visual appearance instead of direct content
         UseTemplateContentManagement();
+        SetCurrentValue(UIElement.TransitionPropertyProperty, "None");
         Focusable = true;
 
         // Register mouse event handlers

@@ -8,7 +8,7 @@ namespace Jalium.UI.Controls;
 /// Provides a control for viewing flow content in a continuous, scrolling mode.
 /// </summary>
 [ContentProperty("Document")]
-public sealed class FlowDocumentScrollViewer : Control
+public class FlowDocumentScrollViewer : Control
 {
     #region Dependency Properties
 

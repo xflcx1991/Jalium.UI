@@ -812,6 +812,7 @@ JaliumResult D3D12RenderTarget::EndDraw() {
         }
     }
 
+    const bool presentOccluded = (hr == DXGI_STATUS_OCCLUDED);
     if (FAILED(hr)) return fail(JALIUM_ERROR_DEVICE_LOST);
 
     // Commit DirectComposition every frame in composition mode.
@@ -827,7 +828,13 @@ JaliumResult D3D12RenderTarget::EndDraw() {
     fullInvalidation_ = false;
     TrimOffscreenResourcesIfIdle();
 
-    MoveToNextFrame();
+    // Start menu / shell overlays can temporarily occlude a top-level HWND.
+    // In that state DXGI may return DXGI_STATUS_OCCLUDED; keep the current
+    // back-buffer index/fence ownership instead of advancing into the next
+    // frame until presentation resumes.
+    if (!presentOccluded) {
+        MoveToNextFrame();
+    }
 
     isDrawing_ = false;
     return JALIUM_OK;

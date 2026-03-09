@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using Jalium.UI.Input;
 using Jalium.UI.Interop;
 using Jalium.UI.Media;
@@ -8,7 +8,7 @@ namespace Jalium.UI.Controls.Primitives;
 /// <summary>
 /// Represents a column header in a DataGrid.
 /// </summary>
-public sealed class DataGridColumnHeader : ButtonBase
+public class DataGridColumnHeader : ButtonBase
 {
     #region Static Brushes & Pens
 
@@ -258,6 +258,56 @@ public sealed class DataGridColumnHeader : ButtonBase
 
     #region Rendering
 
+    private Brush ResolvePressedBackgroundBrush()
+    {
+        return ResolveThemeBrush("ControlBackgroundPressed", s_pressedBgBrush, "HighlightBackground");
+    }
+
+    private Brush ResolveDefaultBackgroundBrush()
+    {
+        return Background
+            ?? ResolveThemeBrush("ControlBackground", s_defaultBgBrush, "SurfaceBackground");
+    }
+
+    private Brush ResolveForegroundBrush()
+    {
+        if (HasLocalValue(Control.ForegroundProperty) && Foreground != null)
+        {
+            return Foreground;
+        }
+
+        return ResolveThemeBrush("TextPrimary", s_defaultFgBrush, "TextFillColorPrimaryBrush");
+    }
+
+    private Brush ResolveSeparatorBrush()
+    {
+        return SeparatorBrush
+            ?? BorderBrush
+            ?? ResolveThemeBrush("ControlBorder", s_defaultSeparatorBrush, "DividerStrokeColorDefaultBrush");
+    }
+
+    private Pen ResolveBottomBorderPen()
+    {
+        var borderBrush = BorderBrush
+            ?? ResolveThemeBrush("ControlBorder", s_borderBrush, "DividerStrokeColorDefaultBrush");
+        return new Pen(borderBrush, 1);
+    }
+
+    private Brush ResolveThemeBrush(string resourceKey, Brush fallback, string? secondaryResourceKey = null)
+    {
+        if (TryFindResource(resourceKey) is Brush brush)
+        {
+            return brush;
+        }
+
+        if (secondaryResourceKey != null && TryFindResource(secondaryResourceKey) is Brush secondaryBrush)
+        {
+            return secondaryBrush;
+        }
+
+        return fallback;
+    }
+
     /// <inheritdoc />
     protected override void OnRender(object drawingContext)
     {
@@ -269,14 +319,14 @@ public sealed class DataGridColumnHeader : ButtonBase
 
         // Draw background
         var bgBrush = IsPressed
-            ? s_pressedBgBrush
-            : (Background ?? s_defaultBgBrush);
+            ? ResolvePressedBackgroundBrush()
+            : ResolveDefaultBackgroundBrush();
         dc.DrawRectangle(bgBrush, null, rect);
 
         // Draw content
         if (Content is string text)
         {
-            var fgBrush = Foreground ?? s_defaultFgBrush;
+            var fgBrush = ResolveForegroundBrush();
             var formattedText = new FormattedText(text, FontFamily ?? "Segoe UI", FontSize > 0 ? FontSize : 12)
             {
                 Foreground = fgBrush
@@ -297,13 +347,13 @@ public sealed class DataGridColumnHeader : ButtonBase
         // Draw separator
         if (SeparatorVisibility == Visibility.Visible)
         {
-            var separatorBrush = SeparatorBrush ?? s_defaultSeparatorBrush;
+            var separatorBrush = ResolveSeparatorBrush();
             var separatorPen = new Pen(separatorBrush, 1);
             dc.DrawLine(separatorPen, new Point(rect.Width - 1, 0), new Point(rect.Width - 1, rect.Height));
         }
 
         // Draw bottom border
-        dc.DrawLine(s_borderPen, new Point(0, rect.Height - 1), new Point(rect.Width, rect.Height - 1));
+        dc.DrawLine(ResolveBottomBorderPen(), new Point(0, rect.Height - 1), new Point(rect.Width, rect.Height - 1));
     }
 
     private void DrawSortIndicator(DrawingContext dc, Rect rect, double offsetX, Brush brush)

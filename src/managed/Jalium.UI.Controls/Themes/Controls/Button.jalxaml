@@ -20,13 +20,27 @@
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="Template">
             <ControlTemplate TargetType="Button">
-                <Border Name="BackgroundBorder"
-                        Background="{TemplateBinding Background}"
-                        BorderBrush="{TemplateBinding BorderBrush}"
-                        BorderThickness="{TemplateBinding BorderThickness}"
-                        CornerRadius="{TemplateBinding CornerRadius}"
-                        Padding="{TemplateBinding Padding}">
+                <Grid>
+                    <Border Name="BackgroundBorder"
+                            TransitionProperty="None"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}" />
+                    <Border Name="HoverOverlay"
+                            TransitionProperty="Opacity"
+                            IsHitTestVisible="False"
+                            Background="{DynamicResource ControlBackgroundHover}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Opacity="0" />
+                    <Border Name="PressedOverlay"
+                            TransitionProperty="Opacity"
+                            IsHitTestVisible="False"
+                            Background="{DynamicResource ButtonBackgroundPressed}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Opacity="0" />
                     <ContentPresenter
+                        Margin="{TemplateBinding Padding}"
                         HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                         VerticalAlignment="{TemplateBinding VerticalContentAlignment}">
                         <ContentPresenter.Resources>
@@ -40,19 +54,22 @@
                             </Style>
                         </ContentPresenter.Resources>
                     </ContentPresenter>
-                </Border>
+                </Grid>
             </ControlTemplate>
         </Setter>
 
         <Style.Triggers>
             <PropertyTrigger Property="IsMouseOver" Value="True">
-                <Setter Property="Background" Value="{DynamicResource ControlBackgroundHover}" />
+                <Setter TargetName="HoverOverlay" Property="Opacity" Value="1" />
                 <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderHover}" />
             </PropertyTrigger>
             <PropertyTrigger Property="IsPressed" Value="True">
-                <Setter Property="Background" Value="{DynamicResource ControlBackgroundPressed}" />
+                <Setter TargetName="HoverOverlay" Property="Opacity" Value="0" />
+                <Setter TargetName="PressedOverlay" Property="Opacity" Value="1" />
             </PropertyTrigger>
             <PropertyTrigger Property="IsEnabled" Value="False">
+                <Setter TargetName="HoverOverlay" Property="Opacity" Value="0" />
+                <Setter TargetName="PressedOverlay" Property="Opacity" Value="0" />
                 <Setter Property="Background" Value="{DynamicResource ControlBackgroundDisabled}" />
                 <Setter Property="Foreground" Value="{DynamicResource TextDisabled}" />
                 <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderDisabled}" />
@@ -141,13 +158,27 @@
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="Template">
             <ControlTemplate TargetType="RepeatButton">
-                <Border Name="BackgroundBorder"
-                        Background="{TemplateBinding Background}"
-                        BorderBrush="{TemplateBinding BorderBrush}"
-                        BorderThickness="{TemplateBinding BorderThickness}"
-                        CornerRadius="{TemplateBinding CornerRadius}"
-                        Padding="{TemplateBinding Padding}">
+                <Grid>
+                    <Border Name="BackgroundBorder"
+                            TransitionProperty="None"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}" />
+                    <Border Name="HoverOverlay"
+                            TransitionProperty="Opacity"
+                            IsHitTestVisible="False"
+                            Background="{DynamicResource ControlBackgroundHover}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Opacity="0" />
+                    <Border Name="PressedOverlay"
+                            TransitionProperty="Opacity"
+                            IsHitTestVisible="False"
+                            Background="{DynamicResource ButtonBackgroundPressed}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Opacity="0" />
                     <ContentPresenter
+                        Margin="{TemplateBinding Padding}"
                         HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                         VerticalAlignment="{TemplateBinding VerticalContentAlignment}">
                         <ContentPresenter.Resources>
@@ -161,19 +192,22 @@
                             </Style>
                         </ContentPresenter.Resources>
                     </ContentPresenter>
-                </Border>
+                </Grid>
             </ControlTemplate>
         </Setter>
 
         <Style.Triggers>
             <PropertyTrigger Property="IsMouseOver" Value="True">
-                <Setter Property="Background" Value="{DynamicResource ControlBackgroundHover}" />
+                <Setter TargetName="HoverOverlay" Property="Opacity" Value="1" />
                 <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderHover}" />
             </PropertyTrigger>
             <PropertyTrigger Property="IsPressed" Value="True">
-                <Setter Property="Background" Value="{DynamicResource ControlBackgroundPressed}" />
+                <Setter TargetName="HoverOverlay" Property="Opacity" Value="0" />
+                <Setter TargetName="PressedOverlay" Property="Opacity" Value="1" />
             </PropertyTrigger>
             <PropertyTrigger Property="IsEnabled" Value="False">
+                <Setter TargetName="HoverOverlay" Property="Opacity" Value="0" />
+                <Setter TargetName="PressedOverlay" Property="Opacity" Value="0" />
                 <Setter Property="Background" Value="{DynamicResource ControlBackgroundDisabled}" />
                 <Setter Property="Foreground" Value="{DynamicResource TextDisabled}" />
                 <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderDisabled}" />
@@ -197,6 +231,7 @@
         <Setter Property="Template">
             <ControlTemplate TargetType="HyperlinkButton">
                 <Border Name="RootBorder"
+                        TransitionProperty="None"
                         Background="{TemplateBinding Background}"
                         BorderBrush="{TemplateBinding BorderBrush}"
                         BorderThickness="{TemplateBinding BorderThickness}"
@@ -207,6 +242,7 @@
                             VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
                         <!-- Underline border at the bottom -->
                         <Border Name="UnderlineBorder"
+                                TransitionProperty="None"
                                 VerticalAlignment="Bottom"
                                 Height="1"
                                 Background="{TemplateBinding Foreground}" />

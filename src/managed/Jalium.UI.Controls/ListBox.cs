@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Input;
+using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
 
@@ -64,6 +65,8 @@ public class ListBox : Selector
     /// </summary>
     public ListBox()
     {
+        SetCurrentValue(UIElement.TransitionPropertyProperty, "None");
+
         if (ItemsPanel == null)
         {
             ItemsPanel = CreateItemsPanelTemplate(typeof(VirtualizingStackPanel));
@@ -844,6 +847,9 @@ public class ListBox : Selector
 /// </summary>
 public class ListBoxItem : ContentControl
 {
+    private static readonly SolidColorBrush s_fallbackHoverBackgroundBrush = new(Themes.ThemeColors.HighlightBackground);
+    private static readonly SolidColorBrush s_fallbackSelectedBackgroundBrush = new(Themes.ThemeColors.SelectionBackground);
+
     #region Dependency Properties
 
     /// <summary>
@@ -871,6 +877,9 @@ public class ListBoxItem : ContentControl
     /// </summary>
     internal ListBox? ParentListBox { get; set; }
 
+    private Border? _backgroundBorder;
+    private bool _isItemMouseOver;
+
     #endregion
 
     #region Constructor
@@ -884,14 +893,25 @@ public class ListBoxItem : ContentControl
         // ContentPresenter handles displaying string/object content
         UseTemplateContentManagement();
 
+        SetCurrentValue(UIElement.TransitionPropertyProperty, "None");
         Focusable = true;
+        ResourcesChanged += OnResourcesChangedHandler;
 
         // Register input event handlers
         AddHandler(MouseDownEvent, new RoutedEventHandler(OnMouseDownHandler));
         AddHandler(MouseEnterEvent, new RoutedEventHandler(OnMouseEnterHandler));
+        AddHandler(MouseLeaveEvent, new RoutedEventHandler(OnMouseLeaveHandler));
     }
 
     #endregion
+
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+
+        _backgroundBorder = GetTemplateChild("PART_BackgroundBorder") as Border;
+        UpdateContainerVisualState();
+    }
 
     #region Input Handling
 
@@ -914,10 +934,25 @@ public class ListBoxItem : ContentControl
 
     private void OnMouseEnterHandler(object sender, RoutedEventArgs e)
     {
+        if (!_isItemMouseOver)
+        {
+            _isItemMouseOver = true;
+            UpdateContainerVisualState();
+        }
+
         // If left mouse button is down while entering, perform drag selection
         if (e is MouseEventArgs mouseArgs && mouseArgs.LeftButton == MouseButtonState.Pressed)
         {
             ParentListBox?.HandleDragSelect(this);
+        }
+    }
+
+    private void OnMouseLeaveHandler(object sender, RoutedEventArgs e)
+    {
+        if (_isItemMouseOver)
+        {
+            _isItemMouseOver = false;
+            UpdateContainerVisualState();
         }
     }
 
@@ -927,8 +962,44 @@ public class ListBoxItem : ContentControl
 
     private static void OnIsSelectedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        // Triggers handle visual changes now
+        if (d is ListBoxItem item)
+        {
+            item.UpdateContainerVisualState();
+        }
     }
 
     #endregion
+
+    private void UpdateContainerVisualState()
+    {
+        if (_backgroundBorder == null)
+        {
+            return;
+        }
+
+        if (IsSelected)
+        {
+            _backgroundBorder.Background = ResolveSelectedBackgroundBrush();
+            return;
+        }
+
+        if (_isItemMouseOver)
+        {
+            _backgroundBorder.Background = ResolveHoverBackgroundBrush();
+            return;
+        }
+
+        _backgroundBorder.ClearValue(Border.BackgroundProperty);
+    }
+
+    private Brush ResolveHoverBackgroundBrush()
+        => TryFindResource("HighlightBackground") as Brush ?? s_fallbackHoverBackgroundBrush;
+
+    private Brush ResolveSelectedBackgroundBrush()
+        => TryFindResource("SelectionBackground") as Brush ?? s_fallbackSelectedBackgroundBrush;
+
+    private void OnResourcesChangedHandler(object? sender, EventArgs e)
+    {
+        UpdateContainerVisualState();
+    }
 }

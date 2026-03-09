@@ -1,11 +1,11 @@
-﻿using Jalium.UI.Media;
+using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
 
 /// <summary>
 /// Represents a vertical line that separates items in a CommandBar.
 /// </summary>
-public sealed class AppBarSeparator : Control, ICommandBarElement
+public class AppBarSeparator : Control, ICommandBarElement
 {
     private static readonly SolidColorBrush s_fallbackSeparatorBrush = new(Color.FromRgb(80, 80, 80));
 

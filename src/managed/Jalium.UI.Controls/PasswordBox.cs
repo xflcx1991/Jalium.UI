@@ -1,4 +1,4 @@
-﻿using Jalium.UI.Automation;
+using Jalium.UI.Automation;
 using Jalium.UI.Controls.Automation;
 using Jalium.UI.Input;
 using Jalium.UI.Interop;
@@ -11,7 +11,7 @@ namespace Jalium.UI.Controls;
 /// A control for entering passwords with masked display.
 /// Inherits from Control for security reasons - passwords should not be exposed via data binding.
 /// </summary>
-public sealed class PasswordBox : Control, IImeSupport
+public class PasswordBox : Control, IImeSupport
 {
     #region Automation
 

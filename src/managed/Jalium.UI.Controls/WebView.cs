@@ -1,4 +1,4 @@
-﻿using System.Drawing;
+using System.Drawing;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -12,7 +12,7 @@ namespace Jalium.UI.Controls;
 /// Represents a control that hosts web content using WebView2.
 /// Defaults to a windowless composition host to avoid child HWND airspace issues.
 /// </summary>
-public sealed partial class WebView : FrameworkElement, IDisposable
+public partial class WebView : FrameworkElement, IDisposable
 {
     private bool _isInitialized;
     private bool _isInitializing;

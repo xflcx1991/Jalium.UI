@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.ObjectModel;
 using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Input;
@@ -12,7 +12,7 @@ namespace Jalium.UI.Controls;
 /// Represents a text box control that provides auto-completion suggestions.
 /// Inherits from TextBoxBase for full text editing support.
 /// </summary>
-public sealed class AutoCompleteBox : TextBoxBase, IImeSupport
+public class AutoCompleteBox : TextBoxBase, IImeSupport
 {
     #region Static Brushes & Pens
 
@@ -1103,7 +1103,7 @@ public sealed class AutoCompleteBox : TextBoxBase, IImeSupport
         {
             var formattedText = new FormattedText(_text, FontFamily ?? "Segoe UI", FontSize > 0 ? FontSize : 14)
             {
-                Foreground = Foreground ?? s_whiteBrush,
+                Foreground = ResolveTextForegroundBrush(),
                 MaxTextWidth = contentRect.Width,
                 MaxTextHeight = lineHeight,
                 Trimming = TextTrimming
@@ -1130,7 +1130,8 @@ public sealed class AutoCompleteBox : TextBoxBase, IImeSupport
 
     private void DrawSelection(DrawingContext dc, Rect contentRect, double lineHeight)
     {
-        if (SelectionBrush == null)
+        var selectionBrush = ResolveSelectionBrush();
+        if (selectionBrush == null)
             return;
 
         var roundedHorizontalOffset = Math.Round(_horizontalOffset);
@@ -1142,7 +1143,7 @@ public sealed class AutoCompleteBox : TextBoxBase, IImeSupport
         var textY = contentRect.Y + (contentRect.Height - lineHeight) / 2;
 
         var selRect = new Rect(startX, textY, width, lineHeight);
-        dc.DrawRectangle(SelectionBrush, null, selRect);
+        dc.DrawRectangle(selectionBrush, null, selRect);
     }
 
     private void DrawImeComposition(DrawingContext dc, Rect contentRect, double lineHeight)
@@ -1173,7 +1174,8 @@ public sealed class AutoCompleteBox : TextBoxBase, IImeSupport
     {
         var caretOpacity = UpdateCaretAnimation();
 
-        if (CaretBrush == null || _isImeComposing || caretOpacity < 0.01)
+        var caretBrush = ResolveCaretBrush();
+        if (caretBrush == null || _isImeComposing || caretOpacity < 0.01)
             return;
 
         var columnIndex = Math.Min(_caretIndex, _text.Length);
@@ -1184,7 +1186,7 @@ public sealed class AutoCompleteBox : TextBoxBase, IImeSupport
         var textY = contentRect.Y + (contentRect.Height - lineHeight) / 2;
 
         Brush caretBrushWithOpacity;
-        if (CaretBrush is SolidColorBrush solidBrush)
+        if (caretBrush is SolidColorBrush solidBrush)
         {
             var color = solidBrush.Color;
             var alpha = (byte)(color.A * caretOpacity);
@@ -1192,7 +1194,7 @@ public sealed class AutoCompleteBox : TextBoxBase, IImeSupport
         }
         else
         {
-            caretBrushWithOpacity = CaretBrush;
+            caretBrushWithOpacity = caretBrush;
         }
 
         var caretPen = new Pen(caretBrushWithOpacity, 1.5);

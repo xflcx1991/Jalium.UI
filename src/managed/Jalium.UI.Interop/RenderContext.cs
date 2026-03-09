@@ -7,6 +7,7 @@ public sealed class RenderContext : IDisposable
 {
     private static readonly object s_sync = new();
     private static readonly HashSet<RenderContext> _retiredContexts = [];
+    private static int _generationCounter;
     private static RenderContext? _current;
     private nint _handle;
     private bool _disposed;
@@ -27,6 +28,11 @@ public sealed class RenderContext : IDisposable
     /// Gets the active backend type.
     /// </summary>
     public RenderBackend Backend { get; }
+
+    /// <summary>
+    /// Gets the unique generation identifier for this render context instance.
+    /// </summary>
+    public int Generation { get; }
 
     /// <summary>
     /// Gets whether the context is valid.
@@ -52,6 +58,7 @@ public sealed class RenderContext : IDisposable
         }
 
         Backend = NativeMethods.ContextGetBackend(_handle);
+        Generation = Interlocked.Increment(ref _generationCounter);
         _current ??= this;
     }
 
@@ -69,6 +76,7 @@ public sealed class RenderContext : IDisposable
 
         RenderContext? previous;
         RenderContext context;
+        bool clearTextMeasurementCache = false;
         lock (s_sync)
         {
             current = _current;
@@ -80,6 +88,7 @@ public sealed class RenderContext : IDisposable
             previous = current;
             context = new RenderContext(backend);
             _current = context;
+            clearTextMeasurementCache = previous != null && !ReferenceEquals(previous, context);
 
             if (previous != null &&
                 previous.IsValid &&
@@ -89,6 +98,11 @@ public sealed class RenderContext : IDisposable
                 previous._retireRequested = true;
                 _retiredContexts.Add(previous);
             }
+        }
+
+        if (clearTextMeasurementCache)
+        {
+            TextMeasurement.ClearCache();
         }
 
         TryDisposeRetiredContexts();

@@ -4,7 +4,7 @@ namespace Jalium.UI.Controls.Ribbon;
 /// Displays a set of related items in a Ribbon control.
 /// </summary>
 [ContentProperty("Items")]
-public sealed class RibbonGallery : ItemsControl
+public class RibbonGallery : ItemsControl
 {
     /// <summary>
     /// Identifies the SelectedItem dependency property.
@@ -71,7 +71,7 @@ public sealed class RibbonGallery : ItemsControl
 /// Represents a category within a RibbonGallery.
 /// </summary>
 [ContentProperty("Items")]
-public sealed class RibbonGalleryCategory : ItemsControl
+public class RibbonGalleryCategory : ItemsControl
 {
     /// <summary>
     /// Gets or sets the header of the category.
@@ -92,7 +92,7 @@ public sealed class RibbonGalleryCategory : ItemsControl
 /// <summary>
 /// Represents an item within a RibbonGalleryCategory.
 /// </summary>
-public sealed class RibbonGalleryItem : ContentControl
+public class RibbonGalleryItem : ContentControl
 {
     /// <summary>
     /// Identifies the IsSelected dependency property.

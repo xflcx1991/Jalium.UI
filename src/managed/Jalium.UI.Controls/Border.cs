@@ -1,4 +1,4 @@
-﻿using Jalium.UI.Input;
+using Jalium.UI.Input;
 using Jalium.UI.Interop;
 using Jalium.UI.Media;
 using Jalium.UI.Media.Animation;
@@ -10,7 +10,7 @@ namespace Jalium.UI.Controls;
 /// Draws a border, background, or both around another element.
 /// </summary>
 [ContentProperty("Child")]
-public sealed class Border : FrameworkElement
+public class Border : FrameworkElement
 {
     private UIElement? _child;
     private Pen? _cachedBorderPen;

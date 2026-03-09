@@ -3,7 +3,7 @@ namespace Jalium.UI.Controls.Primitives;
 /// <summary>
 /// Represents a control that displays a row of cells in a DataGrid.
 /// </summary>
-public sealed class DataGridCellsPresenter : Panel
+public class DataGridCellsPresenter : Panel
 {
     #region Dependency Properties
 

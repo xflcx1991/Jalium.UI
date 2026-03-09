@@ -7,7 +7,7 @@ namespace Jalium.UI.Controls;
 /// Represents an icon that uses a glyph from the Segoe icon font family as its content.
 /// Mirrors WinUI's Microsoft.UI.Xaml.Controls.SymbolIcon.
 /// </summary>
-public sealed class SymbolIcon : IconElement
+public class SymbolIcon : IconElement
 {
     // Segoe MDL2 Assets is available on a wider range of Windows installations.
     // Our Symbol enum uses MDL2-compatible code points, so this keeps icons visible

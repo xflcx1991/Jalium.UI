@@ -1,4 +1,4 @@
-﻿using Jalium.UI.Controls.Primitives;
+using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Input;
 using Jalium.UI.Media;
 
@@ -8,7 +8,7 @@ namespace Jalium.UI.Controls;
 /// Represents a control that displays a message to the user with an optional close button.
 /// Used for showing informational, success, warning, or error messages.
 /// </summary>
-public sealed class InfoBar : ContentControl
+public class InfoBar : ContentControl
 {
     // Cached brushes for OnRender (per-severity)
     private static readonly SolidColorBrush s_whiteBrush = new(Color.White);

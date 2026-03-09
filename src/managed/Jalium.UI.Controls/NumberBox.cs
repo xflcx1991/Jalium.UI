@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Input;
 using Jalium.UI.Interop;
@@ -10,7 +10,7 @@ namespace Jalium.UI.Controls;
 /// Represents a text box for entering numeric values with spin buttons for increment/decrement.
 /// Inherits from TextBoxBase for full text editing support.
 /// </summary>
-public sealed class NumberBox : TextBoxBase, IImeSupport
+public class NumberBox : TextBoxBase, IImeSupport
 {
     #region Fields
 
@@ -316,6 +316,8 @@ public sealed class NumberBox : TextBoxBase, IImeSupport
     /// </summary>
     public NumberBox()
     {
+        SetCurrentValue(UIElement.TransitionPropertyProperty, "None");
+
         // Set IBeam cursor for text input
         Cursor = Jalium.UI.Cursors.IBeam;
 
@@ -332,6 +334,12 @@ public sealed class NumberBox : TextBoxBase, IImeSupport
         // This ensures spin buttons work even if event routing has issues
         AddHandler(PreviewMouseDownEvent, new RoutedEventHandler(OnPreviewMouseDownHandler));
         AddHandler(PreviewMouseUpEvent, new RoutedEventHandler(OnPreviewMouseUpHandler));
+    }
+
+    /// <inheritdoc />
+    protected override bool ShouldSuppressAutomaticTransition(DependencyProperty dp)
+    {
+        return ReferenceEquals(dp, ValueProperty);
     }
 
     private RepeatButton? _pressedSpinButton;
@@ -1159,7 +1167,7 @@ public sealed class NumberBox : TextBoxBase, IImeSupport
         {
             var valueFormatted = new FormattedText(displayText, FontFamily ?? "Segoe UI", FontSize > 0 ? FontSize : 14)
             {
-                Foreground = Foreground ?? s_whiteBrush,
+                Foreground = ResolveTextForegroundBrush(),
                 MaxTextWidth = Math.Max(0, contentRect.Width),
                 MaxTextHeight = lineHeight,
                 Trimming = TextTrimming
@@ -1186,7 +1194,8 @@ public sealed class NumberBox : TextBoxBase, IImeSupport
 
     private void DrawSelection(DrawingContext dc, Rect contentRect, double lineHeight)
     {
-        if (SelectionBrush == null)
+        var selectionBrush = ResolveSelectionBrush();
+        if (selectionBrush == null)
             return;
 
         var roundedHorizontalOffset = Math.Round(_horizontalOffset);
@@ -1198,7 +1207,7 @@ public sealed class NumberBox : TextBoxBase, IImeSupport
         var textY = contentRect.Top + (contentRect.Height - lineHeight) / 2;
 
         var selRect = new Rect(startX, textY, width, lineHeight);
-        dc.DrawRectangle(SelectionBrush, null, selRect);
+        dc.DrawRectangle(selectionBrush, null, selRect);
     }
 
     private void DrawImeComposition(DrawingContext dc, Rect contentRect, double lineHeight)
@@ -1231,7 +1240,8 @@ public sealed class NumberBox : TextBoxBase, IImeSupport
     {
         var caretOpacity = UpdateCaretAnimation();
 
-        if (CaretBrush == null || _isImeComposing || caretOpacity < 0.01)
+        var caretBrush = ResolveCaretBrush();
+        if (caretBrush == null || _isImeComposing || caretOpacity < 0.01)
             return;
 
         var columnIndex = Math.Min(_caretIndex, _text.Length);
@@ -1242,7 +1252,7 @@ public sealed class NumberBox : TextBoxBase, IImeSupport
         var textY = contentRect.Top + (contentRect.Height - lineHeight) / 2;
 
         Brush caretBrushWithOpacity;
-        if (CaretBrush is SolidColorBrush solidBrush)
+        if (caretBrush is SolidColorBrush solidBrush)
         {
             var color = solidBrush.Color;
             var alpha = (byte)(color.A * caretOpacity);
@@ -1250,7 +1260,7 @@ public sealed class NumberBox : TextBoxBase, IImeSupport
         }
         else
         {
-            caretBrushWithOpacity = CaretBrush;
+            caretBrushWithOpacity = caretBrush;
         }
 
         var caretPen = new Pen(caretBrushWithOpacity, 1.5);

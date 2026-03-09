@@ -1,8 +1,6 @@
 using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Input;
 using Jalium.UI.Media;
-using Jalium.UI.Media.Animation;
-using Jalium.UI.Threading;
 
 namespace Jalium.UI.Controls;
 
@@ -19,16 +17,9 @@ public class ComboBox : Selector
     private bool _isDropDownOpen;
     private bool _isUpdatingEditableText;
 
-    // Animation
     private Shapes.Path? _arrowPath;
     private RotateTransform? _arrowRotate;
-    private DispatcherTimer? _animationTimer;
     private bool _isCloseAnimating;
-
-    private const double OpenDurationMs = 250;
-    private const double CloseDurationMs = 180;
-    private static readonly CubicEase OpenEase = new() { EasingMode = EasingMode.EaseOut };
-    private static readonly CubicEase CloseEase = new() { EasingMode = EasingMode.EaseIn };
 
     #region Dependency Properties
 
@@ -186,6 +177,7 @@ public class ComboBox : Selector
     {
         MinWidth = 120;
         Focusable = true;
+        SetCurrentValue(UIElement.TransitionPropertyProperty, "None");
         SizeChanged += OnComboBoxSizeChanged;
 
         // Initialize SelectionBoxItem with placeholder
@@ -272,41 +264,17 @@ public class ComboBox : Selector
 
     private void OnPopupClosed(object? sender, EventArgs e)
     {
-        // If CloseDropDown's animation is already handling the close, skip
         if (_isCloseAnimating) return;
 
-        // Popup was closed externally (light dismiss / StaysOpen=false)
-        // The popup is already gone, so just animate the arrow back
-        _animationTimer?.Stop();
         _isDropDownOpen = false;
 
         if (_toggleButton != null)
             _toggleButton.IsChecked = false;
 
-        // Animate arrow back to 0° (popup child is already hidden)
-        if (_arrowRotate != null && Math.Abs(_arrowRotate.Angle) > 0.5)
+        if (_arrowRotate != null)
         {
-            var arrowStartAngle = _arrowRotate.Angle;
-            var startTime = Environment.TickCount64;
-
-            _animationTimer = new DispatcherTimer { Interval = CompositionTarget.FrameInterval };
-            _animationTimer.Tick += (s, ev) =>
-            {
-                var elapsed = Environment.TickCount64 - startTime;
-                var progress = Math.Min(1.0, elapsed / CloseDurationMs);
-                var eased = CloseEase.Ease(progress);
-
-                _arrowRotate.Angle = arrowStartAngle * (1.0 - eased);
-                _arrowPath!.InvalidateVisual();
-
-                if (progress >= 1.0)
-                {
-                    _animationTimer!.Stop();
-                    _arrowRotate.Angle = 0;
-                    _arrowPath!.InvalidateVisual();
-                }
-            };
-            _animationTimer.Start();
+            _arrowRotate.Angle = 0;
+            _arrowPath?.InvalidateVisual();
         }
 
         SetValue(IsDropDownOpenProperty, false);
@@ -588,12 +556,7 @@ public class ComboBox : Selector
     {
         if (_isDropDownOpen) return;
 
-        // Cancel any close animation in progress
-        if (_isCloseAnimating)
-        {
-            _animationTimer?.Stop();
-            _isCloseAnimating = false;
-        }
+        _isCloseAnimating = false;
 
         PopulateDropdownItems();
 
@@ -610,7 +573,6 @@ public class ComboBox : Selector
             _toggleButton.IsChecked = true;
         }
 
-        // Animate: arrow 0→180°, popup child fade+slide in
         AnimateOpen();
 
         DropDownOpened?.Invoke(this, EventArgs.Empty);
@@ -627,7 +589,6 @@ public class ComboBox : Selector
             _toggleButton.IsChecked = false;
         }
 
-        // Animate: arrow 180→0°, popup child fade+slide out, then close popup
         AnimateClose();
 
         DropDownClosed?.Invoke(this, EventArgs.Empty);
@@ -663,118 +624,41 @@ public class ComboBox : Selector
 
     private void AnimateOpen()
     {
-        _animationTimer?.Stop();
-
         var popupChild = _popup?.Child as FrameworkElement;
-
-        // Initial state: transparent + shifted up
         if (popupChild != null)
         {
-            popupChild.Opacity = 0;
-            popupChild.RenderOffset = new Point(0, -8);
+            popupChild.Opacity = 1;
+            popupChild.RenderOffset = default;
         }
 
-        var arrowStartAngle = _arrowRotate?.Angle ?? 0;
-        var startTime = Environment.TickCount64;
-
-        _animationTimer = new DispatcherTimer { Interval = CompositionTarget.FrameInterval };
-        _animationTimer.Tick += (s, e) =>
+        if (_arrowRotate != null)
         {
-            var elapsed = Environment.TickCount64 - startTime;
-            var progress = Math.Min(1.0, elapsed / OpenDurationMs);
-            var eased = OpenEase.Ease(progress);
-
-            // Arrow: rotate to 180°
-            if (_arrowRotate != null)
-            {
-                _arrowRotate.Angle = arrowStartAngle + (180.0 - arrowStartAngle) * eased;
-                _arrowPath!.InvalidateVisual();
-            }
-
-            // Popup child: fade in + slide down
-            if (popupChild != null)
-            {
-                popupChild.Opacity = eased;
-                popupChild.RenderOffset = new Point(0, -8 * (1.0 - eased));
-            }
-
-            if (progress >= 1.0)
-            {
-                _animationTimer!.Stop();
-                if (popupChild != null)
-                {
-                    popupChild.Opacity = 1;
-                    popupChild.RenderOffset = default;
-                }
-                if (_arrowRotate != null)
-                {
-                    _arrowRotate.Angle = 180;
-                    _arrowPath!.InvalidateVisual();
-                }
-            }
-        };
-        _animationTimer.Start();
+            _arrowRotate.Angle = 180;
+            _arrowPath?.InvalidateVisual();
+        }
     }
 
     private void AnimateClose()
     {
-        _animationTimer?.Stop();
-
         var popupChild = _popup?.Child as FrameworkElement;
-        var arrowStartAngle = _arrowRotate?.Angle ?? 180;
-        var startOpacity = popupChild?.Opacity ?? 1.0;
-        var startOffsetY = popupChild?.RenderOffset.Y ?? 0;
-        var startTime = Environment.TickCount64;
+        if (popupChild != null)
+        {
+            popupChild.Opacity = 1;
+            popupChild.RenderOffset = default;
+        }
+
+        if (_arrowRotate != null)
+        {
+            _arrowRotate.Angle = 0;
+            _arrowPath?.InvalidateVisual();
+        }
 
         _isCloseAnimating = true;
-
-        _animationTimer = new DispatcherTimer { Interval = CompositionTarget.FrameInterval };
-        _animationTimer.Tick += (s, e) =>
+        if (_popup != null)
         {
-            var elapsed = Environment.TickCount64 - startTime;
-            var progress = Math.Min(1.0, elapsed / CloseDurationMs);
-            var eased = CloseEase.Ease(progress);
-
-            // Arrow: rotate back to 0°
-            if (_arrowRotate != null)
-            {
-                _arrowRotate.Angle = arrowStartAngle * (1.0 - eased);
-                _arrowPath!.InvalidateVisual();
-            }
-
-            // Popup child: fade out + slide up
-            if (popupChild != null)
-            {
-                popupChild.Opacity = startOpacity * (1.0 - eased);
-                popupChild.RenderOffset = new Point(0, startOffsetY + (-8 - startOffsetY) * eased);
-            }
-
-            if (progress >= 1.0)
-            {
-                _animationTimer!.Stop();
-
-                // Actually close the popup after animation completes
-                // Keep _isCloseAnimating=true until AFTER popup closes to prevent OnPopupClosed re-entry
-                if (_popup != null)
-                {
-                    _popup.IsOpen = false;
-                }
-                _isCloseAnimating = false;
-
-                // Reset state
-                if (popupChild != null)
-                {
-                    popupChild.Opacity = 1;
-                    popupChild.RenderOffset = default;
-                }
-                if (_arrowRotate != null)
-                {
-                    _arrowRotate.Angle = 0;
-                    _arrowPath!.InvalidateVisual();
-                }
-            }
-        };
-        _animationTimer.Start();
+            _popup.IsOpen = false;
+        }
+        _isCloseAnimating = false;
     }
 
     private static T? FindDescendant<T>(Visual? root) where T : Visual
@@ -860,7 +744,7 @@ public class ComboBox : Selector
 /// <summary>
 /// Represents an item in a ComboBox.
 /// </summary>
-public sealed class ComboBoxItem : ContentControl
+public class ComboBoxItem : ContentControl
 {
     private bool _isPressed;
 

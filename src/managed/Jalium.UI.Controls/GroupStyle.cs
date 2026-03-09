@@ -56,6 +56,6 @@ public sealed class GroupStyle
 /// <summary>
 /// Represents a group item container in an ItemsControl.
 /// </summary>
-public sealed class GroupItem : ContentControl
+public class GroupItem : ContentControl
 {
 }

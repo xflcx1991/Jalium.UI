@@ -9,7 +9,7 @@ namespace Jalium.UI.Controls;
 /// Shows an accent border when dock highlighting is active.
 /// Dock indicator buttons are rendered in a separate topmost window by <see cref="DockManager"/>.
 /// </summary>
-public sealed class DockLayout : ContentControl
+public class DockLayout : ContentControl
 {
     private static readonly SolidColorBrush s_fallbackBackgroundBrush = new(ThemeColors.WindowBackground);
     private static readonly SolidColorBrush s_fallbackBorderBrush = new(ThemeColors.DockTabStripBorder);
@@ -49,6 +49,7 @@ public sealed class DockLayout : ContentControl
 
     public DockLayout()
     {
+        SetCurrentValue(UIElement.TransitionPropertyProperty, "None");
         DockManager.Register(this);
         Loaded += (_, _) => DockManager.Register(this);
         Unloaded += (_, _) => DockManager.Unregister(this);

@@ -1,4 +1,4 @@
-﻿using Jalium.UI.Controls.Ink;
+using Jalium.UI.Controls.Ink;
 using Jalium.UI.Documents;
 using Jalium.UI.Media;
 
@@ -7,7 +7,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Renders ink on a surface. Used internally by InkCanvas to render strokes.
 /// </summary>
-public sealed class InkPresenter : Decorator
+public class InkPresenter : Decorator
 {
     private readonly List<Visual> _attachedVisuals = [];
 

@@ -10,7 +10,7 @@ namespace Jalium.UI.Controls;
 /// Represents a scrollable area that can contain other visible elements.
 /// </summary>
 [ContentProperty("Content")]
-public sealed partial class ScrollViewer : Control
+public partial class ScrollViewer : Control
 {
     #region Fields
 
@@ -88,7 +88,7 @@ public sealed partial class ScrollViewer : Control
     /// </summary>
     public static readonly DependencyProperty IsScrollInertiaEnabledProperty =
         DependencyProperty.Register(nameof(IsScrollInertiaEnabled), typeof(bool), typeof(ScrollViewer),
-            new PropertyMetadata(true));
+            new PropertyMetadata(true, OnScrollInertiaEnabledChanged));
 
     /// <summary>
     /// Identifies the ScrollInertiaDurationMs dependency property.
@@ -172,7 +172,7 @@ public sealed partial class ScrollViewer : Control
 
     /// <summary>
     /// Gets or sets a value that indicates whether scroll inertia is enabled.
-    /// When enabled, mouse wheel scrolling will have momentum with smooth deceleration.
+    /// Enabled by default for ScrollViewer so wheel and touch panning use smooth deceleration.
     /// </summary>
     public bool IsScrollInertiaEnabled
     {
@@ -396,6 +396,7 @@ public sealed partial class ScrollViewer : Control
     /// </summary>
     public ScrollViewer()
     {
+        SetCurrentValue(UIElement.TransitionPropertyProperty, "None");
         _verticalScrollBar = CreateScrollBar(Orientation.Vertical);
         _horizontalScrollBar = CreateScrollBar(Orientation.Horizontal);
         AddVisualChild(_verticalScrollBar);
@@ -798,6 +799,9 @@ public sealed partial class ScrollViewer : Control
 
     private void StartPointerPanningInertia()
     {
+        if (!IsScrollInertiaEnabled || GetEffectiveScrollInertiaDurationMs() <= 0)
+            return;
+
         double deceleration = GetEffectivePanningDeceleration();
         if (deceleration <= 0)
             return;
@@ -1720,11 +1724,7 @@ public sealed partial class ScrollViewer : Control
             if (useSmoothWheelInertia)
             {
                 // Smooth animated scroll through IScrollInfo
-                var scrollLines = GetSystemWheelScrollLines();
-                var notches = -e.Delta / 120.0;
-                var delta = scrollLines == WHEEL_PAGESCROLL
-                    ? notches * _viewportHeight
-                    : notches * scrollLines * LineScrollAmount;
+                var delta = ComputeMouseWheelDelta(e.Delta, LineScrollAmount, _viewportHeight);
 
                 if (!_isSmoothScrolling)
                     _smoothTargetY = _verticalOffset;
@@ -1746,17 +1746,14 @@ public sealed partial class ScrollViewer : Control
             return;
         }
 
-        var scrollLines2 = GetSystemWheelScrollLines();
-        var notches2 = -e.Delta / 120.0;
-
         if (CanScrollVertically)
         {
             // Only consume the event if we can actually scroll in the requested direction.
             // This allows nested ScrollViewers to bubble the event to the parent when at bounds.
             bool atTop = _verticalOffset <= 0;
             bool atBottom = _verticalOffset >= ScrollableHeight;
-            bool scrollingUp = notches2 < 0;
-            bool scrollingDown = notches2 > 0;
+            bool scrollingUp = e.Delta > 0;
+            bool scrollingDown = e.Delta < 0;
 
             if ((scrollingUp && atTop) || (scrollingDown && atBottom))
             {
@@ -1764,9 +1761,7 @@ public sealed partial class ScrollViewer : Control
             }
             else
             {
-                var delta = scrollLines2 == WHEEL_PAGESCROLL
-                    ? notches2 * _viewportHeight
-                    : notches2 * scrollLines2 * LineScrollAmount;
+                var delta = ComputeMouseWheelDelta(e.Delta, LineScrollAmount, _viewportHeight);
 
                 if (useSmoothWheelInertia)
                 {
@@ -1789,8 +1784,8 @@ public sealed partial class ScrollViewer : Control
         {
             bool atLeft = _horizontalOffset <= 0;
             bool atRight = _horizontalOffset >= ScrollableWidth;
-            bool scrollingLeft = notches2 < 0;
-            bool scrollingRight = notches2 > 0;
+            bool scrollingLeft = e.Delta > 0;
+            bool scrollingRight = e.Delta < 0;
 
             if ((scrollingLeft && atLeft) || (scrollingRight && atRight))
             {
@@ -1798,9 +1793,7 @@ public sealed partial class ScrollViewer : Control
             }
             else
             {
-                var delta = scrollLines2 == WHEEL_PAGESCROLL
-                    ? notches2 * _viewportWidth
-                    : notches2 * scrollLines2 * LineScrollAmount;
+                var delta = ComputeMouseWheelDelta(e.Delta, LineScrollAmount, _viewportWidth);
 
                 if (useSmoothWheelInertia)
                 {
@@ -1822,7 +1815,7 @@ public sealed partial class ScrollViewer : Control
 
     private void StartSmoothScroll()
     {
-        if (GetEffectiveScrollInertiaDurationMs() <= 0)
+        if (!IsScrollInertiaEnabled || GetEffectiveScrollInertiaDurationMs() <= 0)
         {
             _isApplyingSmoothScrollStep = true;
             try
@@ -2169,21 +2162,15 @@ public sealed partial class ScrollViewer : Control
         if (d is not ScrollViewer scrollViewer)
             return;
 
-        if (scrollViewer.GetEffectiveScrollInertiaDurationMs() > 0 || !scrollViewer._isSmoothScrolling)
+        scrollViewer.SnapPendingSmoothScrollIfDisabled();
+    }
+
+    private static void OnScrollInertiaEnabledChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is not ScrollViewer scrollViewer)
             return;
 
-        scrollViewer._isApplyingSmoothScrollStep = true;
-        try
-        {
-            scrollViewer.ScrollToVerticalOffset(scrollViewer._smoothTargetY);
-            scrollViewer.ScrollToHorizontalOffset(scrollViewer._smoothTargetX);
-        }
-        finally
-        {
-            scrollViewer._isApplyingSmoothScrollStep = false;
-        }
-
-        scrollViewer.StopSmoothScroll();
+        scrollViewer.SnapPendingSmoothScrollIfDisabled();
     }
 
     private void CancelSmoothScroll()
@@ -2202,6 +2189,25 @@ public sealed partial class ScrollViewer : Control
         if (double.IsNaN(durationMs) || double.IsInfinity(durationMs))
             return DefaultScrollInertiaDurationMs;
         return durationMs;
+    }
+
+    private void SnapPendingSmoothScrollIfDisabled()
+    {
+        if ((IsScrollInertiaEnabled && GetEffectiveScrollInertiaDurationMs() > 0) || !_isSmoothScrolling)
+            return;
+
+        _isApplyingSmoothScrollStep = true;
+        try
+        {
+            ScrollToVerticalOffset(_smoothTargetY);
+            ScrollToHorizontalOffset(_smoothTargetX);
+        }
+        finally
+        {
+            _isApplyingSmoothScrollStep = false;
+        }
+
+        StopSmoothScroll();
     }
 
     private double ComputeSmoothAlpha(double dtSeconds)
@@ -2296,6 +2302,26 @@ public sealed partial class ScrollViewer : Control
         }
 
         scrollViewer.ApplyScrollBarAutoHideVisualState();
+    }
+
+    internal static double ComputeMouseWheelDelta(int wheelDelta, double lineStep, double pageStep)
+    {
+        double safeLineStep = double.IsFinite(lineStep) && lineStep > 0
+            ? lineStep
+            : 1.0;
+        double safePageStep = double.IsFinite(pageStep) && pageStep > 0
+            ? pageStep
+            : safeLineStep;
+
+        double notches = -wheelDelta / 120.0;
+        if (Math.Abs(notches) <= double.Epsilon)
+            return 0;
+
+        var scrollLines = GetSystemWheelScrollLines();
+        if (scrollLines == WHEEL_PAGESCROLL)
+            return notches * safePageStep;
+
+        return notches * scrollLines * safeLineStep;
     }
 
     private static uint GetSystemWheelScrollLines()

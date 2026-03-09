@@ -1,11 +1,11 @@
-﻿using Jalium.UI.Media;
+using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
 
 /// <summary>
 /// Represents a control used to separate items in a list or menu.
 /// </summary>
-public sealed class Separator : Control
+public class Separator : Control
 {
     #region Static Brushes
 

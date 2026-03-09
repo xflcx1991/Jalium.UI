@@ -6,7 +6,7 @@ namespace Jalium.UI.Controls.Primitives;
 /// Represents the Track element used in ScrollBar and Slider controls.
 /// Contains a Thumb and optionally two RepeatButtons for value manipulation.
 /// </summary>
-public sealed class Track : FrameworkElement
+public class Track : FrameworkElement
 {
     #region Dependency Properties
 
@@ -59,7 +59,19 @@ public sealed class Track : FrameworkElement
     /// </summary>
     public static readonly DependencyProperty ThumbCrossAxisThicknessProperty =
         DependencyProperty.Register(nameof(ThumbCrossAxisThickness), typeof(double), typeof(Track),
-            new PropertyMetadata(double.NaN, OnLayoutPropertyChanged));
+            new PropertyMetadata(double.NaN, OnThumbCrossAxisThicknessChanged));
+
+    #endregion
+
+    #region Constructor
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="Track"/> class.
+    /// </summary>
+    public Track()
+    {
+        SetCurrentValue(UIElement.TransitionPropertyProperty, "None");
+    }
 
     #endregion
 
@@ -301,6 +313,23 @@ public sealed class Track : FrameworkElement
 
     /// <inheritdoc />
     protected override Size ArrangeOverride(Size finalSize)
+    {
+        return ArrangeParts(finalSize);
+    }
+
+    internal void RefreshThumbVisualLayout()
+    {
+        if (!IsArrangeValid || RenderSize.Width <= 0 || RenderSize.Height <= 0)
+        {
+            InvalidateArrange();
+            return;
+        }
+
+        ArrangeParts(RenderSize);
+        InvalidateVisual();
+    }
+
+    private Size ArrangeParts(Size finalSize)
     {
         static double CoerceFiniteNonNegative(double value)
         {
@@ -569,6 +598,14 @@ public sealed class Track : FrameworkElement
         if (d is Track track)
         {
             track.InvalidateArrange();
+        }
+    }
+
+    private static void OnThumbCrossAxisThicknessChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is Track track)
+        {
+            track.RefreshThumbVisualLayout();
         }
     }
 

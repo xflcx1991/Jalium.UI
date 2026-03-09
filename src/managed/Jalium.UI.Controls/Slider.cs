@@ -6,7 +6,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Represents a control that lets the user select from a range of values by moving a thumb.
 /// </summary>
-public sealed class Slider : Control
+public class Slider : Control
 {
     // Cached brushes and pens for OnRender
     private static readonly SolidColorBrush s_trackBrush = new(Color.FromRgb(60, 60, 60));
@@ -231,6 +231,7 @@ public sealed class Slider : Control
     public Slider()
     {
         Focusable = true;
+        SetCurrentValue(UIElement.TransitionPropertyProperty, "None");
 
         // Register input event handlers
         AddHandler(MouseDownEvent, new RoutedEventHandler(OnMouseDownHandler));
@@ -240,6 +241,12 @@ public sealed class Slider : Control
     }
 
     #endregion
+
+    /// <inheritdoc />
+    protected override bool ShouldSuppressAutomaticTransition(DependencyProperty dp)
+    {
+        return ReferenceEquals(dp, ValueProperty) && _isDragging;
+    }
 
     #region Template
 

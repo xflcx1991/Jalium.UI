@@ -7,7 +7,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Represents a tooltip that displays information about an element.
 /// </summary>
-public sealed class ToolTip : ContentControl
+public class ToolTip : ContentControl
 {
     #region Static Brushes
 
@@ -153,7 +153,7 @@ public sealed class ToolTip : ContentControl
     {
         // Register show/hide delegates with FrameworkElement.
         // MouseEnter/MouseLeave subscriptions are already handled in Core (OnToolTipPropertyChanged),
-        // so there's no timing issue — even if this static constructor runs late,
+        // so there's no timing issue 鈥?even if this static constructor runs late,
         // the delegates will be set before the user actually hovers.
         FrameworkElement.ToolTipShowRequested = OnToolTipShowRequested;
         FrameworkElement.ToolTipHideRequested = OnToolTipHideRequested;
@@ -185,7 +185,7 @@ public sealed class ToolTip : ContentControl
         // Without this, ContentControl.AddVisualChild(Content) conflicts with ContentPresenter.AddVisualChild(Content).
         UseTemplateContentManagement();
 
-        // Default styling — overridden by theme implicit style when available
+        // Default styling 鈥?overridden by theme implicit style when available
     }
 
     private static void OnIsOpenChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

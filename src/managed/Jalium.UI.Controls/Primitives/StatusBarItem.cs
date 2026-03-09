@@ -1,4 +1,4 @@
-﻿using Jalium.UI.Interop;
+using Jalium.UI.Interop;
 using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls.Primitives;
@@ -6,7 +6,7 @@ namespace Jalium.UI.Controls.Primitives;
 /// <summary>
 /// Represents an item in a StatusBar control.
 /// </summary>
-public sealed class StatusBarItem : ContentControl
+public class StatusBarItem : ContentControl
 {
     #region Static Brushes & Pens
 

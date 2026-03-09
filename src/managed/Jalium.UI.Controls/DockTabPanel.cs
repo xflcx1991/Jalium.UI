@@ -1,6 +1,7 @@
 using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Input;
 using Jalium.UI.Media;
+using Jalium.UI.Media.Animation;
 
 namespace Jalium.UI.Controls;
 
@@ -9,7 +10,7 @@ namespace Jalium.UI.Controls;
 /// Used within <see cref="DockSplitPanel"/> or <see cref="DockLayout"/>.
 /// </summary>
 [ContentProperty("Items")]
-public sealed class DockTabPanel : Selector
+public class DockTabPanel : Selector
 {
     private static readonly SolidColorBrush s_fallbackPanelBackgroundBrush = new(Color.FromRgb(0x1E, 0x1E, 0x2E));
     private static readonly SolidColorBrush s_fallbackTabStripBrush = new(Color.FromRgb(0x18, 0x18, 0x26));
@@ -45,6 +46,10 @@ public sealed class DockTabPanel : Selector
         DependencyProperty.Register(nameof(TabStripBorderBrush), typeof(Brush), typeof(DockTabPanel),
             new PropertyMetadata(null, OnVisualPropertyChanged));
 
+    public static readonly DependencyProperty SelectedContentTransitionModeProperty =
+        DependencyProperty.Register(nameof(SelectedContentTransitionMode), typeof(TransitionMode?), typeof(DockTabPanel),
+            new PropertyMetadata(null, OnSelectedContentTransitionModeChanged));
+
     #endregion
 
     #region Properties
@@ -79,9 +84,15 @@ public sealed class DockTabPanel : Selector
         set => SetValue(TabStripBorderBrushProperty, value);
     }
 
+    public TransitionMode? SelectedContentTransitionMode
+    {
+        get => (TransitionMode?)GetValue(SelectedContentTransitionModeProperty);
+        set => SetValue(SelectedContentTransitionModeProperty, value);
+    }
+
     #endregion
 
-    private UIElement? _selectedContentElement;
+    private readonly TransitioningContentControl _selectedContentHost;
     private bool _isDockHighlighted;
     private readonly ScrollBar _tabStripScrollBar;
     private double _tabStripScrollOffset;
@@ -202,9 +213,16 @@ public sealed class DockTabPanel : Selector
 
     public DockTabPanel()
     {
+        SetCurrentValue(UIElement.TransitionPropertyProperty, "None");
         MinWidth = 100;
         MinHeight = 100;
         ClipToBounds = true;
+        _selectedContentHost = new TransitioningContentControl
+        {
+            ClipToBounds = true,
+            TransitionMode = SelectedContentTransitionMode
+        };
+        AddVisualChild(_selectedContentHost);
 
         _tabStripScrollBar = new ScrollBar
         {
@@ -327,14 +345,8 @@ public sealed class DockTabPanel : Selector
 
         Items.RemoveAt(index);
 
-        // Always detach old selected content from visual tree first.
-        // This is needed because setting SelectedIndex to the same value
-        // won't trigger UpdateContainerSelection, leaving stale content parented.
-        if (_selectedContentElement != null)
-        {
-            RemoveVisualChild(_selectedContentElement);
-            _selectedContentElement = null;
-        }
+        // Always clear old selected content first so same-index reselection still refreshes the host.
+        _selectedContentHost.Content = null;
 
         // Adjust selection
         if (Items.Count == 0)
@@ -386,10 +398,9 @@ public sealed class DockTabPanel : Selector
     /// </summary>
     internal void ReleaseContentElement(UIElement element)
     {
-        if (_selectedContentElement == element)
+        if (ReferenceEquals(_selectedContentHost.Content, element))
         {
-            RemoveVisualChild(_selectedContentElement);
-            _selectedContentElement = null;
+            _selectedContentHost.Content = null;
         }
     }
 
@@ -402,13 +413,6 @@ public sealed class DockTabPanel : Selector
         // Only adopt if this item is actually the selected one
         if (Items.IndexOf(item) != SelectedIndex) return;
 
-        // Remove stale content
-        if (_selectedContentElement != null)
-        {
-            RemoveVisualChild(_selectedContentElement);
-            _selectedContentElement = null;
-        }
-
         SetValue(SelectedContentProperty, item.Content);
 
         if (item.Content is UIElement contentElement)
@@ -416,13 +420,9 @@ public sealed class DockTabPanel : Selector
             // Force-detach from old panel if still attached
             if (contentElement.VisualParent is DockTabPanel oldPanel && oldPanel != this)
                 oldPanel.ReleaseContentElement(contentElement);
-
-            if (contentElement.VisualParent == null)
-            {
-                _selectedContentElement = contentElement;
-                AddVisualChild(contentElement);
-            }
         }
+
+        _selectedContentHost.Content = item.Content;
 
         InvalidateMeasure();
         InvalidateArrange();
@@ -438,12 +438,7 @@ public sealed class DockTabPanel : Selector
                 dockItem.IsSelected = (i == SelectedIndex);
         }
 
-        // Remove old content from visual tree
-        if (_selectedContentElement != null)
-        {
-            RemoveVisualChild(_selectedContentElement);
-            _selectedContentElement = null;
-        }
+        _selectedContentHost.Content = null;
 
         // Update selected content
         if (SelectedIndex >= 0 && SelectedIndex < Items.Count)
@@ -458,18 +453,15 @@ public sealed class DockTabPanel : Selector
                     // Force-detach from old panel if still attached (e.g. after dock-back transfer)
                     if (contentElement.VisualParent is DockTabPanel oldPanel && oldPanel != this)
                         oldPanel.ReleaseContentElement(contentElement);
-
-                    if (contentElement.VisualParent == null)
-                    {
-                        _selectedContentElement = contentElement;
-                        AddVisualChild(contentElement);
-                    }
                 }
+
+                _selectedContentHost.Content = dockItem.Content;
             }
         }
         else
         {
             SetValue(SelectedContentProperty, null);
+            _selectedContentHost.Content = null;
         }
 
         EnsureSelectedTabVisibleCore();
@@ -502,6 +494,15 @@ public sealed class DockTabPanel : Selector
         {
             panel.InvalidateMeasure();
             panel.InvalidateArrange();
+            panel.InvalidateVisual();
+        }
+    }
+
+    private static void OnSelectedContentTransitionModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is DockTabPanel panel)
+        {
+            panel._selectedContentHost.TransitionMode = e.NewValue is TransitionMode mode ? mode : null;
             panel.InvalidateVisual();
         }
     }
@@ -795,14 +796,14 @@ public sealed class DockTabPanel : Selector
 
         var contentWidth = Math.Max(0, availableSize.Width - (IsVerticalTabStrip ? stripThickness + 1 : 2));
         var contentHeight = Math.Max(0, availableSize.Height - (IsVerticalTabStrip ? 2 : stripThickness + 1));
-        if (_selectedContentElement is UIElement contentElement)
+        if (_selectedContentHost.Content != null)
         {
             if (contentWidth <= 0 && ActualWidth > 2)
                 contentWidth = Math.Max(0, ActualWidth - (IsVerticalTabStrip ? stripThickness + 1 : 2));
             if (contentHeight <= 0 && ActualHeight > 2)
                 contentHeight = Math.Max(0, ActualHeight - (IsVerticalTabStrip ? 2 : stripThickness + 1));
 
-            contentElement.Measure(new Size(contentWidth, contentHeight));
+            _selectedContentHost.Measure(new Size(contentWidth, contentHeight));
         }
 
         return availableSize;
@@ -846,11 +847,8 @@ public sealed class DockTabPanel : Selector
         else
             _tabStripScrollBar.Arrange(new Rect(0, 0, 0, 0));
 
-        if (_selectedContentElement is UIElement contentElement)
-        {
-            contentElement.Measure(new Size(contentRect.Width, contentRect.Height));
-            contentElement.Arrange(contentRect);
-        }
+        _selectedContentHost.Measure(new Size(contentRect.Width, contentRect.Height));
+        _selectedContentHost.Arrange(contentRect);
 
         return finalSize;
     }
@@ -861,7 +859,7 @@ public sealed class DockTabPanel : Selector
         {
             int count = 0;
             if (ItemsHost != null) count++;
-            if (_selectedContentElement != null) count++;
+            count++;
             count++;
             return count;
         }
@@ -875,11 +873,8 @@ public sealed class DockTabPanel : Selector
             if (index == current) return ItemsHost;
             current++;
         }
-        if (_selectedContentElement != null)
-        {
-            if (index == current) return _selectedContentElement;
-            current++;
-        }
+        if (index == current) return _selectedContentHost;
+        current++;
         if (index == current) return _tabStripScrollBar;
         throw new ArgumentOutOfRangeException(nameof(index));
     }
@@ -1010,8 +1005,8 @@ public sealed class DockTabPanel : Selector
             if (Math.Max(0, ActualHeight - topY) <= 0)
                 return;
 
-            var accentBrush = ResolveAccentBrush();
-            var topBorderPen = new Pen(accentBrush, 1)
+            var topBorderBrush = ResolveTabStripBorderBrush();
+            var topBorderPen = new Pen(topBorderBrush, 1)
             {
                 LineJoin = PenLineJoin.Round,
                 StartLineCap = PenLineCap.Round,

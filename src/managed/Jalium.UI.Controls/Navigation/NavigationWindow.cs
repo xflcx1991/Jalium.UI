@@ -1,11 +1,11 @@
-﻿using Jalium.UI.Media;
+using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls.Navigation;
 
 /// <summary>
 /// A Window that supports content navigation within a single window.
 /// </summary>
-public sealed class NavigationWindow : Window
+public class NavigationWindow : Window
 {
     private NavigationService? _navigationService;
     private Frame? _frame;

@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
@@ -6,7 +6,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Provides a container for a group of commands or controls.
 /// </summary>
-public sealed class ToolBar : HeaderedItemsControl
+public class ToolBar : HeaderedItemsControl
 {
     #region Dependency Properties
 
@@ -158,7 +158,7 @@ public sealed class ToolBar : HeaderedItemsControl
 /// <summary>
 /// Represents a container that handles the layout of a ToolBar.
 /// </summary>
-public sealed class ToolBarTray : FrameworkElement
+public class ToolBarTray : FrameworkElement
 {
     private readonly ObservableCollection<ToolBar> _toolBars;
 

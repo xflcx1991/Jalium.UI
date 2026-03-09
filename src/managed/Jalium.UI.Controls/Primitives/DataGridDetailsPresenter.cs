@@ -1,9 +1,9 @@
-﻿namespace Jalium.UI.Controls.Primitives;
+namespace Jalium.UI.Controls.Primitives;
 
 /// <summary>
 /// Represents a control that displays the details of a row in a DataGrid.
 /// </summary>
-public sealed class DataGridDetailsPresenter : ContentPresenter
+public class DataGridDetailsPresenter : ContentPresenter
 {
     #region Dependency Properties
 

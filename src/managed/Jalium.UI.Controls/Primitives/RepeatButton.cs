@@ -10,8 +10,12 @@ namespace Jalium.UI.Controls.Primitives;
 /// <summary>
 /// Represents a button that raises the Click event repeatedly while it is pressed.
 /// </summary>
-public sealed class RepeatButton : ButtonBase
+public class RepeatButton : ButtonBase
 {
+    private const string ScrollBarArrowBrushKey = "ScrollBarArrow";
+    private const string ScrollBarArrowHoverBrushKey = "ScrollBarArrowHover";
+    private const string ScrollBarArrowPressedBrushKey = "ScrollBarArrowPressed";
+
     #region Dependency Properties
 
     /// <summary>
@@ -96,15 +100,19 @@ public sealed class RepeatButton : ButtonBase
     private readonly SolidColorBrush _animatedArrowBrush = new(Color.FromRgb(210, 210, 210));
     private DispatcherTimer? _arrowStateTimer;
 
-    private Color _arrowNormalColor = Color.FromRgb(210, 210, 210);
-    private Color _arrowHoverColor = Color.FromRgb(230, 230, 230);
-    private Color _arrowPressedColor = Color.FromRgb(240, 240, 240);
+    private static readonly Color s_defaultArrowNormalColor = Color.FromRgb(210, 210, 210);
+    private static readonly Color s_defaultArrowHoverColor = Color.FromRgb(230, 230, 230);
+    private static readonly Color s_defaultArrowPressedColor = Color.FromRgb(240, 240, 240);
 
-    private Color _arrowFromColor = Color.FromRgb(210, 210, 210);
-    private Color _arrowToColor = Color.FromRgb(210, 210, 210);
+    private Color _arrowNormalColor = s_defaultArrowNormalColor;
+    private Color _arrowHoverColor = s_defaultArrowHoverColor;
+    private Color _arrowPressedColor = s_defaultArrowPressedColor;
+
+    private Color _arrowFromColor = s_defaultArrowNormalColor;
+    private Color _arrowToColor = s_defaultArrowNormalColor;
     private double _arrowFromScale = ArrowNormalScale;
     private double _arrowToScale = ArrowNormalScale;
-    private Color _arrowCurrentColor = Color.FromRgb(210, 210, 210);
+    private Color _arrowCurrentColor = s_defaultArrowNormalColor;
     private double _arrowCurrentScale = ArrowNormalScale;
     private long _arrowAnimStartTick;
     private double _arrowAnimDurationMs;
@@ -125,6 +133,7 @@ public sealed class RepeatButton : ButtonBase
     /// </summary>
     public RepeatButton()
     {
+        ResourcesChanged += OnResourcesChangedHandler;
     }
 
     #endregion
@@ -285,21 +294,49 @@ public sealed class RepeatButton : ButtonBase
         }
     }
 
+    private void OnResourcesChangedHandler(object? sender, EventArgs e)
+    {
+        RefreshArrowPalette();
+        if (UseScrollBarArrowAnimation)
+        {
+            StartArrowVisualTransition(immediate: true);
+        }
+    }
+
     #endregion
 
     #region Arrow Animation
 
     private void RefreshArrowPalette()
     {
-        var fallbackNormal = GetBrushColor(Foreground, Color.FromRgb(210, 210, 210));
-        _arrowNormalColor = ResolveColorFromResource("ScrollBarArrow", fallbackNormal);
-        _arrowHoverColor = ResolveColorFromResource("ScrollBarArrowHover", Color.FromRgb(230, 230, 230));
-        _arrowPressedColor = ResolveColorFromResource("ScrollBarArrowPressed", Color.FromRgb(240, 240, 240));
+        var fallbackNormal = GetBrushColor(Foreground, s_defaultArrowNormalColor);
+        _arrowNormalColor = ResolveColorFromResource(ScrollBarArrowBrushKey, fallbackNormal);
+        _arrowHoverColor = ResolveColorFromResource(ScrollBarArrowHoverBrushKey, s_defaultArrowHoverColor);
+        _arrowPressedColor = ResolveColorFromResource(ScrollBarArrowPressedBrushKey, s_defaultArrowPressedColor);
     }
 
     private Color ResolveColorFromResource(string key, Color fallback)
     {
-        return TryFindResource(key) is SolidColorBrush brush ? brush.Color : fallback;
+        if (TryFindResource(key) is SolidColorBrush localBrush)
+        {
+            return localBrush.Color;
+        }
+
+        if (Application.Current?.Resources != null &&
+            Application.Current.Resources.TryGetValue(key, out var resource))
+        {
+            if (resource is SolidColorBrush appBrush)
+            {
+                return appBrush.Color;
+            }
+
+            if (resource is Color appColor)
+            {
+                return appColor;
+            }
+        }
+
+        return fallback;
     }
 
     private static Color GetBrushColor(Brush? brush, Color fallback)

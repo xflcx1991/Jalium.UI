@@ -329,16 +329,18 @@ public static class XamlReader
             }
         }
 
+        // Parse attributes before pushing the current element so ResourceDictionary Source
+        // can replace the placeholder instance with an x:Class-derived dictionary.
+        if (reader.HasAttributes)
+        {
+            instance = ParseAttributes(reader, instance, context);
+        }
+
         // Push to parent stack for context tracking
         context.PushParent(instance);
 
         try
         {
-            // Parse attributes
-            if (reader.HasAttributes)
-            {
-                ParseAttributes(reader, instance, context);
-            }
 
             // Special handling for ControlTemplate - capture inner XML for deferred parsing
             if (instance is ControlTemplate controlTemplate && !reader.IsEmptyElement)
@@ -385,9 +387,9 @@ public static class XamlReader
         }
     }
 
-    private static void ParseAttributes(XmlReader reader, object instance, XamlParserContext context)
+    private static object ParseAttributes(XmlReader reader, object instance, XamlParserContext context)
     {
-        var type = instance.GetType();
+        var currentInstance = instance;
 
         for (int i = 0; i < reader.AttributeCount; i++)
         {
@@ -406,23 +408,24 @@ public static class XamlReader
             // Handle x: directives
             if (prefix == "x")
             {
-                HandleXDirective(instance, attrName, attrValue, context);
+                HandleXDirective(currentInstance, attrName, attrValue, context);
                 continue;
             }
 
             // Check for attached property (e.g., Grid.Row)
             if (attrName.Contains('.'))
             {
-                SetAttachedProperty(instance, attrName, attrValue, context);
+                SetAttachedProperty(currentInstance, attrName, attrValue, context);
             }
             else
             {
                 // Regular property
-                SetProperty(instance, attrName, attrValue, context, reader);
+                currentInstance = SetProperty(currentInstance, attrName, attrValue, context, reader);
             }
         }
 
         reader.MoveToElement();
+        return currentInstance;
     }
 
     private static void HandleXDirective(object instance, string directive, string value, XamlParserContext context)
@@ -554,7 +557,7 @@ public static class XamlReader
                             }
                         }
 
-                        AddChild(instance, child, resourceKey);
+                        AddChild(instance, child, context, resourceKey);
                         context.ClearCurrentResourceKey(); // Clear after use
                     }
                     break;
@@ -799,6 +802,8 @@ public static class XamlReader
                 var childValue = ParseElement(reader, context);
                 var resourceKey = context.GetCurrentResourceKey() ?? explicitKey;
 
+                childValue = ResolveMarkupExtensionValueIfNeeded(childValue, instance, property, context);
+
                 if (property.PropertyType == typeof(ResourceDictionary) && childValue is ResourceDictionary dictionaryValue)
                 {
                     property.SetValue(instance, dictionaryValue);
@@ -827,7 +832,10 @@ public static class XamlReader
                 else
                 {
                     // Set property value
-                    property.SetValue(instance, childValue);
+                    if (!TryApplyDynamicResourceReference(instance, property, childValue))
+                    {
+                        property.SetValue(instance, childValue);
+                    }
                 }
 
                 context.ClearCurrentResourceKey();
@@ -839,6 +847,37 @@ public static class XamlReader
     {
         const string xamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml";
         return reader.GetAttribute("Key", xamlNamespace);
+    }
+
+    private static object? ResolveMarkupExtensionValueIfNeeded(
+        object? value,
+        object targetObject,
+        PropertyInfo? targetProperty,
+        XamlParserContext context)
+    {
+        if (value is not MarkupExtension extension)
+        {
+            return value;
+        }
+
+        var serviceProvider = new MarkupExtensionServiceProvider();
+        serviceProvider.AddService(typeof(IAmbientResourceProvider), context);
+
+        DependencyProperty? dependencyProperty = null;
+        if (targetObject is DependencyObject dependencyObject && targetProperty != null)
+        {
+            dependencyProperty = XamlParserContext.ResolveDependencyProperty(targetProperty.Name, dependencyObject.GetType());
+        }
+
+        object? provideValueTargetProperty = dependencyProperty ?? (object?)targetProperty;
+
+        serviceProvider.AddService(typeof(IProvideValueTarget), new ProvideValueTarget
+        {
+            TargetObject = targetObject,
+            TargetProperty = provideValueTargetProperty
+        });
+
+        return extension.ProvideValue(serviceProvider);
     }
 
     private static bool IsCollectionType(Type type)
@@ -1068,7 +1107,7 @@ public static class XamlReader
     /// <summary>
     /// Handles the Source property on ResourceDictionary by loading the external XAML file.
     /// </summary>
-    private static void HandleResourceDictionarySource(ResourceDictionary resourceDict, string sourceValue, XamlParserContext context)
+    private static ResourceDictionary HandleResourceDictionarySource(ResourceDictionary resourceDict, string sourceValue, XamlParserContext context)
     {
         var sourceUri = ResolveResourceDictionarySourceUri(sourceValue, context);
 
@@ -1091,20 +1130,24 @@ public static class XamlReader
                 var loadedDict = ResourceDictionary.SourceLoader(resourceDict, sourceUri, context.SourceAssembly);
                 if (loadedDict != null)
                 {
-                    // Copy the loaded content into the current ResourceDictionary
-                    resourceDict.CopyFrom(loadedDict);
+                    loadedDict.Source = sourceUri;
+                    loadedDict.BaseUri = sourceUri;
+                    loadedDict.SourceAssembly = context.SourceAssembly;
+                    return loadedDict;
                 }
             }
             else
             {
                 // No SourceLoader registered - try to load directly
-                LoadResourceDictionaryFromUri(resourceDict, sourceUri, context, parentDict);
+                return LoadResourceDictionaryFromUri(resourceDict, sourceUri, context, parentDict);
             }
         }
         catch (XamlParseException)
         {
             // Ignore and continue loading remaining merged dictionaries.
         }
+
+        return resourceDict;
     }
 
     private static Uri ResolveResourceDictionarySourceUri(string sourceValue, XamlParserContext context)
@@ -1230,7 +1273,7 @@ public static class XamlReader
     /// <summary>
     /// Loads a ResourceDictionary from a URI using embedded resources.
     /// </summary>
-    private static void LoadResourceDictionaryFromUri(ResourceDictionary resourceDict, Uri sourceUri, XamlParserContext context, ResourceDictionary? parentDict = null)
+    private static ResourceDictionary LoadResourceDictionaryFromUri(ResourceDictionary resourceDict, Uri sourceUri, XamlParserContext context, ResourceDictionary? parentDict = null)
     {
         var assembly = context.SourceAssembly;
         var uriString = sourceUri.ToString();
@@ -1327,13 +1370,12 @@ public static class XamlReader
                 IgnoreProcessingInstructions = true
             };
 
-            // Create new context with updated BaseUri for the loaded file
-            // Pass the parent dictionary so child XAML can reference resources from sibling dictionaries
             using var xmlReader = XmlReader.Create(textReader, settings);
             var loadedDict = (ResourceDictionary)LoadInternal(xmlReader, null, sourceUri, assembly, parentDict);
-
-            // Copy the loaded content into the current ResourceDictionary
-            resourceDict.CopyFrom(loadedDict);
+            loadedDict.Source = sourceUri;
+            loadedDict.BaseUri = sourceUri;
+            loadedDict.SourceAssembly = assembly;
+            return loadedDict;
         }
     }
 
@@ -1377,7 +1419,7 @@ public static class XamlReader
 
     [UnconditionalSuppressMessage("AOT", "IL2070:Target method argument",
         Justification = "Types are registered in XamlTypeRegistry with DynamicallyAccessedMembers")]
-    private static void SetProperty(object instance, string propertyName, object? value, XamlParserContext context, XmlReader? reader = null)
+    private static object SetProperty(object instance, string propertyName, object? value, XamlParserContext context, XmlReader? reader = null)
     {
         var type = instance.GetType();
         var property = type.GetProperty(propertyName);
@@ -1386,19 +1428,18 @@ public static class XamlReader
         {
             // Check if it's an event (e.g., Click="OnClick")
             if (value is string handlerName && TryWireEvent(instance, propertyName, handlerName, context))
-                return;
+                return instance;
 
             if (property == null)
-                return; // Not a property or event, ignore
+                return instance; // Not a property or event, ignore
             if (!property.CanWrite)
-                return;
+                return instance;
         }
 
         // Special handling for ResourceDictionary.Source
         if (instance is ResourceDictionary resourceDict && propertyName == "Source" && value is string sourceValue)
         {
-            HandleResourceDictionarySource(resourceDict, sourceValue, context);
-            return;
+            return HandleResourceDictionarySource(resourceDict, sourceValue, context);
         }
 
         if (value is string stringValue)
@@ -1418,7 +1459,7 @@ public static class XamlReader
                     if (dp != null)
                     {
                         property.SetValue(instance, dp);
-                        return;
+                        return instance;
                     }
                 }
 
@@ -1427,7 +1468,7 @@ public static class XamlReader
                     // Defer Setter resolution to post-processing so we can handle
                     // attribute-order cases where TargetName may appear after Property.
                     setter.PropertyName = stringValue;
-                    return;
+                    return instance;
                 }
 
                 if (instance is PropertyTrigger || instance is Condition)
@@ -1443,7 +1484,7 @@ public static class XamlReader
             // Razor syntax support: @Path / @(expr) / mixed templates.
             if (RazorBindingEngine.TryApplyRazorValue(instance, property, stringValue, context, reader))
             {
-                return;
+                return instance;
             }
 
             // Check for markup extension (e.g., {Binding ...})
@@ -1451,7 +1492,7 @@ public static class XamlReader
             {
                 // Binding is already set by the extension, no need to set the property
                 if (extensionResult is BindingExpressionBase)
-                    return;
+                    return instance;
 
                 value = extensionResult;
             }
@@ -1462,10 +1503,17 @@ public static class XamlReader
             }
         }
 
+        value = ResolveMarkupExtensionValueIfNeeded(value, instance, property, context);
+
         if (value != null)
         {
+            if (TryApplyDynamicResourceReference(instance, property, value))
+                return instance;
+
             property.SetValue(instance, value);
         }
+
+        return instance;
     }
 
     private static XamlParseException CreateUnresolvedDependencyPropertyException(
@@ -1799,10 +1847,12 @@ public static class XamlReader
 
     [UnconditionalSuppressMessage("AOT", "IL2070:Target method argument",
         Justification = "Types are registered in XamlTypeRegistry with DynamicallyAccessedMembers")]
-    private static void AddChild(object parent, object child, string? resourceKey = null)
+    private static void AddChild(object parent, object child, XamlParserContext context, string? resourceKey = null)
     {
         if (parent is ResourceDictionary resourceDict)
         {
+            child = ResolveMarkupExtensionValueIfNeeded(child, resourceDict, null, context)!;
+
             // Special handling for ResourceDictionary
             if (!string.IsNullOrEmpty(resourceKey))
             {
@@ -1859,7 +1909,11 @@ public static class XamlReader
                     // Otherwise, set the property directly if writable
                     if (property.CanWrite)
                     {
-                        property.SetValue(parent, child);
+                        child = ResolveMarkupExtensionValueIfNeeded(child, parent, property, context)!;
+                        if (!TryApplyDynamicResourceReference(parent, property, child))
+                        {
+                            property.SetValue(parent, child);
+                        }
                         return;
                     }
                 }
@@ -1894,6 +1948,23 @@ public static class XamlReader
             return null;
         }
     }
+
+    private static bool TryApplyDynamicResourceReference(object targetObject, PropertyInfo property, object? value)
+    {
+        if (value is not IDynamicResourceReference dynamicReference)
+            return false;
+
+        if (targetObject is not FrameworkElement frameworkElement)
+            return false;
+
+        var dependencyProperty = XamlParserContext.ResolveDependencyProperty(property.Name, frameworkElement.GetType());
+        if (dependencyProperty == null)
+            return false;
+
+        DynamicResourceBindingOperations.SetDynamicResource(frameworkElement, dependencyProperty, dynamicReference.ResourceKey);
+        return true;
+    }
+
 }
 
 /// <summary>
@@ -2126,6 +2197,13 @@ internal sealed class XamlParserContext : IAmbientResourceProvider
             }
         }
 
+        var extensionType = XamlTypeRegistry.GetType(typeName + "Extension");
+        if (extensionType != null)
+        {
+            _typeCache[cacheKey] = extensionType;
+            return extensionType;
+        }
+
         return null;
     }
 
@@ -2210,6 +2288,14 @@ public static class XamlTypeRegistry
         Register<ResourceDictionary>(types);
         Register<Binding>(types);
         Register<BindingBase>(types);
+        Register<BindingExtension>(types);
+        Register<StaticResourceExtension>(types);
+        Register<DynamicResourceExtension>(types);
+        Register<TemplateBindingExtension>(types);
+        Register<NullExtension>(types);
+        Register<TypeExtension>(types);
+        Register<StaticExtension>(types);
+        Register<ArrayExtension>(types);
         Register<string>(types);
         Register<Thickness>(types);
         Register<CornerRadius>(types);
@@ -2268,6 +2354,7 @@ public static class XamlTypeRegistry
         Register<Image>(types);
         Register<QRCode>(types);
         Register<ToolTip>(types);
+        Register<ContentDialog>(types);
         Register<Popup>(types);
         Register<TreeView>(types);
         Register<TreeViewItem>(types);
@@ -2824,6 +2911,7 @@ public static class XamlTypeRegistry
 
     private static CornerRadius ToCornerRadius(Gpu.CornerRadius cornerRadius) =>
         new(cornerRadius.TopLeft, cornerRadius.TopRight, cornerRadius.BottomRight, cornerRadius.BottomLeft);
+
 }
 
 /// <summary>

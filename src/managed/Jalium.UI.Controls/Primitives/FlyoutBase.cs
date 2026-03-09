@@ -1,3 +1,5 @@
+using Jalium.UI.Media;
+
 namespace Jalium.UI.Controls.Primitives;
 
 /// <summary>
@@ -58,6 +60,8 @@ public sealed class FlyoutShowOptions
 /// </summary>
 public abstract class FlyoutBase : DependencyObject
 {
+    private static readonly SolidColorBrush s_fallbackPopupBackgroundBrush = new(Color.FromRgb(45, 45, 48));
+    private static readonly SolidColorBrush s_fallbackPopupBorderBrush = new(Color.FromRgb(67, 67, 70));
     private Popup? _popup;
     private Control? _presenter;
     private FrameworkElement? _target;
@@ -165,6 +169,35 @@ public abstract class FlyoutBase : DependencyObject
     /// </summary>
     protected abstract Control CreatePresenter();
 
+    private Brush ResolvePopupBackgroundBrush()
+    {
+        return ResolveApplicationBrush("MenuFlyoutPresenterBackground")
+            ?? ResolveApplicationBrush("TooltipBackground")
+            ?? ResolveApplicationBrush("SurfaceBackground")
+            ?? s_fallbackPopupBackgroundBrush;
+    }
+
+    private Brush ResolvePopupBorderBrush()
+    {
+        return ResolveApplicationBrush("MenuFlyoutPresenterBorderBrush")
+            ?? ResolveApplicationBrush("TooltipBorder")
+            ?? ResolveApplicationBrush("ControlBorder")
+            ?? s_fallbackPopupBorderBrush;
+    }
+
+    private static Brush? ResolveApplicationBrush(object resourceKey)
+    {
+        var app = global::Jalium.UI.Application.Current;
+        if (app?.Resources != null &&
+            app.Resources.TryGetValue(resourceKey, out var resource) &&
+            resource is Brush brush)
+        {
+            return brush;
+        }
+
+        return null;
+    }
+
     private void EnsurePopup()
     {
         if (_popup != null) return;
@@ -172,15 +205,20 @@ public abstract class FlyoutBase : DependencyObject
         _presenter = CreatePresenter();
         if (_presenter == null) return;
 
+        // Menu flyouts already provide their own overflow scrolling and behave
+        // more reliably when they stay inside the owner window's overlay layer.
+        // Avoid routing them through an external PopupWindow, which can interfere
+        // with hover/input handling under custom window chrome.
+        var constrainMenuFlyoutToRootBounds = _presenter is global::Jalium.UI.Controls.MenuFlyoutPresenter;
+
         _popup = new Popup
         {
             StaysOpen = false,
             IsLightDismissEnabled = true,
-            // Allow menu flyouts to escape window bounds by switching to external PopupWindow when needed.
-            ShouldConstrainToRootBounds = false
+            ShouldConstrainToRootBounds = constrainMenuFlyoutToRootBounds
         };
 
-        if (_presenter is global::Jalium.UI.Controls.MenuFlyoutPresenter)
+        if (constrainMenuFlyoutToRootBounds)
         {
             // MenuFlyoutPresenter already paints its own popup chrome.
             // Avoid wrapping it with another Border, which creates double-border visuals.
@@ -191,8 +229,8 @@ public abstract class FlyoutBase : DependencyObject
             var border = new Border
             {
                 Child = _presenter,
-                Background = new Jalium.UI.Media.SolidColorBrush(Jalium.UI.Media.Color.FromRgb(45, 45, 48)),
-                BorderBrush = new Jalium.UI.Media.SolidColorBrush(Jalium.UI.Media.Color.FromRgb(67, 67, 70)),
+                Background = ResolvePopupBackgroundBrush(),
+                BorderBrush = ResolvePopupBorderBrush(),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(8),
                 Padding = new Thickness(4)

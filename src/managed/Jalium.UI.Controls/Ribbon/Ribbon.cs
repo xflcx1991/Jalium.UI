@@ -6,7 +6,7 @@ namespace Jalium.UI.Controls.Ribbon;
 /// Displays a Ribbon user interface.
 /// </summary>
 [ContentProperty("Items")]
-public sealed class Ribbon : ItemsControl
+public class Ribbon : ItemsControl
 {
     #region Dependency Properties
 
@@ -96,7 +96,7 @@ public sealed class Ribbon : ItemsControl
 /// Represents a tab on a Ribbon control.
 /// </summary>
 [ContentProperty("Items")]
-public sealed class RibbonTab : ItemsControl
+public class RibbonTab : ItemsControl
 {
     /// <summary>
     /// Identifies the Header dependency property.
@@ -140,7 +140,7 @@ public sealed class RibbonTab : ItemsControl
 /// Represents a group of controls within a RibbonTab.
 /// </summary>
 [ContentProperty("Items")]
-public sealed class RibbonGroup : ItemsControl
+public class RibbonGroup : ItemsControl
 {
     /// <summary>
     /// Identifies the Header dependency property.

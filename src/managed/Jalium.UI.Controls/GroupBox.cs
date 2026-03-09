@@ -5,7 +5,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Represents a control that displays a frame around a group of controls with an optional caption.
 /// </summary>
-public sealed class GroupBox : ContentControl
+public class GroupBox : ContentControl
 {
     #region Dependency Properties
 

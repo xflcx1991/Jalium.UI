@@ -5,7 +5,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Represents a horizontal bar at the bottom of a window for displaying status information.
 /// </summary>
-public sealed class StatusBar : ItemsControl
+public class StatusBar : ItemsControl
 {
     #region Dependency Properties
 
@@ -116,7 +116,7 @@ public sealed class StatusBar : ItemsControl
 /// <summary>
 /// Represents an item in a StatusBar.
 /// </summary>
-public sealed class StatusBarItem : ContentControl
+public class StatusBarItem : ContentControl
 {
     private UIElement? _contentVisual;
 

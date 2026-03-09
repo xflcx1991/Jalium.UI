@@ -1,4 +1,4 @@
-﻿using Jalium.UI.Input;
+using Jalium.UI.Input;
 using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
@@ -6,7 +6,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Represents a custom title bar control for windows.
 /// </summary>
-public sealed class TitleBar : Control
+public class TitleBar : Control
 {
     #region Dependency Properties
 

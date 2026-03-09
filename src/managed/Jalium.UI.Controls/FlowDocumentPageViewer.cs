@@ -7,7 +7,7 @@ namespace Jalium.UI.Controls;
 /// Provides a control for viewing flow content in a fixed page-by-page format.
 /// </summary>
 [ContentProperty("Document")]
-public sealed class FlowDocumentPageViewer : Control
+public class FlowDocumentPageViewer : Control
 {
     #region Dependency Properties
 

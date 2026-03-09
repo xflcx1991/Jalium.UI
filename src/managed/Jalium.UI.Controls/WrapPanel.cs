@@ -1,10 +1,10 @@
-﻿namespace Jalium.UI.Controls;
+namespace Jalium.UI.Controls;
 
 /// <summary>
 /// Positions child elements in sequential position from left to right,
 /// breaking content to the next line at the edge of the containing box.
 /// </summary>
-public sealed class WrapPanel : Panel
+public class WrapPanel : Panel
 {
     #region Dependency Properties
 

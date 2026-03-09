@@ -1,10 +1,10 @@
-﻿namespace Jalium.UI.Controls.Primitives;
+namespace Jalium.UI.Controls.Primitives;
 
 /// <summary>
 /// Displays the content of a ScrollViewer control. Acts as a proxy for IScrollInfo
 /// when the content implements it.
 /// </summary>
-public sealed class ScrollContentPresenter : ContentPresenter, IScrollInfo
+public class ScrollContentPresenter : ContentPresenter, IScrollInfo
 {
     private IScrollInfo? _scrollInfo;
     private bool _canHorizontallyScroll;

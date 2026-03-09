@@ -6,7 +6,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Represents a Windows notification area (system tray) icon.
 /// </summary>
-public sealed class NotifyIcon : FrameworkElement, IDisposable
+public class NotifyIcon : FrameworkElement, IDisposable
 {
     private bool _disposed;
     private bool _isVisible;

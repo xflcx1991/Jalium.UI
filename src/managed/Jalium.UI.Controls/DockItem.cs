@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using Jalium.UI.Input;
 using Jalium.UI.Interop;
 using Jalium.UI.Media;
@@ -10,7 +10,7 @@ namespace Jalium.UI.Controls;
 /// Used as a child of <see cref="DockTabPanel"/>.
 /// Supports drag-to-float: dragging a tab header beyond a threshold tears it off into a floating window.
 /// </summary>
-public sealed partial class DockItem : HeaderedContentControl
+public partial class DockItem : HeaderedContentControl
 {
     // Cached brushes and pens for OnRender (OneTheme-aligned deep blue-gray palette)
     private static readonly SolidColorBrush s_fallbackSelectedBackgroundBrush = new(Color.FromRgb(0x1E, 0x1E, 0x2E));
@@ -130,6 +130,7 @@ public sealed partial class DockItem : HeaderedContentControl
 
     public DockItem()
     {
+        SetCurrentValue(UIElement.TransitionPropertyProperty, "None");
         AddHandler(MouseDownEvent, new RoutedEventHandler(OnMouseDownHandler));
         AddHandler(MouseUpEvent, new RoutedEventHandler(OnMouseUpHandler));
         AddHandler(MouseMoveEvent, new RoutedEventHandler(OnMouseMoveHandler));
@@ -1079,6 +1080,11 @@ public sealed partial class DockItem : HeaderedContentControl
     protected override Size ArrangeOverride(Size finalSize)
     {
         return finalSize;
+    }
+
+    protected override void OnIsMouseOverChanged(bool oldValue, bool newValue)
+    {
+        InvalidateVisual();
     }
 
     protected override void OnRender(object drawingContextObj)

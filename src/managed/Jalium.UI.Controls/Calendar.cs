@@ -1,4 +1,4 @@
-﻿using Jalium.UI.Controls.Primitives;
+using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Input;
 using Jalium.UI.Interop;
 using Jalium.UI.Media;
@@ -8,7 +8,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Represents a calendar control for selecting dates.
 /// </summary>
-public sealed class Calendar : Control
+public class Calendar : Control
 {
     #region Static Brushes & Pens
 

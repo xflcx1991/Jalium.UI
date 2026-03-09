@@ -8,7 +8,7 @@ namespace Jalium.UI.Controls;
 /// Represents a button that can be selected, but not cleared, by a user.
 /// RadioButtons in the same group are mutually exclusive.
 /// </summary>
-public sealed class RadioButton : ToggleButton
+public class RadioButton : ToggleButton
 {
     #region Automation
 

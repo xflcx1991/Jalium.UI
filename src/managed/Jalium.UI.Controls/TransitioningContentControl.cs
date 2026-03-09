@@ -16,7 +16,7 @@ namespace Jalium.UI.Controls;
 /// This is necessary because the framework's render pipeline uses IOffsetDrawingContext.Offset
 /// for positioning (not RenderTransform), so we need direct DrawingContext control.
 /// </summary>
-public sealed class TransitioningContentControl : ContentControl, TransitionHost
+public class TransitioningContentControl : ContentControl, TransitionHost
 {
     #region Dependency Properties
 

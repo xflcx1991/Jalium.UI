@@ -1,4 +1,4 @@
-﻿using Jalium.UI.Controls.Themes;
+using Jalium.UI.Controls.Themes;
 using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
@@ -8,9 +8,14 @@ namespace Jalium.UI.Controls;
 /// with resizable splitter bars between them.
 /// </summary>
 [ContentProperty("Children")]
-public sealed class DockSplitPanel : Panel
+public class DockSplitPanel : Panel
 {
     private static readonly SolidColorBrush s_fallbackBackgroundBrush = new(ThemeColors.WindowBackground);
+
+    public DockSplitPanel()
+    {
+        SetCurrentValue(UIElement.TransitionPropertyProperty, "None");
+    }
 
     #region Dependency Properties
 

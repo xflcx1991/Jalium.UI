@@ -5,7 +5,7 @@ namespace Jalium.UI.Controls.Shapes;
 /// <summary>
 /// Draws a series of connected straight lines.
 /// </summary>
-public sealed class Polyline : Shape
+public class Polyline : Shape
 {
     /// <summary>
     /// Identifies the Points dependency property.

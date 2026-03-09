@@ -1,4 +1,4 @@
-﻿using Jalium.UI.Controls.Primitives;
+using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Input;
 using Jalium.UI.Media;
 
@@ -8,7 +8,7 @@ namespace Jalium.UI.Controls;
 /// Represents a context menu that appears on right-click.
 /// Uses a <see cref="Popup"/> to display its content at the correct screen position.
 /// </summary>
-public sealed class ContextMenu : ItemsControl
+public class ContextMenu : ItemsControl
 {
     #region Static Brushes
 

@@ -6,7 +6,7 @@ namespace Jalium.UI.Controls;
 /// Hosts and navigates between HTML documents.
 /// This is a compatibility surface that forwards to <see cref="WebView"/>.
 /// </summary>
-public sealed class WebBrowser : FrameworkElement
+public class WebBrowser : FrameworkElement
 {
     private readonly WebView _webView;
     private bool _syncingSourceFromInner;

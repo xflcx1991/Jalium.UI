@@ -6,7 +6,7 @@ namespace Jalium.UI.Controls;
 /// Represents an icon that uses a vector path as its content.
 /// Mirrors WinUI's Microsoft.UI.Xaml.Controls.PathIcon.
 /// </summary>
-public sealed class PathIcon : IconElement
+public class PathIcon : IconElement
 {
     /// <summary>
     /// Identifies the Data dependency property.

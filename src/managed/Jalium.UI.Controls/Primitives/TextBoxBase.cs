@@ -151,6 +151,9 @@ public abstract class TextBoxBase : Control
     private static readonly CubicEase ContextMenuOpenEase = new() { EasingMode = EasingMode.EaseOut };
     private static readonly CubicEase ContextMenuCloseEase = new() { EasingMode = EasingMode.EaseIn };
 
+    private static readonly SolidColorBrush s_defaultSelectionBrush = new(Color.FromArgb(180, 0, 120, 212));
+    private static readonly SolidColorBrush s_defaultCaretBrush = new(Color.White);
+
     // Static brushes for context menu rendering
     private static readonly SolidColorBrush s_ctxMenuBgBrush = new(Color.FromRgb(45, 45, 48));
     private static readonly SolidColorBrush s_ctxMenuBorderBrush = new(Color.FromRgb(67, 67, 70));
@@ -191,14 +194,14 @@ public abstract class TextBoxBase : Control
     /// </summary>
     public static readonly DependencyProperty SelectionBrushProperty =
         DependencyProperty.Register(nameof(SelectionBrush), typeof(Brush), typeof(TextBoxBase),
-            new PropertyMetadata(new SolidColorBrush(Color.FromArgb(180, 0, 120, 212)), OnVisualPropertyChanged));
+            new PropertyMetadata(null, OnVisualPropertyChanged));
 
     /// <summary>
     /// Identifies the CaretBrush dependency property.
     /// </summary>
     public static readonly DependencyProperty CaretBrushProperty =
         DependencyProperty.Register(nameof(CaretBrush), typeof(Brush), typeof(TextBoxBase),
-            new PropertyMetadata(new SolidColorBrush(Color.White), OnVisualPropertyChanged));
+            new PropertyMetadata(null, OnVisualPropertyChanged));
 
     /// <summary>
     /// Identifies the IsUndoEnabled dependency property.
@@ -1897,9 +1900,80 @@ public abstract class TextBoxBase : Control
         return char.IsWhiteSpace(c) || char.IsPunctuation(c);
     }
 
+    protected Brush? ResolveSelectionBrush()
+    {
+        if (HasLocalValue(SelectionBrushProperty))
+            return SelectionBrush;
+
+        return SelectionBrush
+            ?? ResolveThemeBrush("SelectionBackground", s_defaultSelectionBrush, "AccentFillColorSelectedTextBackgroundBrush");
+    }
+
+    protected Brush? ResolveCaretBrush()
+    {
+        if (HasLocalValue(CaretBrushProperty))
+            return CaretBrush;
+
+        return CaretBrush
+            ?? ((HasLocalValue(Control.ForegroundProperty) && Foreground != null) ? Foreground : null)
+            ?? ResolveThemeBrush("TextPrimary", s_defaultCaretBrush, "TextFillColorPrimaryBrush");
+    }
+
+    protected Brush ResolveTextForegroundBrush()
+    {
+        if (HasLocalValue(Control.ForegroundProperty) && Foreground != null)
+            return Foreground;
+
+        return ResolveThemeBrush("TextPrimary", s_defaultCaretBrush, "TextFillColorPrimaryBrush");
+    }
+
+    private Brush ResolveThemeBrush(string primaryKey, Brush fallback, string? secondaryKey = null)
+    {
+        if (TryFindResource(primaryKey) is Brush primary)
+            return primary;
+        if (!string.IsNullOrWhiteSpace(secondaryKey) && TryFindResource(secondaryKey) is Brush secondary)
+            return secondary;
+        return fallback;
+    }
+
     #endregion
 
     #region Context Menu
+
+    private Brush ResolveContextMenuBackgroundBrush()
+    {
+        return ResolveThemeBrush("MenuFlyoutPresenterBackground", s_ctxMenuBgBrush, "SurfaceBackground");
+    }
+
+    private Brush ResolveContextMenuBorderBrush()
+    {
+        return ResolveThemeBrush("MenuFlyoutPresenterBorderBrush", s_ctxMenuBorderBrush, "ControlBorder");
+    }
+
+    private Brush ResolveContextMenuForegroundBrush()
+    {
+        return ResolveThemeBrush("TextPrimary", s_ctxMenuEnabledTextBrush, "TextFillColorPrimaryBrush");
+    }
+
+    private Brush ResolveContextMenuDisabledForegroundBrush()
+    {
+        return ResolveThemeBrush("TextDisabled", s_ctxMenuDisabledTextBrush, "TextFillColorDisabledBrush");
+    }
+
+    private Brush ResolveContextMenuShortcutForegroundBrush()
+    {
+        return ResolveThemeBrush("TextSecondary", s_ctxMenuShortcutBrush, "TextFillColorSecondaryBrush");
+    }
+
+    private Brush ResolveContextMenuHoverBackgroundBrush()
+    {
+        return ResolveThemeBrush("MenuFlyoutItemBackgroundHover", s_ctxMenuHoverBrush, "HighlightBackground");
+    }
+
+    private Brush ResolveContextMenuSeparatorBrush()
+    {
+        return ResolveThemeBrush("MenuFlyoutPresenterBorderBrush", s_ctxMenuSeparatorBrush, "ControlBorder");
+    }
 
     private void ShowContextMenu()
     {
@@ -1934,8 +2008,8 @@ public abstract class TextBoxBase : Control
 
         var border = new Border
         {
-            Background = s_ctxMenuBgBrush,
-            BorderBrush = s_ctxMenuBorderBrush,
+            Background = ResolveContextMenuBackgroundBrush(),
+            BorderBrush = ResolveContextMenuBorderBrush(),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
             Padding = new Thickness(4),
@@ -2045,6 +2119,14 @@ public abstract class TextBoxBase : Control
 
     private void AddContextMenuItem(StackPanel panel, string text, string shortcut, bool isEnabled, Action onClick)
     {
+        var foregroundBrush = isEnabled
+            ? ResolveContextMenuForegroundBrush()
+            : ResolveContextMenuDisabledForegroundBrush();
+        var shortcutBrush = isEnabled
+            ? ResolveContextMenuShortcutForegroundBrush()
+            : ResolveContextMenuDisabledForegroundBrush();
+        var hoverBrush = ResolveContextMenuHoverBackgroundBrush();
+
         var itemPanel = new Grid();
         itemPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         itemPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -2053,9 +2135,7 @@ public abstract class TextBoxBase : Control
         {
             Text = text,
             FontSize = 13,
-            Foreground = isEnabled
-                ? s_ctxMenuEnabledTextBrush
-                : s_ctxMenuDisabledTextBrush,
+            Foreground = foregroundBrush,
             VerticalAlignment = VerticalAlignment.Center
         };
         Grid.SetColumn(label, 0);
@@ -2065,7 +2145,7 @@ public abstract class TextBoxBase : Control
         {
             Text = shortcut,
             FontSize = 12,
-            Foreground = s_ctxMenuShortcutBrush,
+            Foreground = shortcutBrush,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(24, 0, 0, 0)
         };
@@ -2084,7 +2164,7 @@ public abstract class TextBoxBase : Control
         {
             itemBorder.AddHandler(MouseEnterEvent, new RoutedEventHandler((s, e) =>
             {
-                itemBorder.Background = s_ctxMenuHoverBrush;
+                itemBorder.Background = hoverBrush;
             }));
             itemBorder.AddHandler(MouseLeaveEvent, new RoutedEventHandler((s, e) =>
             {
@@ -2103,12 +2183,12 @@ public abstract class TextBoxBase : Control
         panel.Children.Add(itemBorder);
     }
 
-    private static void AddContextMenuSeparator(StackPanel panel)
+    private void AddContextMenuSeparator(StackPanel panel)
     {
         var separator = new Border
         {
             Height = 1,
-            Background = s_ctxMenuSeparatorBrush,
+            Background = ResolveContextMenuSeparatorBrush(),
             Margin = new Thickness(8, 4, 8, 4)
         };
         panel.Children.Add(separator);

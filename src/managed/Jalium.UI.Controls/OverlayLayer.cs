@@ -10,6 +10,7 @@ namespace Jalium.UI.Controls;
 internal sealed class OverlayLayer : Canvas
 {
     private readonly HashSet<PopupRoot> _lightDismissRoots = [];
+    private readonly HashSet<UIElement> _modalRoots = [];
 
     public OverlayLayer()
     {
@@ -22,6 +23,11 @@ internal sealed class OverlayLayer : Canvas
     /// Returns true if any light-dismiss popups are currently open.
     /// </summary>
     public bool HasLightDismissPopups => _lightDismissRoots.Count > 0;
+
+    /// <summary>
+    /// Returns true when any modal overlay content is currently open.
+    /// </summary>
+    public bool HasModalRoots => _modalRoots.Count > 0;
 
     /// <summary>
     /// Adds a PopupRoot to the overlay layer.
@@ -49,6 +55,32 @@ internal sealed class OverlayLayer : Canvas
 
         InvalidateMeasure();
         InvalidateVisual();
+    }
+
+    /// <summary>
+    /// Adds a modal root that blocks interaction with content behind it.
+    /// </summary>
+    public void AddModalRoot(UIElement root)
+    {
+        if (_modalRoots.Add(root))
+        {
+            Children.Add(root);
+            InvalidateMeasure();
+            InvalidateVisual();
+        }
+    }
+
+    /// <summary>
+    /// Removes a previously registered modal root.
+    /// </summary>
+    public void RemoveModalRoot(UIElement root)
+    {
+        if (_modalRoots.Remove(root))
+        {
+            Children.Remove(root);
+            InvalidateMeasure();
+            InvalidateVisual();
+        }
     }
 
     /// <summary>
@@ -84,13 +116,26 @@ internal sealed class OverlayLayer : Canvas
         }
 
         // Click is outside all light-dismiss popups — close them
-        var popupsToClose = _lightDismissRoots.Select(r => r.OwnerPopup).ToList();
+        return CloseLightDismissPopups() > 0;
+    }
+
+    internal int CloseLightDismissPopups()
+    {
+        if (_lightDismissRoots.Count == 0)
+        {
+            return 0;
+        }
+
+        var popupsToClose = _lightDismissRoots
+            .Select(r => r.OwnerPopup)
+            .Distinct()
+            .ToList();
         foreach (var popup in popupsToClose)
         {
             popup.IsOpen = false;
         }
 
-        return true;
+        return popupsToClose.Count;
     }
 
     /// <summary>
@@ -110,7 +155,7 @@ internal sealed class OverlayLayer : Canvas
         // - otherwise keep passthrough behavior.
         if (result?.VisualHit == this)
         {
-            if (HasLightDismissPopups)
+            if (HasLightDismissPopups || HasModalRoots)
             {
                 return HitTestResult.GetReusable(this);
             }

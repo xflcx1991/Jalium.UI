@@ -57,6 +57,8 @@ public class Label : ContentControl
     /// </summary>
     public Label()
     {
+        UseTemplateContentManagement();
+
         // Labels are not focusable by default
         Focusable = false;
 
@@ -75,6 +77,14 @@ public class Label : ContentControl
     {
         base.OnApplyTemplate();
         _labelBorder = GetTemplateChild("LabelBorder") as Border;
+        ApplyPresentedTextStyle();
+    }
+
+    /// <inheritdoc />
+    protected override void OnContentChanged(object? oldContent, object? newContent)
+    {
+        base.OnContentChanged(oldContent, newContent);
+        ApplyPresentedTextStyle();
     }
 
     #endregion
@@ -234,8 +244,67 @@ public class Label : ContentControl
     {
         if (d is Label label)
         {
+            label.ApplyPresentedTextStyle();
             label.InvalidateVisual();
         }
+    }
+
+    private void ApplyPresentedTextStyle()
+    {
+        if (_labelBorder == null || Content is UIElement)
+        {
+            return;
+        }
+
+        if (FindDescendantTextBlock(_labelBorder) is not TextBlock textBlock)
+        {
+            return;
+        }
+
+        var foreground = ResolveEffectiveForegroundBrush();
+        if (foreground != null)
+        {
+            textBlock.Foreground = foreground;
+        }
+
+        textBlock.FontFamily = FontFamily;
+        textBlock.FontSize = FontSize;
+        textBlock.FontStyle = FontStyle;
+        textBlock.FontWeight = FontWeight;
+    }
+
+    private static TextBlock? FindDescendantTextBlock(Visual root)
+    {
+        if (root is TextBlock textBlock)
+        {
+            return textBlock;
+        }
+
+        for (int i = 0; i < root.VisualChildrenCount; i++)
+        {
+            if (root.GetVisualChild(i) is Visual child)
+            {
+                var result = FindDescendantTextBlock(child);
+                if (result != null)
+                {
+                    return result;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private Brush? ResolveEffectiveForegroundBrush()
+    {
+        if (HasLocalValue(Control.ForegroundProperty) && Foreground != null)
+        {
+            return Foreground;
+        }
+
+        return TryFindResource("TextSecondary") as Brush
+            ?? TryFindResource("TextPrimary") as Brush
+            ?? Foreground;
     }
 
     #endregion

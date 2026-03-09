@@ -277,6 +277,40 @@ public class PrimitiveThemeTests
     }
 
     [Fact]
+    public void Label_TemplatedStringContent_ShouldInheritThemeTextStyle()
+    {
+        ResetApplicationState();
+        ThemeLoader.Initialize();
+        var app = new Application();
+
+        try
+        {
+            var label = new Label
+            {
+                Content = "Username:"
+            };
+
+            var host = new StackPanel { Width = 200, Height = 40 };
+            host.Children.Add(label);
+
+            host.Measure(new Size(200, 40));
+            host.Arrange(new Rect(0, 0, 200, 40));
+
+            var textBlock = FindDescendant<TextBlock>(label);
+            var expectedForeground = Assert.IsAssignableFrom<Brush>(app.Resources["TextSecondary"]);
+
+            Assert.NotNull(textBlock);
+            Assert.Same(expectedForeground, textBlock!.Foreground);
+            Assert.Equal(14, textBlock.FontSize);
+            Assert.Equal(label.FontFamily, textBlock.FontFamily);
+        }
+        finally
+        {
+            ResetApplicationState();
+        }
+    }
+
+    [Fact]
     public void Thumb_ImplicitThemeStyle_ShouldApplyWithoutLocalVisualOverrides()
     {
         ResetApplicationState();
@@ -513,6 +547,28 @@ public class PrimitiveThemeTests
         public override void Close()
         {
         }
+    }
+
+    private static T? FindDescendant<T>(Visual root) where T : class
+    {
+        if (root is T match)
+        {
+            return match;
+        }
+
+        for (int i = 0; i < root.VisualChildrenCount; i++)
+        {
+            if (root.GetVisualChild(i) is Visual child)
+            {
+                var result = FindDescendant<T>(child);
+                if (result != null)
+                {
+                    return result;
+                }
+            }
+        }
+
+        return null;
     }
 
     private static Brush InvokePrivateBrushResolver(object control, string methodName, params object[] args)

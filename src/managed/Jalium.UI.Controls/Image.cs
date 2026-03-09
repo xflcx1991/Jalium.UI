@@ -1,4 +1,4 @@
-﻿using Jalium.UI.Media;
+using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
 
@@ -7,7 +7,7 @@ namespace Jalium.UI.Controls;
 /// Uses ControlTemplate for visual customization (border, corner radius, etc.)
 /// and an internal ImageHost element for actual bitmap rendering.
 /// </summary>
-public sealed class Image : Control
+public class Image : Control
 {
     private ImageHost? _imageHost;
     private Border? _container;

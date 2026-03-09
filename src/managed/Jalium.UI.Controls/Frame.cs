@@ -5,7 +5,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// A control that supports navigation to and from pages.
 /// </summary>
-public sealed class Frame : ContentControl
+public class Frame : ContentControl
 {
     #region Fields
 

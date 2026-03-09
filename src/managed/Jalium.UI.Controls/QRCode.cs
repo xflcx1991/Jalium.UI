@@ -17,7 +17,7 @@ public enum QRCodeErrorCorrectionLevel
 /// <summary>
 /// Displays a QR code generated from text content.
 /// </summary>
-public sealed class QRCode : Control
+public class QRCode : Control
 {
     private bool[,]? _modules;
     private string? _generationError;

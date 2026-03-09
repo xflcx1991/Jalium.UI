@@ -1,11 +1,11 @@
-﻿using Jalium.UI.Media;
+using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls.Primitives;
 
 /// <summary>
 /// Represents a layout control that aligns a bullet and content.
 /// </summary>
-public sealed class BulletDecorator : FrameworkElement
+public class BulletDecorator : FrameworkElement
 {
     #region Dependency Properties
 

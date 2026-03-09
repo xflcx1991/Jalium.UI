@@ -226,23 +226,23 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
 
     public static readonly DependencyProperty SelectionBrushProperty =
         DependencyProperty.Register(nameof(SelectionBrush), typeof(Brush), typeof(EditControl),
-            new PropertyMetadata(new SolidColorBrush(Color.FromArgb(100, 38, 79, 120)), OnVisualPropertyChanged));
+            new PropertyMetadata(null, OnVisualPropertyChanged));
 
     public static readonly DependencyProperty CaretBrushProperty =
         DependencyProperty.Register(nameof(CaretBrush), typeof(Brush), typeof(EditControl),
-            new PropertyMetadata(new SolidColorBrush(Color.FromRgb(220, 220, 220)), OnVisualPropertyChanged));
+            new PropertyMetadata(null, OnVisualPropertyChanged));
 
     public static readonly DependencyProperty LineNumberForegroundProperty =
         DependencyProperty.Register(nameof(LineNumberForeground), typeof(Brush), typeof(EditControl),
-            new PropertyMetadata(new SolidColorBrush(Color.FromRgb(133, 133, 133)), OnVisualPropertyChanged));
+            new PropertyMetadata(null, OnVisualPropertyChanged));
 
     public static readonly DependencyProperty CurrentLineBackgroundProperty =
         DependencyProperty.Register(nameof(CurrentLineBackground), typeof(Brush), typeof(EditControl),
-            new PropertyMetadata(new SolidColorBrush(Color.FromArgb(20, 78, 114, 148)), OnVisualPropertyChanged));
+            new PropertyMetadata(null, OnVisualPropertyChanged));
 
     public static readonly DependencyProperty GutterBackgroundProperty =
         DependencyProperty.Register(nameof(GutterBackground), typeof(Brush), typeof(EditControl),
-            new PropertyMetadata(new SolidColorBrush(Color.FromRgb(30, 30, 30)), OnVisualPropertyChanged));
+            new PropertyMetadata(null, OnVisualPropertyChanged));
 
     public static readonly DependencyProperty ShowMinimapProperty =
         DependencyProperty.Register(nameof(ShowMinimap), typeof(bool), typeof(EditControl),
@@ -668,12 +668,12 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
 
                 _view.Render(dc, contentSize, _caret, _selection,
                     ShowLineNumbers, HighlightCurrentLine,
-                    Foreground ?? s_defaultForegroundBrush,
-                    SelectionBrush ?? s_defaultSelectionBrush,
-                    CaretBrush ?? s_defaultCaretBrush,
-                    LineNumberForeground ?? s_defaultLineNumberBrush,
-                    CurrentLineBackground ?? s_defaultCurrentLineBrush,
-                    GutterBackground ?? s_defaultGutterBrush,
+                    ResolveForegroundBrush(),
+                    ResolveSelectionBrush(),
+                    ResolveCaretBrush(),
+                    ResolveLineNumberForegroundBrush(),
+                    ResolveCurrentLineBackgroundBrush(),
+                    ResolveGutterBackgroundBrush(),
                     fontFamily, fontSize, FontWeight, FontStyle,
                     renderLineNumbers: !applyGutterOverflowShield,
                     suppressCaret: _isImeComposing);
@@ -3442,7 +3442,7 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
             if (match.Offset == selectionStart && match.Length == selectionLength)
                 continue;
 
-            DrawDocumentRangeHighlight(dc, match.Offset, match.Length, s_selectedTextOccurrenceBrush);
+            DrawDocumentRangeHighlight(dc, match.Offset, match.Length, ResolveSelectedTextOccurrenceBrush());
         }
     }
 
@@ -3464,7 +3464,7 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
         for (int i = 0; i < matches.Count; i++)
         {
             var match = matches[i];
-            DrawDocumentRangeHighlight(dc, match.Offset, match.Length, s_symbolOccurrenceBrush);
+            DrawDocumentRangeHighlight(dc, match.Offset, match.Length, ResolveSymbolOccurrenceBrush());
         }
     }
 
@@ -3614,6 +3614,92 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
         if (!string.IsNullOrWhiteSpace(secondaryKey) && TryFindResource(secondaryKey) is Brush secondary)
             return secondary;
         return fallback;
+    }
+
+    private Brush ResolveForegroundBrush()
+    {
+        if (HasLocalValue(Control.ForegroundProperty) && Foreground != null)
+            return Foreground;
+
+        return ResolveThemeBrush("EditorSyntaxPlainText", s_defaultForegroundBrush, "TextPrimary");
+    }
+
+    private Brush ResolveSelectionBrush()
+    {
+        return SelectionBrush
+            ?? ResolveThemeBrush("SelectionBackground", s_defaultSelectionBrush, "AccentFillColorSelectedTextBackgroundBrush");
+    }
+
+    private Brush ResolveCaretBrush()
+    {
+        return CaretBrush
+            ?? ((HasLocalValue(Control.ForegroundProperty) && Foreground != null) ? Foreground : null)
+            ?? ResolveThemeBrush("TextPrimary", s_defaultCaretBrush, "TextFillColorPrimaryBrush");
+    }
+
+    private Brush ResolveLineNumberForegroundBrush()
+    {
+        return LineNumberForeground
+            ?? ResolveThemeBrush("TextSecondary", s_defaultLineNumberBrush, "TextFillColorSecondaryBrush");
+    }
+
+    private Brush ResolveCurrentLineBackgroundBrush()
+    {
+        return CurrentLineBackground
+            ?? ResolveThemeBrush("HighlightBackground", s_defaultCurrentLineBrush, "ControlFillColorTertiaryBrush");
+    }
+
+    private Brush ResolveGutterBackgroundBrush()
+    {
+        return GutterBackground
+            ?? ResolveThemeBrush("ControlBackground", s_defaultGutterBrush, "ControlFillColorDefaultBrush");
+    }
+
+    private Brush ResolveSelectedTextOccurrenceBrush()
+    {
+        return ResolveThemeBrush("HighlightBackground", s_selectedTextOccurrenceBrush, "SelectionBackground");
+    }
+
+    private Brush ResolveSymbolOccurrenceBrush()
+    {
+        return ResolveThemeBrush("OneAccentSubtle", s_symbolOccurrenceBrush, "SelectionBackground");
+    }
+
+    private Brush ResolveImeCompositionBackgroundBrush()
+    {
+        return ResolveThemeBrush("SelectionBackground", s_imeCompositionBackgroundBrush, "AccentFillColorSelectedTextBackgroundBrush");
+    }
+
+    private Brush ResolveImeCompositionTextBrush()
+    {
+        return ResolveThemeBrush("TextPrimary", s_imeCompositionTextBrush, "TextFillColorPrimaryBrush");
+    }
+
+    private Pen ResolveImeCompositionUnderlinePen()
+    {
+        return ResolveThemePen("AccentBrush", s_imeCompositionUnderlinePen, "ControlBorderFocused");
+    }
+
+    private Brush ResolveGutterOverflowOverlayBrush()
+    {
+        return ResolveThemeBrush("TooltipBackground", s_gutterOverflowOverlayBrush, "ControlBackground");
+    }
+
+    private Brush ResolveFoldingMarkerSelectedBackgroundBrush()
+    {
+        return ResolveThemeBrush("HighlightBackground", s_foldingMarkerSelectedBackgroundBrush, "SelectionBackground");
+    }
+
+    private Pen ResolveFoldingGuidePen()
+    {
+        return ResolveThemePen("OneEditorIndentGuide", s_foldingGuidePen, "ControlBorder");
+    }
+
+    private Pen ResolveFoldingChevronPen(bool selected)
+    {
+        return selected
+            ? ResolveThemePen("OneBorderFocused", s_foldingChevronSelectedPen, "AccentBrush")
+            : ResolveThemePen("TextSecondary", s_foldingChevronPen, "OneEditorIndentGuide");
     }
 
     private Pen ResolveThemePen(string primaryKey, Pen fallback, string? secondaryKey = null, double? thickness = null)
@@ -4368,7 +4454,7 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
         double x = Math.Max(textAreaLeft, point.X);
         var text = new FormattedText(_imeCompositionString, fontFamily, fontSize)
         {
-            Foreground = s_imeCompositionTextBrush
+            Foreground = ResolveImeCompositionTextBrush()
         };
         TextMeasurement.MeasureText(text);
         double measuredWidth = text.Width > 0
@@ -4376,9 +4462,9 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
             : _imeCompositionString.Length * Math.Max(1, _view.CharWidth);
         double width = Math.Max(1, measuredWidth);
 
-        dc.DrawRectangle(s_imeCompositionBackgroundBrush, null, new Rect(x, y, width, _view.LineHeight));
+        dc.DrawRectangle(ResolveImeCompositionBackgroundBrush(), null, new Rect(x, y, width, _view.LineHeight));
         dc.DrawText(text, new Point(x, y));
-        dc.DrawLine(s_imeCompositionUnderlinePen, new Point(x, y + _view.LineHeight - 1), new Point(x + width, y + _view.LineHeight - 1));
+        dc.DrawLine(ResolveImeCompositionUnderlinePen(), new Point(x, y + _view.LineHeight - 1), new Point(x + width, y + _view.LineHeight - 1));
     }
 
     private bool ShouldApplyGutterOverflowShield(double contentHeight)
@@ -4399,12 +4485,12 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
         if (s_gutterOverflowBlurEffect.HasEffect)
             dc.DrawBackdropEffect(shieldRect, s_gutterOverflowBlurEffect, new CornerRadius(0));
 
-        dc.DrawRectangle(s_gutterOverflowOverlayBrush, null, shieldRect);
+        dc.DrawRectangle(ResolveGutterOverflowOverlayBrush(), null, shieldRect);
         _view.RenderLineNumbers(
             dc,
             _caret,
-            Foreground ?? s_defaultForegroundBrush,
-            LineNumberForeground ?? s_defaultLineNumberBrush,
+            ResolveForegroundBrush(),
+            ResolveLineNumberForegroundBrush(),
             fontFamily,
             fontSize);
     }
@@ -4457,10 +4543,11 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
 
                 bool isSelected = IsFoldingSectionSelected(section);
                 if (isSelected)
-                    dc.DrawRoundedRectangle(s_foldingMarkerSelectedBackgroundBrush, null, markerRect, 2, 2);
+                    dc.DrawRoundedRectangle(ResolveFoldingMarkerSelectedBackgroundBrush(), null, markerRect, 2, 2);
 
                 double centerX = markerRect.X + markerRect.Width * 0.5;
                 double centerY = markerRect.Y + markerRect.Height * 0.5;
+                var foldingGuidePen = ResolveFoldingGuidePen();
 
                 if (!section.IsFolded)
                 {
@@ -4474,12 +4561,12 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
                         if (guideEndY > guideStartY + 0.5)
                         {
                             dc.DrawLine(
-                                s_foldingGuidePen,
+                                foldingGuidePen,
                                 new Point(centerX, guideStartY),
                                 new Point(centerX, guideEndY));
 
                             dc.DrawLine(
-                                s_foldingGuidePen,
+                                foldingGuidePen,
                                 new Point(centerX, guideEndY),
                                 new Point(centerX + Math.Max(4, markerRect.Width * 0.45), guideEndY));
                         }
@@ -4488,7 +4575,7 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
                 else if (section.IsFolded)
                 {
                     dc.DrawLine(
-                        s_foldingGuidePen,
+                        foldingGuidePen,
                         new Point(centerX, centerY),
                         new Point(centerX + Math.Max(3, markerRect.Width * 0.4), centerY));
                 }
@@ -4504,7 +4591,7 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
 
     private void DrawFoldingChevron(DrawingContext dc, Rect markerRect, bool folded, bool selected)
     {
-        var chevronPen = selected ? s_foldingChevronSelectedPen : s_foldingChevronPen;
+        var chevronPen = ResolveFoldingChevronPen(selected);
         double centerX = markerRect.X + markerRect.Width * 0.5;
         double centerY = markerRect.Y + markerRect.Height * 0.5;
         double glyph = Math.Max(2.4, markerRect.Width * 0.26);
@@ -4577,9 +4664,9 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
             return;
 
         var minimapBackgroundBrush = ResolveThemeBrush("OneMinimapBackground", s_minimapBackgroundBrush, "WindowBackground");
-        var minimapForegroundBrush = ResolveThemeBrush("OneMinimapSlider", s_minimapForegroundBrush, "AccentBrush");
-        var minimapViewportBrush = ResolveThemeBrush("OneScrollbarThumbHover", s_minimapViewportBrush, "SelectionBackground");
-        var minimapViewportBorderPen = ResolveThemePen("OneBorderDefault", s_minimapViewportBorderPen, "ControlBorder");
+        var minimapForegroundBrush = ResolveThemeBrush("OneMinimapContent", s_minimapForegroundBrush);
+        var minimapViewportBrush = ResolveThemeBrush("OneMinimapSlider", s_minimapViewportBrush);
+        var minimapViewportBorderPen = ResolveThemePen("OnePaneChromeBorder", s_minimapViewportBorderPen, "OneBorderDefault");
 
         _minimapRenderer.Render(
             dc,
@@ -4686,8 +4773,8 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
     private void DrawScrollBars(DrawingContext dc)
     {
         var scrollBarTrackBrush = ResolveThemeBrush("OneScrollbarBackground", s_scrollBarTrackBrush, "ControlBackground");
-        var scrollBarThumbBrush = ResolveThemeBrush("OneScrollbarThumb", s_scrollBarThumbBrush, "AccentBrush");
-        var scrollBarActiveThumbBrush = ResolveThemeBrush("OneScrollbarThumbActive", s_scrollBarActiveThumbBrush, "AccentBrushPressed");
+        var scrollBarThumbBrush = ResolveThemeBrush("OneScrollbarThumb", s_scrollBarThumbBrush);
+        var scrollBarActiveThumbBrush = ResolveThemeBrush("OneScrollbarThumbActive", s_scrollBarActiveThumbBrush);
 
         static Rect InsetRect(Rect rect, double inset)
         {

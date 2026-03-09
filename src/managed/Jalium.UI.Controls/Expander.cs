@@ -7,7 +7,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Represents a control that displays a header and has a collapsible content area.
 /// </summary>
-public sealed class Expander : ContentControl
+public class Expander : ContentControl
 {
     #region Dependency Properties
 
@@ -125,6 +125,7 @@ public sealed class Expander : ContentControl
     public Expander()
     {
         Focusable = true;
+        SetCurrentValue(UIElement.TransitionPropertyProperty, "None");
         UseTemplateContentManagement();
 
         // Register keyboard handler

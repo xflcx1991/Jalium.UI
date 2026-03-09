@@ -1,4 +1,4 @@
-﻿using Jalium.UI.Interop;
+using Jalium.UI.Interop;
 using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
@@ -6,7 +6,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Displays text content.
 /// </summary>
-public sealed class TextBlock : FrameworkElement
+public class TextBlock : FrameworkElement
 {
     #region Cached FormattedText
 

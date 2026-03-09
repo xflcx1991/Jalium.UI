@@ -374,6 +374,23 @@ public sealed class DurationValueConverter : TypeConverter
 }
 
 /// <summary>
+/// Converts strings to transition property collections.
+/// </summary>
+public sealed class TransitionPropertyCollectionConverter : TypeConverter
+{
+    public override object? ConvertFrom(object? value)
+    {
+        return value switch
+        {
+            TransitionPropertyCollection collection => collection,
+            string str => TransitionPropertyCollection.Parse(str),
+            IEnumerable<string> names => new TransitionPropertyCollection(names),
+            _ => null
+        };
+    }
+}
+
+/// <summary>
 /// Converts strings to IconElement values.
 /// Supports Symbol names (for example "Save" or "Symbol.Save") and raw glyph strings.
 /// </summary>
@@ -415,6 +432,7 @@ public static class TypeConverterRegistry
         [typeof(VerticalAlignment)] = new VerticalAlignmentConverter(),
         [typeof(Orientation)] = new OrientationConverter(),
         [typeof(AnimationDuration)] = new DurationValueConverter(),
+        [typeof(TransitionPropertyCollection)] = new TransitionPropertyCollectionConverter(),
         [typeof(Uri)] = new UriValueConverter(),
         [typeof(Type)] = new TypeTypeConverter(),
         [typeof(IconElement)] = new IconElementConverter(),

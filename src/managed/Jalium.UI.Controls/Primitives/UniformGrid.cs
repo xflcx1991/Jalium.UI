@@ -1,9 +1,9 @@
-﻿namespace Jalium.UI.Controls.Primitives;
+namespace Jalium.UI.Controls.Primitives;
 
 /// <summary>
 /// Provides a way to arrange content in a grid where all cells have the same size.
 /// </summary>
-public sealed class UniformGrid : Panel
+public class UniformGrid : Panel
 {
     #region Dependency Properties
 

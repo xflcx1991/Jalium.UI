@@ -5,7 +5,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Represents a templated button control to be displayed in a CommandBar.
 /// </summary>
-public sealed class AppBarButton : Button, ICommandBarElement
+public class AppBarButton : Button, ICommandBarElement
 {
     #region Dependency Properties
 

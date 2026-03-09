@@ -1,11 +1,11 @@
-﻿using Jalium.UI.Media;
+using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
 
 /// <summary>
 /// Provides a low-level element for displaying glyphs.
 /// </summary>
-public sealed class Glyphs : FrameworkElement
+public class Glyphs : FrameworkElement
 {
     #region Dependency Properties
 

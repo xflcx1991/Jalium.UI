@@ -335,6 +335,51 @@ public class VirtualizingStackPanel : VirtualizingPanel, IScrollInfo
         return finalSize;
     }
 
+    /// <inheritdoc />
+    protected override HitTestResult? HitTestCore(Point point)
+    {
+        var bounds = VisualBounds;
+        if (!bounds.Contains(point) || Visibility != Visibility.Visible)
+        {
+            return null;
+        }
+
+        var localPoint = new Point(point.X - bounds.X, point.Y - bounds.Y);
+        if (_realizedContainers.Count > 0)
+        {
+            var axisOffset = Orientation == Orientation.Vertical
+                ? localPoint.Y + _scrollOffset
+                : localPoint.X + _scrollOffset;
+
+            var estimatedIndex = _heightIndex.GetIndexAtOffset(axisOffset);
+            int neighborChecks = 0;
+            if (estimatedIndex >= 0)
+            {
+                if (TryHitRealizedContainer(estimatedIndex, localPoint, out var directHit))
+                {
+                    return directHit;
+                }
+
+                for (int delta = 1; delta <= 2; delta++)
+                {
+                    neighborChecks++;
+                    if (TryHitRealizedContainer(estimatedIndex - delta, localPoint, out var beforeHit))
+                    {
+                        return beforeHit;
+                    }
+
+                    neighborChecks++;
+                    if (TryHitRealizedContainer(estimatedIndex + delta, localPoint, out var afterHit))
+                    {
+                        return afterHit;
+                    }
+                }
+            }
+        }
+
+        return base.HitTestCore(point);
+    }
+
     #endregion
 
     #region Virtualization Support
@@ -498,6 +543,28 @@ public class VirtualizingStackPanel : VirtualizingPanel, IScrollInfo
         }
 
         return child;
+    }
+
+    private bool TryHitRealizedContainer(int index, Point localPoint, out HitTestResult? hitResult)
+    {
+        hitResult = null;
+        if (!_realizedContainers.TryGetValue(index, out var child) || child.Visibility != Visibility.Visible)
+        {
+            return false;
+        }
+
+        if (!child.VisualBounds.Contains(localPoint))
+        {
+            return false;
+        }
+
+        if (child is FrameworkElement frameworkElement)
+        {
+            hitResult = frameworkElement.HitTest(localPoint);
+            return hitResult != null;
+        }
+
+        return false;
     }
 
     private void RecycleOutsideWindow(RealizationWindow window)
@@ -886,4 +953,3 @@ public interface IScrollInfo
 }
 
 #endregion
-

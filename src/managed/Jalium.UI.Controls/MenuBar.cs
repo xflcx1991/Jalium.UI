@@ -8,7 +8,7 @@ namespace Jalium.UI.Controls;
 /// Represents a specialized container that presents a set of menus in a horizontal row,
 /// typically at the top of an app window.
 /// </summary>
-public sealed class MenuBar : Control
+public class MenuBar : Control
 {
     private readonly ObservableCollection<MenuBarItem> _items = new();
     private StackPanel? _panel;

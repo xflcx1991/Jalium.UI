@@ -29,7 +29,7 @@ public sealed class MarkdownLinkClickedEventArgs : EventArgs
 /// Displays Markdown content using a native parser and renderer.
 /// </summary>
 [ContentProperty(nameof(Text))]
-public sealed class Markdown : Control
+public class Markdown : Control
 {
     private static readonly HashSet<string> s_allowedSchemes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -96,6 +96,7 @@ public sealed class Markdown : Control
     public Markdown()
     {
         Focusable = false;
+        SetCurrentValue(UIElement.TransitionPropertyProperty, "None");
         ParseMarkdown();
     }
 
@@ -231,7 +232,8 @@ public sealed class Markdown : Control
 
         _contentHost = new StackPanel
         {
-            Orientation = Orientation.Vertical
+            Orientation = Orientation.Vertical,
+            TransitionProperty = "None"
         };
 
         _scrollViewer = new ScrollViewer
@@ -239,7 +241,10 @@ public sealed class Markdown : Control
             Content = _contentHost,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            CanContentScroll = false
+            CanContentScroll = false,
+            TransitionProperty = "None",
+            IsScrollInertiaEnabled = false,
+            IsScrollBarAutoHideEnabled = false
         };
 
         _container.Child = _scrollViewer;

@@ -1,9 +1,9 @@
-﻿namespace Jalium.UI.Controls.Primitives;
+namespace Jalium.UI.Controls.Primitives;
 
 /// <summary>
 /// Handles the layout of TabItem elements on a TabControl.
 /// </summary>
-public sealed class TabPanel : Panel
+public class TabPanel : Panel
 {
     #region Dependency Properties
 

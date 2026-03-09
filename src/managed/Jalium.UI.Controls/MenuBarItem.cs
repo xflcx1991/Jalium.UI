@@ -9,7 +9,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Represents a top-level menu in a MenuBar control.
 /// </summary>
-public sealed class MenuBarItem : Control
+public class MenuBarItem : Control
 {
     private static readonly SolidColorBrush s_fallbackHoverBrush = new(Color.FromRgb(61, 61, 61));
     private static readonly SolidColorBrush s_fallbackTextBrush = new(Color.FromRgb(255, 255, 255));

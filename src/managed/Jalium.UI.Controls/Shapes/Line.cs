@@ -1,11 +1,11 @@
-﻿using Jalium.UI.Media;
+using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls.Shapes;
 
 /// <summary>
 /// Draws a straight line between two points.
 /// </summary>
-public sealed class Line : Shape
+public class Line : Shape
 {
     /// <summary>
     /// Identifies the X1 dependency property.

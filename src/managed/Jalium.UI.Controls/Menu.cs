@@ -8,7 +8,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Represents a menu bar that contains menu items.
 /// </summary>
-public sealed class Menu : ItemsControl
+public class Menu : ItemsControl
 {
     #region Dependency Properties
 
@@ -108,7 +108,7 @@ public sealed class Menu : ItemsControl
 /// <summary>
 /// Represents an item in a menu.
 /// </summary>
-public sealed class MenuItem : HeaderedItemsControl
+public class MenuItem : HeaderedItemsControl
 {
     // Cached brushes for OnRender
     private static readonly SolidColorBrush s_highlightBrush = new(Color.FromRgb(60, 60, 60));
@@ -413,7 +413,7 @@ public sealed class MenuItem : HeaderedItemsControl
     {
         _isHighlighted = false;
         InvalidateVisual();
-        // Don't close submenu here — let sibling mouse enter or popup dismiss handle it.
+        // Don't close submenu here 鈥?let sibling mouse enter or popup dismiss handle it.
         // This prevents the submenu from closing when the mouse moves from the
         // MenuItem into the popup content area.
     }
@@ -594,7 +594,7 @@ public sealed class MenuItem : HeaderedItemsControl
             // If we reach a PopupRoot, follow the Popup's PlacementTarget
             if (parent is PopupRoot popupRoot)
             {
-                // PopupRoot is owned by a Popup — get the Popup's PlacementTarget
+                // PopupRoot is owned by a Popup 鈥?get the Popup's PlacementTarget
                 var popup = popupRoot.OwnerPopup;
                 if (popup?.PlacementTarget is MenuItem ownerItem)
                 {
@@ -615,7 +615,7 @@ public sealed class MenuItem : HeaderedItemsControl
     #region Visual Tree
 
     // MenuItem renders everything via OnRender (header, icon, gesture text, etc.).
-    // Child items (submenu entries) must NOT be rendered inline — they are shown
+    // Child items (submenu entries) must NOT be rendered inline 鈥?they are shown
     // exclusively through a Popup when the submenu opens.  The base ItemsControl
     // adds a _fallbackItemsHost panel as a visual child, which would cause all
     // sub-items to be laid out and drawn inside the MenuItem.  Returning 0 here

@@ -1,4 +1,5 @@
-﻿using Jalium.UI.Controls;
+using Jalium.UI.Controls;
+using Jalium.UI;
 using Jalium.UI.Input;
 using Jalium.UI.Media;
 
@@ -7,7 +8,7 @@ namespace Jalium.UI.Controls.Primitives;
 /// <summary>
 /// Represents a control that can be dragged by the user, typically used in scrollbars and sliders.
 /// </summary>
-public sealed class Thumb : Control
+public class Thumb : Control
 {
     #region Static Brushes & Pens
 
@@ -15,6 +16,9 @@ public sealed class Thumb : Control
     private static readonly SolidColorBrush s_defaultBgBrush = new(Color.FromRgb(100, 100, 100));
     private static readonly SolidColorBrush s_gripBrush = new(Color.FromRgb(60, 60, 60));
     private static readonly Pen s_gripPen = new(s_gripBrush, 1);
+    private const string DefaultBackgroundKey = "ControlBackground";
+    private const string DraggingBackgroundKey = "ControlBackgroundPressed";
+    private const string GripBrushKey = "TextTertiary";
 
     #endregion
 
@@ -126,6 +130,7 @@ public sealed class Thumb : Control
     /// </summary>
     public Thumb()
     {
+        SetCurrentValue(UIElement.TransitionPropertyProperty, "None");
         Focusable = true;
 
         // Register mouse event handlers
@@ -333,10 +338,11 @@ public sealed class Thumb : Control
 
         // Get visual state colors
         var bgBrush = Background ?? (IsDragging
-            ? s_draggingBgBrush
-            : s_defaultBgBrush);
+            ? ResolveDraggingBackgroundBrush()
+            : ResolveDefaultBackgroundBrush());
 
         var borderBrush = BorderBrush;
+        var gripPen = ResolveGripPen();
 
         // Draw background
         dc.DrawRoundedRectangle(bgBrush, null, rect, cornerRadius);
@@ -356,10 +362,50 @@ public sealed class Thumb : Control
             var gripWidth = Math.Min(8, rect.Width - 4);
             var startX = centerX - gripWidth / 2;
 
-            dc.DrawLine(s_gripPen, new Point(startX, centerY - 2), new Point(startX + gripWidth, centerY - 2));
-            dc.DrawLine(s_gripPen, new Point(startX, centerY), new Point(startX + gripWidth, centerY));
-            dc.DrawLine(s_gripPen, new Point(startX, centerY + 2), new Point(startX + gripWidth, centerY + 2));
+            dc.DrawLine(gripPen, new Point(startX, centerY - 2), new Point(startX + gripWidth, centerY - 2));
+            dc.DrawLine(gripPen, new Point(startX, centerY), new Point(startX + gripWidth, centerY));
+            dc.DrawLine(gripPen, new Point(startX, centerY + 2), new Point(startX + gripWidth, centerY + 2));
         }
+    }
+
+    private Brush ResolveDefaultBackgroundBrush()
+    {
+        return ResolveBrushResource(DefaultBackgroundKey) ?? s_defaultBgBrush;
+    }
+
+    private Brush ResolveDraggingBackgroundBrush()
+    {
+        return ResolveBrushResource(DraggingBackgroundKey) ?? s_draggingBgBrush;
+    }
+
+    private Pen ResolveGripPen()
+    {
+        var gripBrush = ResolveBrushResource(GripBrushKey) ?? s_gripBrush;
+        return CreatePen(gripBrush, s_gripPen);
+    }
+
+    private Brush? ResolveBrushResource(string key)
+    {
+        if (TryFindResource(key) is Brush localBrush)
+            return localBrush;
+
+        if (Application.Current?.Resources.TryGetValue(key, out var appResource) == true &&
+            appResource is Brush appBrush)
+        {
+            return appBrush;
+        }
+
+        return null;
+    }
+
+    private static Pen CreatePen(Brush brush, Pen template)
+    {
+        return new Pen(brush, template.Thickness)
+        {
+            LineJoin = template.LineJoin,
+            StartLineCap = template.StartLineCap,
+            EndLineCap = template.EndLineCap
+        };
     }
 
     #endregion

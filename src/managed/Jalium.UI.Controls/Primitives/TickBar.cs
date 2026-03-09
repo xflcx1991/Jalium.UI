@@ -1,5 +1,6 @@
-﻿using Jalium.UI.Media;
+using Jalium.UI.Media;
 
+using Jalium.UI;
 namespace Jalium.UI.Controls.Primitives;
 
 /// <summary>
@@ -31,11 +32,12 @@ public enum TickBarPlacement
 /// <summary>
 /// Represents a control that draws a set of tick marks for a Slider control.
 /// </summary>
-public sealed class TickBar : FrameworkElement
+public class TickBar : FrameworkElement
 {
     #region Static Brushes
 
     private static readonly SolidColorBrush s_defaultFillBrush = new(Color.FromRgb(100, 100, 100));
+    private const string TickBrushKey = "TextSecondary";
 
     #endregion
 
@@ -253,7 +255,7 @@ public sealed class TickBar : FrameworkElement
         if (range <= 0)
             return;
 
-        var tickBrush = Fill ?? s_defaultFillBrush;
+        var tickBrush = ResolveTickBrush();
         var tickPen = new Pen(tickBrush, 1);
 
         var isHorizontal = Placement == TickBarPlacement.Top || Placement == TickBarPlacement.Bottom;
@@ -292,6 +294,23 @@ public sealed class TickBar : FrameworkElement
 
             DrawTick(dc, tickPen, ratio, startOffset, length, isHorizontal);
         }
+    }
+
+    private Brush ResolveTickBrush()
+    {
+        if (Fill != null)
+            return Fill;
+
+        if (TryFindResource(TickBrushKey) is Brush localBrush)
+            return localBrush;
+
+        if (Application.Current?.Resources.TryGetValue(TickBrushKey, out var appResource) == true &&
+            appResource is Brush appBrush)
+        {
+            return appBrush;
+        }
+
+        return s_defaultFillBrush;
     }
 
     private IEnumerable<double> GetTickValues()

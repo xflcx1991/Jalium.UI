@@ -1,4 +1,4 @@
-﻿using System.Collections.Specialized;
+using System.Collections.Specialized;
 using Jalium.UI.Controls.Ink;
 using Jalium.UI.Input;
 using Jalium.UI.Input.StylusPlugIns;
@@ -12,7 +12,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Provides an area for ink collection and display.
 /// </summary>
-public sealed class InkCanvas : FrameworkElement
+public class InkCanvas : FrameworkElement
 {
     #region Private Fields
 

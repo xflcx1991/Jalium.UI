@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using Jalium.UI.Controls;
 using Jalium.UI.Media;
 
@@ -88,7 +88,7 @@ public sealed class PageContentCollection : Collection<PageContent>
 /// <summary>
 /// Provides information about a page that is part of a FixedDocument.
 /// </summary>
-public sealed class PageContent : FrameworkElement
+public class PageContent : FrameworkElement
 {
     private FixedPage? _child;
     private Uri? _source;
@@ -148,7 +148,7 @@ public sealed class PageContent : FrameworkElement
 /// <summary>
 /// Provides the content for a high fidelity, fixed-format page.
 /// </summary>
-public sealed class FixedPage : FrameworkElement
+public class FixedPage : FrameworkElement
 {
     private readonly List<UIElement> _children = new();
 
@@ -343,7 +343,7 @@ public sealed class DocumentReferenceCollection : Collection<DocumentReference>
 /// <summary>
 /// References a FixedDocument that is part of a FixedDocumentSequence.
 /// </summary>
-public sealed class DocumentReference : FrameworkElement
+public class DocumentReference : FrameworkElement
 {
     private FixedDocument? _document;
 

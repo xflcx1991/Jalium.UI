@@ -1,4 +1,4 @@
-﻿using Jalium.UI.Controls.Printing;
+using Jalium.UI.Controls.Printing;
 
 namespace Jalium.UI.Controls;
 
@@ -62,7 +62,7 @@ public enum DocumentViewerFitMode
 /// <summary>
 /// Provides viewing, navigation, and printing capabilities for paginated documents.
 /// </summary>
-public sealed class DocumentViewer : Control
+public class DocumentViewer : Control
 {
     private DocumentPaginator? _document;
     private int _pageCount;

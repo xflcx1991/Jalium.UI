@@ -53,7 +53,7 @@ public sealed class RibbonButton : Button
 /// <summary>
 /// Represents a toggle button on a Ribbon.
 /// </summary>
-public sealed class RibbonToggleButton : ToggleButton
+public class RibbonToggleButton : ToggleButton
 {
     /// <summary>
     /// Gets or sets the label text.
@@ -241,7 +241,7 @@ public sealed class RibbonCheckBox : CheckBox
 /// <summary>
 /// Represents a separator on a Ribbon.
 /// </summary>
-public sealed class RibbonSeparator : Control
+public class RibbonSeparator : Control
 {
     /// <summary>
     /// Gets or sets the label text.

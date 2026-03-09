@@ -9,11 +9,13 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// A control that displays and allows editing of rich text content using a FlowDocument.
 /// </summary>
-public sealed class RichTextBox : Control
+public class RichTextBox : Control
 {
     #region Static Brushes
 
-    private static readonly SolidColorBrush s_whiteBrush = new(Color.White);
+    private static readonly SolidColorBrush s_defaultForegroundBrush = new(Color.White);
+    private static readonly SolidColorBrush s_defaultSelectionBrush = new(Color.FromArgb(180, 0, 120, 212));
+    private static readonly SolidColorBrush s_defaultCaretBrush = new(Color.White);
 
     #endregion
 
@@ -127,14 +129,14 @@ public sealed class RichTextBox : Control
     /// </summary>
     public static readonly DependencyProperty SelectionBrushProperty =
         DependencyProperty.Register(nameof(SelectionBrush), typeof(Brush), typeof(RichTextBox),
-            new PropertyMetadata(new SolidColorBrush(Color.FromArgb(180, 0, 120, 212)), OnVisualPropertyChanged));
+            new PropertyMetadata(null, OnVisualPropertyChanged));
 
     /// <summary>
     /// Identifies the CaretBrush dependency property.
     /// </summary>
     public static readonly DependencyProperty CaretBrushProperty =
         DependencyProperty.Register(nameof(CaretBrush), typeof(Brush), typeof(RichTextBox),
-            new PropertyMetadata(new SolidColorBrush(Color.White), OnVisualPropertyChanged));
+            new PropertyMetadata(null, OnVisualPropertyChanged));
 
     /// <summary>
     /// Identifies the IsUndoEnabled dependency property.
@@ -964,7 +966,7 @@ public sealed class RichTextBox : Control
                 var text = runLayout.Run.Text;
                 var foreground = runLayout.Run.Foreground
                     ?? _document.Foreground
-                    ?? s_whiteBrush;
+                    ?? ResolveDocumentForegroundBrush();
                 var fontFamily = runLayout.Run.FontFamily
                     ?? _document.FontFamily
                     ?? "Segoe UI";
@@ -988,7 +990,7 @@ public sealed class RichTextBox : Control
 
     private void RenderSelection(DrawingContext dc, Rect contentBounds)
     {
-        if (SelectionBrush == null)
+        if (ResolveSelectionBrush() == null)
             return;
 
         // Simplified selection rendering - just highlight the text area
@@ -1007,7 +1009,9 @@ public sealed class RichTextBox : Control
             return;
 
         var lineHeight = GetDefaultLineHeight();
-        var caretBrush = CaretBrush ?? s_whiteBrush;
+        var caretBrush = ResolveCaretBrush();
+        if (caretBrush == null)
+            return;
 
         // Apply opacity for animation
         if (_caretOpacity < 1.0 && caretBrush is SolidColorBrush solidBrush)
@@ -1163,6 +1167,42 @@ public sealed class RichTextBox : Control
         {
             return 1.0 - Math.Pow(-2.0 * t + 2.0, 2) / 2.0;
         }
+    }
+
+    private Brush ResolveDocumentForegroundBrush()
+    {
+        if (HasLocalValue(Control.ForegroundProperty) && Foreground != null)
+            return Foreground;
+
+        return ResolveThemeBrush("TextPrimary", s_defaultForegroundBrush, "TextFillColorPrimaryBrush");
+    }
+
+    private Brush? ResolveSelectionBrush()
+    {
+        if (HasLocalValue(SelectionBrushProperty))
+            return SelectionBrush;
+
+        return SelectionBrush
+            ?? ResolveThemeBrush("SelectionBackground", s_defaultSelectionBrush, "AccentFillColorSelectedTextBackgroundBrush");
+    }
+
+    private Brush? ResolveCaretBrush()
+    {
+        if (HasLocalValue(CaretBrushProperty))
+            return CaretBrush;
+
+        return CaretBrush
+            ?? ((HasLocalValue(Control.ForegroundProperty) && Foreground != null) ? Foreground : null)
+            ?? ResolveThemeBrush("TextPrimary", s_defaultCaretBrush, "TextFillColorPrimaryBrush");
+    }
+
+    private Brush ResolveThemeBrush(string primaryKey, Brush fallback, string? secondaryKey = null)
+    {
+        if (TryFindResource(primaryKey) is Brush primary)
+            return primary;
+        if (!string.IsNullOrWhiteSpace(secondaryKey) && TryFindResource(secondaryKey) is Brush secondary)
+            return secondary;
+        return fallback;
     }
 
     #endregion

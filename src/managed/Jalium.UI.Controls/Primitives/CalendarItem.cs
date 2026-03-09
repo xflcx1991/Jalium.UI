@@ -1,4 +1,4 @@
-﻿using Jalium.UI.Input;
+using Jalium.UI.Input;
 using Jalium.UI.Interop;
 using Jalium.UI.Media;
 
@@ -7,7 +7,7 @@ namespace Jalium.UI.Controls.Primitives;
 /// <summary>
 /// Represents the visual container for the Calendar control's current display mode.
 /// </summary>
-public sealed class CalendarItem : Control
+public class CalendarItem : Control
 {
     #region Static Brushes
 
@@ -207,7 +207,7 @@ public sealed class CalendarItem : Control
         var rect = new Rect(RenderSize);
 
         // Draw background
-        var bgBrush = Background ?? s_defaultBackgroundBrush;
+        var bgBrush = ResolveBackgroundBrush();
         dc.DrawRectangle(bgBrush, null, rect);
 
         // Draw day of week headers if in month mode
@@ -219,7 +219,7 @@ public sealed class CalendarItem : Control
 
     private void DrawDayOfWeekHeaders(DrawingContext dc)
     {
-        var fgBrush = s_dayOfWeekHeaderBrush;
+        var fgBrush = ResolveDayOfWeekHeaderBrush();
         var dayNames = new[] { "Su", "Mo", "Tu", "We", "Th", "Fr", "Sa" };
 
         for (var i = 0; i < DaysPerWeek; i++)
@@ -234,6 +234,37 @@ public sealed class CalendarItem : Control
             var y = HeaderHeight + (DayHeaderHeight - formattedText.Height) / 2;
             dc.DrawText(formattedText, new Point(x, y));
         }
+    }
+
+    private Brush ResolveBackgroundBrush()
+    {
+        return Background
+            ?? ResolveThemeBrush("SurfaceBackground", s_defaultBackgroundBrush, "ControlBackground");
+    }
+
+    private Brush ResolveDayOfWeekHeaderBrush()
+    {
+        if (HasLocalValue(Control.ForegroundProperty) && Foreground != null)
+        {
+            return Foreground;
+        }
+
+        return ResolveThemeBrush("TextSecondary", s_dayOfWeekHeaderBrush, "TextFillColorSecondaryBrush");
+    }
+
+    private Brush ResolveThemeBrush(string resourceKey, Brush fallback, string? secondaryResourceKey = null)
+    {
+        if (TryFindResource(resourceKey) is Brush brush)
+        {
+            return brush;
+        }
+
+        if (secondaryResourceKey != null && TryFindResource(secondaryResourceKey) is Brush secondaryBrush)
+        {
+            return secondaryBrush;
+        }
+
+        return fallback;
     }
 
     #endregion

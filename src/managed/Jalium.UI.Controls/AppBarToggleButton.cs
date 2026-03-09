@@ -1,4 +1,4 @@
-﻿using Jalium.UI.Controls.Primitives;
+using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Input;
 
 namespace Jalium.UI.Controls;
@@ -6,7 +6,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Represents a button control that can switch states and be displayed in a CommandBar.
 /// </summary>
-public sealed class AppBarToggleButton : ToggleButton, ICommandBarElement
+public class AppBarToggleButton : ToggleButton, ICommandBarElement
 {
     #region Dependency Properties
 

@@ -1,4 +1,4 @@
-﻿using Jalium.UI.Controls.Primitives;
+using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
@@ -32,7 +32,7 @@ public enum TitleBarButtonKind
 /// <summary>
 /// Represents a button control used in the window title bar.
 /// </summary>
-public sealed class TitleBarButton : ButtonBase
+public class TitleBarButton : ButtonBase
 {
     private const double DefaultButtonWidth = 46;
     private const double DefaultButtonHeight = 32;

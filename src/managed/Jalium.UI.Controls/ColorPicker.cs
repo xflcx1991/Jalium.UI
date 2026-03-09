@@ -1,4 +1,4 @@
-﻿using Jalium.UI.Controls.Primitives;
+using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Input;
 using Jalium.UI.Interop;
 using Jalium.UI.Media;
@@ -8,7 +8,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Represents a control that allows the user to select a color.
 /// </summary>
-public sealed class ColorPicker : Control
+public class ColorPicker : Control
 {
     // Cached brushes and pens for OnRender
     private static readonly SolidColorBrush s_whiteBrush = new(Color.White);
@@ -208,6 +208,7 @@ public sealed class ColorPicker : Control
     public ColorPicker()
     {
         Focusable = true;
+        SetCurrentValue(UIElement.TransitionPropertyProperty, "None");
 
         AddHandler(MouseDownEvent, new RoutedEventHandler(OnMouseDownHandler));
         AddHandler(MouseUpEvent, new RoutedEventHandler(OnMouseUpHandler));
@@ -217,6 +218,17 @@ public sealed class ColorPicker : Control
     }
 
     #endregion
+
+    protected override bool ShouldSuppressAutomaticTransition(DependencyProperty dp)
+    {
+        if (ReferenceEquals(dp, ColorProperty) &&
+            (_isUpdatingColor || _isDraggingSpectrum || _isDraggingHue || _isDraggingAlpha))
+        {
+            return true;
+        }
+
+        return base.ShouldSuppressAutomaticTransition(dp);
+    }
 
     #region Color Conversion
 

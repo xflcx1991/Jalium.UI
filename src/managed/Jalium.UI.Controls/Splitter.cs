@@ -1,4 +1,4 @@
-﻿using Jalium.UI.Input;
+using Jalium.UI.Input;
 using Jalium.UI.Media;
 
 using static Jalium.UI.Cursors;
@@ -9,7 +9,7 @@ namespace Jalium.UI.Controls;
 /// Represents a control that provides a draggable divider between two areas.
 /// Used with Grid to create resizable panels.
 /// </summary>
-public sealed class GridSplitter : Control
+public class GridSplitter : Control
 {
     #region Static Brushes
 

@@ -75,7 +75,7 @@
                             Height="16"
                             CornerRadius="8"
                             Background="{TemplateBinding Foreground}"
-                            BorderBrush="White"
+                            BorderBrush="{DynamicResource WindowBackground}"
                             BorderThickness="2"
                             HorizontalAlignment="Left"
                             VerticalAlignment="Center" />

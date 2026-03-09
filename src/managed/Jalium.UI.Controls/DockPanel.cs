@@ -1,9 +1,9 @@
-﻿namespace Jalium.UI.Controls;
+namespace Jalium.UI.Controls;
 
 /// <summary>
 /// Defines an area where you can arrange child elements either horizontally or vertically, relative to each other.
 /// </summary>
-public sealed class DockPanel : Panel
+public class DockPanel : Panel
 {
     #region Attached Properties
 

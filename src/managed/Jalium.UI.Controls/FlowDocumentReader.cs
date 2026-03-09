@@ -7,7 +7,7 @@ namespace Jalium.UI.Controls;
 /// Provides a control for viewing flow content with built-in support for multiple viewing modes.
 /// </summary>
 [ContentProperty("Document")]
-public sealed class FlowDocumentReader : Control
+public class FlowDocumentReader : Control
 {
     #region Dependency Properties
 

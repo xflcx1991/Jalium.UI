@@ -1,3 +1,5 @@
+using Jalium.UI.Media;
+
 namespace Jalium.UI.Controls;
 
 /// <summary>
@@ -6,6 +8,34 @@ namespace Jalium.UI.Controls;
 [ContentProperty("Children")]
 public abstract class Panel : FrameworkElement
 {
+    #region Background Property
+
+    /// <summary>
+    /// Identifies the Background dependency property.
+    /// </summary>
+    public static readonly DependencyProperty BackgroundProperty =
+        DependencyProperty.Register(nameof(Background), typeof(Brush), typeof(Panel),
+            new PropertyMetadata(null, OnBackgroundChanged));
+
+    /// <summary>
+    /// Gets or sets the brush used to fill the panel's bounds.
+    /// </summary>
+    public Brush? Background
+    {
+        get => (Brush?)GetValue(BackgroundProperty);
+        set => SetValue(BackgroundProperty, value);
+    }
+
+    private static void OnBackgroundChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is Panel panel)
+        {
+            panel.InvalidateVisual();
+        }
+    }
+
+    #endregion
+
     #region ZIndex Attached Property
 
     /// <summary>
@@ -95,6 +125,25 @@ public abstract class Panel : FrameworkElement
     protected Panel()
     {
         Children = new UIElementCollection(this);
+    }
+
+    /// <inheritdoc />
+    protected override void OnRender(object drawingContext)
+    {
+        base.OnRender(drawingContext);
+
+        if (drawingContext is not DrawingContext dc || Background == null)
+        {
+            return;
+        }
+
+        var renderSize = RenderSize;
+        if (renderSize.Width <= 0 || renderSize.Height <= 0)
+        {
+            return;
+        }
+
+        dc.DrawRectangle(Background, null, new Rect(renderSize));
     }
 
     /// <summary>

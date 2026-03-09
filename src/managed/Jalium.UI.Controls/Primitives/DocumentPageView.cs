@@ -1,11 +1,12 @@
-﻿using Jalium.UI.Media;
+using Jalium.UI.Media;
+using Jalium.UI;
 
 namespace Jalium.UI.Controls.Primitives;
 
 /// <summary>
 /// Represents a view that displays a single page of a document.
 /// </summary>
-public sealed class DocumentPageView : FrameworkElement
+public class DocumentPageView : FrameworkElement
 {
     #region Static Brushes & Pens
 
@@ -14,10 +15,38 @@ public sealed class DocumentPageView : FrameworkElement
     private static readonly SolidColorBrush s_shadowBrush = new(Color.FromArgb(32, 0, 0, 0));
     private static readonly SolidColorBrush s_borderBrush = new(Color.FromRgb(200, 200, 200));
     private static readonly Pen s_borderPen = new(s_borderBrush, 1);
+    private const string PlaceholderBrushKey = "ControlBackground";
+    private const string PlaceholderSecondaryBrushKey = "ControlFillColorTertiaryBrush";
+    private const string PageBrushKey = "WindowBackground";
+    private const string PageSecondaryBrushKey = "CardBackgroundFillColorDefaultBrush";
+    private const string ShadowBrushKey = "SmokeFillColorDefaultBrush";
+    private const string BorderBrushKey = "ControlBorder";
+    private const string BorderSecondaryBrushKey = "DividerStrokeColorDefaultBrush";
 
     #endregion
 
     #region Dependency Properties
+
+    /// <summary>
+    /// Identifies the Background dependency property.
+    /// </summary>
+    public static readonly DependencyProperty BackgroundProperty =
+        DependencyProperty.Register(nameof(Background), typeof(Brush), typeof(DocumentPageView),
+            new PropertyMetadata(null, OnVisualPropertyChanged));
+
+    /// <summary>
+    /// Identifies the BorderBrush dependency property.
+    /// </summary>
+    public static readonly DependencyProperty BorderBrushProperty =
+        DependencyProperty.Register(nameof(BorderBrush), typeof(Brush), typeof(DocumentPageView),
+            new PropertyMetadata(null, OnVisualPropertyChanged));
+
+    /// <summary>
+    /// Identifies the BorderThickness dependency property.
+    /// </summary>
+    public static readonly DependencyProperty BorderThicknessProperty =
+        DependencyProperty.Register(nameof(BorderThickness), typeof(Thickness), typeof(DocumentPageView),
+            new PropertyMetadata(new Thickness(1), OnVisualPropertyChanged));
 
     /// <summary>
     /// Identifies the DocumentPaginator dependency property.
@@ -50,6 +79,33 @@ public sealed class DocumentPageView : FrameworkElement
     #endregion
 
     #region CLR Properties
+
+    /// <summary>
+    /// Gets or sets the background brush used for the rendered page surface.
+    /// </summary>
+    public Brush? Background
+    {
+        get => (Brush?)GetValue(BackgroundProperty);
+        set => SetValue(BackgroundProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the border brush used for the rendered page outline.
+    /// </summary>
+    public Brush? BorderBrush
+    {
+        get => (Brush?)GetValue(BorderBrushProperty);
+        set => SetValue(BorderBrushProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the thickness of the rendered page outline.
+    /// </summary>
+    public Thickness BorderThickness
+    {
+        get => (Thickness)(GetValue(BorderThicknessProperty) ?? new Thickness(1));
+        set => SetValue(BorderThicknessProperty, value);
+    }
 
     /// <summary>
     /// Gets or sets the document paginator.
@@ -199,7 +255,7 @@ public sealed class DocumentPageView : FrameworkElement
         if (DocumentPage?.Visual == null)
         {
             // Draw placeholder
-            dc.DrawRectangle(s_placeholderBrush, null, new Rect(RenderSize));
+            dc.DrawRectangle(ResolvePlaceholderBrush(), null, new Rect(RenderSize));
             return;
         }
 
@@ -208,14 +264,71 @@ public sealed class DocumentPageView : FrameworkElement
 
         // Draw shadow
         var shadowRect = new Rect(2, 2, RenderSize.Width, RenderSize.Height);
-        dc.DrawRectangle(s_shadowBrush, null, shadowRect);
+        dc.DrawRectangle(ResolveShadowBrush(), null, shadowRect);
 
         // Draw page
         var pageRect = new Rect(0, 0, RenderSize.Width, RenderSize.Height);
-        dc.DrawRectangle(s_pageBrush, null, pageRect);
+        dc.DrawRectangle(ResolvePageBrush(), null, pageRect);
 
         // Draw border
-        dc.DrawRectangle(null, s_borderPen, pageRect);
+        dc.DrawRectangle(null, ResolveBorderPen(), pageRect);
+    }
+
+    private Brush ResolvePlaceholderBrush()
+    {
+        return ResolveThemeBrush(PlaceholderBrushKey, s_placeholderBrush, PlaceholderSecondaryBrushKey);
+    }
+
+    private Brush ResolvePageBrush()
+    {
+        if (Background != null)
+        {
+            return Background;
+        }
+
+        return ResolveThemeBrush(PageBrushKey, s_pageBrush, PageSecondaryBrushKey);
+    }
+
+    private Brush ResolveShadowBrush()
+    {
+        return ResolveThemeBrush(ShadowBrushKey, s_shadowBrush);
+    }
+
+    private Pen ResolveBorderPen()
+    {
+        var borderBrush = BorderBrush ?? ResolveThemeBrush(BorderBrushKey, s_borderBrush, BorderSecondaryBrushKey);
+        var borderThickness = GetMaxBorderThickness();
+        return new Pen(borderBrush, borderThickness);
+    }
+
+    private double GetMaxBorderThickness()
+    {
+        var thickness = BorderThickness;
+        return Math.Max(thickness.Left, Math.Max(thickness.Top, Math.Max(thickness.Right, thickness.Bottom)));
+    }
+
+    private Brush ResolveThemeBrush(string primaryKey, Brush fallback, string? secondaryKey = null)
+    {
+        if (TryFindResource(primaryKey) is Brush primaryBrush)
+            return primaryBrush;
+
+        if (!string.IsNullOrWhiteSpace(secondaryKey) && TryFindResource(secondaryKey) is Brush secondaryBrush)
+            return secondaryBrush;
+
+        if (Application.Current?.Resources.TryGetValue(primaryKey, out var appPrimary) == true &&
+            appPrimary is Brush appPrimaryBrush)
+        {
+            return appPrimaryBrush;
+        }
+
+        if (!string.IsNullOrWhiteSpace(secondaryKey) &&
+            Application.Current?.Resources.TryGetValue(secondaryKey, out var appSecondary) == true &&
+            appSecondary is Brush appSecondaryBrush)
+        {
+            return appSecondaryBrush;
+        }
+
+        return fallback;
     }
 
     #endregion
@@ -243,6 +356,14 @@ public sealed class DocumentPageView : FrameworkElement
         if (d is DocumentPageView view)
         {
             view.InvalidateMeasure();
+        }
+    }
+
+    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is DocumentPageView view)
+        {
+            view.InvalidateVisual();
         }
     }
 

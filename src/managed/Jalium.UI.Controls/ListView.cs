@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Reflection;
 using Jalium.UI.Media;
@@ -34,6 +34,7 @@ public class ListView : ListBox
     /// </summary>
     public ListView()
     {
+        SetCurrentValue(UIElement.TransitionPropertyProperty, "None");
     }
 
     /// <inheritdoc />
@@ -147,6 +148,7 @@ public class ListViewItem : ListBoxItem
     /// </summary>
     public ListViewItem()
     {
+        SetCurrentValue(UIElement.TransitionPropertyProperty, "None");
     }
 
     /// <inheritdoc />
@@ -564,7 +566,7 @@ public sealed class GridViewColumnCollection : ObservableCollection<GridViewColu
 /// <summary>
 /// Represents the header for a GridViewColumn.
 /// </summary>
-public sealed class GridViewColumnHeader : ContentControl
+public class GridViewColumnHeader : ContentControl
 {
     /// <summary>
     /// Identifies the Column dependency property.

@@ -1,4 +1,4 @@
-﻿using Jalium.UI.Media;
+using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
 
@@ -60,7 +60,7 @@ public enum StretchDirection
 /// Defines a content decorator that can stretch and scale a single child to fill the available space.
 /// </summary>
 [ContentProperty("Child")]
-public sealed class Viewbox : FrameworkElement
+public class Viewbox : FrameworkElement
 {
     private FrameworkElement? _child;
     private ScaleTransform? _scaleTransform;

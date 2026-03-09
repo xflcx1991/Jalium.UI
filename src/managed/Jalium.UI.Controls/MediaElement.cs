@@ -36,7 +36,7 @@ public enum MediaState
 /// <summary>
 /// Represents a control that contains audio and/or video.
 /// </summary>
-public sealed class MediaElement : FrameworkElement
+public class MediaElement : FrameworkElement
 {
     private Uri? _currentSource;
     private TimeSpan _position;

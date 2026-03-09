@@ -5,7 +5,7 @@ namespace Jalium.UI.Controls.Shapes;
 /// <summary>
 /// Draws a series of connected lines and curves.
 /// </summary>
-public sealed class Path : Shape
+public class Path : Shape
 {
     #region Dependency Properties
 

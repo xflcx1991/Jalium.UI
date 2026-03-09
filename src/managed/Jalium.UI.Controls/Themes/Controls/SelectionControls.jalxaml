@@ -6,9 +6,9 @@
     <!-- ComboBox Style -->
     <!-- ============================================== -->
     <Style TargetType="ComboBox">
-        <Setter Property="Background" Value="{StaticResource SurfaceBackground}" />
-        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
-        <Setter Property="BorderBrush" Value="{StaticResource ControlBorder}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceBackground}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="6" />
         <Setter Property="CornerRadius" Value="8" />
@@ -67,7 +67,7 @@
                                 <ToggleButton.Template>
                                     <ControlTemplate TargetType="ToggleButton">
                                         <Path Data="F1 M 0,0 L 2.667,2.66665 L 5.3334,0 L 5.3334,-1.78168 L 2.6667,0.88501 L0,-1.78168 L0,0 Z"
-                                              Fill="{StaticResource TextSecondary}"
+                                              Fill="{DynamicResource TextSecondary}"
                                               Stretch="None"
                                               HorizontalAlignment="Center"
                                               VerticalAlignment="Center" />
@@ -81,8 +81,8 @@
                            StaysOpen="False"
                            Placement="Bottom"
                            PlacementTarget="{Binding RelativeSource={RelativeSource AncestorType=ComboBox}}">
-                        <Border Background="{StaticResource SurfaceBackground}"
-                                BorderBrush="{StaticResource ControlBorder}"
+                        <Border Background="{DynamicResource SurfaceBackground}"
+                                BorderBrush="{DynamicResource ControlBorder}"
                                 BorderThickness="1"
                                 CornerRadius="8"
                                 Margin="0,4,0,0">
@@ -100,14 +100,14 @@
 
         <Style.Triggers>
             <PropertyTrigger Property="IsMouseOver" Value="True">
-                <Setter Property="BorderBrush" Value="{StaticResource ControlBorderHover}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderHover}" />
             </PropertyTrigger>
             <PropertyTrigger Property="IsDropDownOpen" Value="True">
-                <Setter Property="BorderBrush" Value="{StaticResource ControlBorderFocused}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderFocused}" />
             </PropertyTrigger>
             <PropertyTrigger Property="IsEnabled" Value="False">
-                <Setter Property="Background" Value="{StaticResource ControlBackgroundDisabled}" />
-                <Setter Property="Foreground" Value="{StaticResource TextDisabled}" />
+                <Setter Property="Background" Value="{DynamicResource ControlBackgroundDisabled}" />
+                <Setter Property="Foreground" Value="{DynamicResource TextDisabled}" />
             </PropertyTrigger>
         </Style.Triggers>
     </Style>
@@ -117,7 +117,7 @@
     <!-- ============================================== -->
     <Style TargetType="ComboBoxItem">
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="Padding" Value="8,4,8,4" />
         <Setter Property="MinHeight" Value="28" />
         <Setter Property="Template">
@@ -144,7 +144,7 @@
 
         <Style.Triggers>
             <PropertyTrigger Property="IsMouseOver" Value="True">
-                <Setter Property="Background" Value="{StaticResource HighlightBackground}" />
+                <Setter Property="Background" Value="{DynamicResource HighlightBackground}" />
             </PropertyTrigger>
         </Style.Triggers>
     </Style>
@@ -153,9 +153,9 @@
     <!-- ListBox Style -->
     <!-- ============================================== -->
     <Style TargetType="ListBox">
-        <Setter Property="Background" Value="{StaticResource SurfaceBackground}" />
-        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
-        <Setter Property="BorderBrush" Value="{StaticResource ControlBorder}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceBackground}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="8" />
         <Setter Property="Padding" Value="2" />
@@ -177,8 +177,8 @@
 
         <Style.Triggers>
             <PropertyTrigger Property="IsEnabled" Value="False">
-                <Setter Property="Background" Value="{StaticResource ControlBackgroundDisabled}" />
-                <Setter Property="Foreground" Value="{StaticResource TextDisabled}" />
+                <Setter Property="Background" Value="{DynamicResource ControlBackgroundDisabled}" />
+                <Setter Property="Foreground" Value="{DynamicResource TextDisabled}" />
             </PropertyTrigger>
         </Style.Triggers>
     </Style>
@@ -188,7 +188,7 @@
     <!-- ============================================== -->
     <Style TargetType="ListBoxItem">
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="Padding" Value="8,6,8,6" />
         <Setter Property="MinHeight" Value="28" />
         <Setter Property="Template">
@@ -202,23 +202,15 @@
             </ControlTemplate>
         </Setter>
 
-        <Style.Triggers>
-            <PropertyTrigger Property="IsMouseOver" Value="True">
-                <Setter Property="Background" Value="{StaticResource HighlightBackground}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsSelected" Value="True">
-                <Setter Property="Background" Value="{StaticResource SelectionBackground}" />
-            </PropertyTrigger>
-        </Style.Triggers>
     </Style>
 
     <!-- ============================================== -->
     <!-- ListView Style -->
     <!-- ============================================== -->
     <Style TargetType="ListView">
-        <Setter Property="Background" Value="{StaticResource SurfaceBackground}" />
-        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
-        <Setter Property="BorderBrush" Value="{StaticResource ControlBorder}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceBackground}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="4" />
         <Setter Property="Template">
@@ -236,8 +228,8 @@
                         <!-- Column headers (visible when using GridView) -->
                         <Border Name="PART_ColumnHeadersBorder"
                                 Grid.Row="0"
-                                Background="{StaticResource SurfaceBackground}"
-                                BorderBrush="{StaticResource ControlBorder}"
+                                Background="{DynamicResource SurfaceBackground}"
+                                BorderBrush="{DynamicResource ControlBorder}"
                                 BorderThickness="0,0,0,1"
                                 Visibility="Collapsed">
                             <StackPanel Name="PART_ColumnHeadersHost" Orientation="Horizontal" />
@@ -255,8 +247,8 @@
 
         <Style.Triggers>
             <PropertyTrigger Property="IsEnabled" Value="False">
-                <Setter Property="Background" Value="{StaticResource ControlBackgroundDisabled}" />
-                <Setter Property="Foreground" Value="{StaticResource TextDisabled}" />
+                <Setter Property="Background" Value="{DynamicResource ControlBackgroundDisabled}" />
+                <Setter Property="Foreground" Value="{DynamicResource TextDisabled}" />
             </PropertyTrigger>
         </Style.Triggers>
     </Style>
@@ -266,7 +258,7 @@
     <!-- ============================================== -->
     <Style TargetType="ListViewItem">
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="Padding" Value="8,4,8,4" />
         <Setter Property="MinHeight" Value="28" />
         <Setter Property="Template">
@@ -281,29 +273,21 @@
             </ControlTemplate>
         </Setter>
 
-        <Style.Triggers>
-            <PropertyTrigger Property="IsMouseOver" Value="True">
-                <Setter Property="Background" Value="{StaticResource HighlightBackground}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsSelected" Value="True">
-                <Setter Property="Background" Value="{StaticResource SelectionBackground}" />
-            </PropertyTrigger>
-        </Style.Triggers>
     </Style>
 
     <!-- ============================================== -->
     <!-- GridViewColumnHeader Style -->
     <!-- ============================================== -->
     <Style TargetType="GridViewColumnHeader">
-        <Setter Property="Background" Value="{StaticResource SurfaceBackground}" />
-        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceBackground}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="Padding" Value="8,4,8,4" />
         <Setter Property="MinHeight" Value="28" />
         <Setter Property="Template">
             <ControlTemplate TargetType="GridViewColumnHeader">
                 <Border Name="PART_HeaderBorder"
                         Background="{TemplateBinding Background}"
-                        BorderBrush="{StaticResource ControlBorder}"
+                        BorderBrush="{DynamicResource ControlBorder}"
                         BorderThickness="0,0,1,0"
                         Padding="{TemplateBinding Padding}">
                     <Grid>
@@ -316,7 +300,7 @@
                                           VerticalAlignment="Center" />
                         <TextBlock Name="PART_SortIndicator"
                                    Grid.Column="1"
-                                   Foreground="{StaticResource TextSecondary}"
+                                   Foreground="{DynamicResource TextSecondary}"
                                    VerticalAlignment="Center"
                                    Margin="4,0,0,0"
                                    Visibility="Collapsed" />
@@ -327,7 +311,7 @@
 
         <Style.Triggers>
             <PropertyTrigger Property="IsMouseOver" Value="True">
-                <Setter Property="Background" Value="{StaticResource HighlightBackground}" />
+                <Setter Property="Background" Value="{DynamicResource HighlightBackground}" />
             </PropertyTrigger>
         </Style.Triggers>
     </Style>

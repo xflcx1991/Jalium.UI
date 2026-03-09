@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Media;
@@ -8,7 +8,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Represents a specialized command bar that provides layout for AppBarButton and related command elements.
 /// </summary>
-public sealed class CommandBar : Control
+public class CommandBar : Control
 {
     private static readonly SolidColorBrush s_fallbackBackgroundBrush = new(Color.FromRgb(45, 45, 45));
     private static readonly SolidColorBrush s_fallbackBorderBrush = new(Color.FromRgb(61, 61, 61));

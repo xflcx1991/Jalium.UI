@@ -6,7 +6,7 @@ namespace Jalium.UI.Controls.Primitives;
 /// Displays data in the columns of a GridView layout by creating a ContentPresenter
 /// for each column, applying CellTemplate or DisplayMemberBinding as appropriate.
 /// </summary>
-public sealed class GridViewRowPresenter : FrameworkElement
+public class GridViewRowPresenter : FrameworkElement
 {
     private readonly List<UIElement> _cellElements = new();
 
@@ -179,7 +179,7 @@ public sealed class GridViewRowPresenter : FrameworkElement
 /// <summary>
 /// Displays column headers in a GridView layout.
 /// </summary>
-public sealed class GridViewHeaderRowPresenter : FrameworkElement
+public class GridViewHeaderRowPresenter : FrameworkElement
 {
     private readonly List<GridViewColumnHeader> _headers = new();
     private Controls.GridViewColumnCollection? _subscribedColumns;

@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Input;
 using Jalium.UI.Interop;
@@ -11,7 +11,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Represents a button that displays as a hyperlink and can navigate to a URI.
 /// </summary>
-public sealed class HyperlinkButton : ButtonBase
+public class HyperlinkButton : ButtonBase
 {
     // Cached brushes for OnRender
     private static readonly SolidColorBrush s_defaultBrush = new(Color.FromRgb(0, 102, 204));

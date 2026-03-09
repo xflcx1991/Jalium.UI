@@ -5,7 +5,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Represents an item in a MenuFlyout that a user can change between two states, checked or unchecked.
 /// </summary>
-public sealed class ToggleMenuFlyoutItem : MenuFlyoutItem
+public class ToggleMenuFlyoutItem : MenuFlyoutItem
 {
     private static readonly SolidColorBrush s_defaultCheckGlyphBrush = new(Color.FromRgb(255, 255, 255));
 

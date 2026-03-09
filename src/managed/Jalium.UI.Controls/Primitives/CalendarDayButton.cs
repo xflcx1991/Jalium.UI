@@ -138,6 +138,88 @@ public sealed class CalendarDayButton : Button
 
     #region Rendering
 
+    private Brush ResolveSelectedBackgroundBrush()
+    {
+        if (HasLocalValue(Control.BackgroundProperty) && Background != null)
+        {
+            return Background;
+        }
+
+        return ResolveThemeBrush("AccentBrush", s_selectionBrush, "AccentFillColorDefaultBrush");
+    }
+
+    private Brush ResolveHighlightBackgroundBrush()
+    {
+        if (HasLocalValue(Control.BackgroundProperty) && Background != null)
+        {
+            return Background;
+        }
+
+        return ResolveThemeBrush("HighlightBackground", s_highlightBrush, "SubtleFillColorSecondaryBrush");
+    }
+
+    private Pen ResolveTodayRingPen()
+    {
+        if (HasLocalValue(Control.BorderBrushProperty) && BorderBrush != null)
+        {
+            var thickness = BorderThickness.Left > 0 ? BorderThickness.Left : s_todayPen.Thickness;
+            return new Pen(BorderBrush, thickness);
+        }
+
+        return new Pen(ResolveThemeBrush("AccentBrush", s_todayRingBrush, "AccentFillColorDefaultBrush"), s_todayPen.Thickness);
+    }
+
+    private Brush ResolveBlackedOutForegroundBrush()
+    {
+        return GetLocalForegroundBrush()
+            ?? ResolveThemeBrush("TextDisabled", s_blackedOutFgBrush, "TextFillColorDisabledBrush");
+    }
+
+    private Brush ResolveInactiveForegroundBrush()
+    {
+        return GetLocalForegroundBrush()
+            ?? ResolveThemeBrush("TextSecondary", s_inactiveFgBrush, "TextFillColorSecondaryBrush");
+    }
+
+    private Brush ResolveSelectedForegroundBrush()
+    {
+        return GetLocalForegroundBrush()
+            ?? ResolveThemeBrush("TextOnAccent", s_selectedFgBrush, "TextOnAccentFillColorPrimaryBrush");
+    }
+
+    private Brush ResolveDefaultForegroundBrush()
+    {
+        return GetLocalForegroundBrush()
+            ?? ResolveThemeBrush("TextPrimary", s_defaultFgBrush, "TextFillColorPrimaryBrush");
+    }
+
+    private Pen ResolveStrikePen()
+    {
+        return new Pen(
+            ResolveThemeBrush("TextDisabled", s_strikeBrush, "TextFillColorDisabledBrush"),
+            s_strikePen.Thickness);
+    }
+
+    private Brush ResolveThemeBrush(string resourceKey, Brush fallback, string? secondaryResourceKey = null)
+    {
+        if (TryFindResource(resourceKey) is Brush brush)
+        {
+            return brush;
+        }
+
+        if (secondaryResourceKey != null && TryFindResource(secondaryResourceKey) is Brush secondaryBrush)
+        {
+            return secondaryBrush;
+        }
+
+        return fallback;
+    }
+
+    private Brush? GetLocalForegroundBrush()
+    {
+        return HasLocalValue(Control.ForegroundProperty) ? Foreground : null;
+    }
+
     /// <inheritdoc />
     protected override void OnRender(object drawingContext)
     {
@@ -150,19 +232,19 @@ public sealed class CalendarDayButton : Button
         // Draw selection background
         if (IsSelected)
         {
-            dc.DrawEllipse(s_selectionBrush, null, new Point(rect.Width / 2, rect.Height / 2),
+            dc.DrawEllipse(ResolveSelectedBackgroundBrush(), null, new Point(rect.Width / 2, rect.Height / 2),
                 inset.Width / 2, inset.Height / 2);
         }
         else if (IsHighlighted || IsPressed)
         {
-            dc.DrawEllipse(s_highlightBrush, null, new Point(rect.Width / 2, rect.Height / 2),
+            dc.DrawEllipse(ResolveHighlightBackgroundBrush(), null, new Point(rect.Width / 2, rect.Height / 2),
                 inset.Width / 2, inset.Height / 2);
         }
 
         // Draw today indicator (ring around the day)
         if (IsToday && !IsSelected)
         {
-            dc.DrawEllipse(null, s_todayPen, new Point(rect.Width / 2, rect.Height / 2),
+            dc.DrawEllipse(null, ResolveTodayRingPen(), new Point(rect.Width / 2, rect.Height / 2),
                 inset.Width / 2 - 1, inset.Height / 2 - 1);
         }
 
@@ -172,19 +254,19 @@ public sealed class CalendarDayButton : Button
             Brush fgBrush;
             if (IsBlackedOut)
             {
-                fgBrush = s_blackedOutFgBrush;
+                fgBrush = ResolveBlackedOutForegroundBrush();
             }
             else if (!IsEnabled || IsInactive)
             {
-                fgBrush = s_inactiveFgBrush;
+                fgBrush = ResolveInactiveForegroundBrush();
             }
             else if (IsSelected)
             {
-                fgBrush = s_selectedFgBrush;
+                fgBrush = ResolveSelectedForegroundBrush();
             }
             else
             {
-                fgBrush = Foreground ?? s_defaultFgBrush;
+                fgBrush = ResolveDefaultForegroundBrush();
             }
 
             var formattedText = new FormattedText(text, FontFamily ?? "Segoe UI", FontSize > 0 ? FontSize : 14)
@@ -201,7 +283,7 @@ public sealed class CalendarDayButton : Button
         // Draw blacked out strikethrough
         if (IsBlackedOut)
         {
-            dc.DrawLine(s_strikePen, new Point(4, rect.Height / 2), new Point(rect.Width - 4, rect.Height / 2));
+            dc.DrawLine(ResolveStrikePen(), new Point(4, rect.Height / 2), new Point(rect.Width - 4, rect.Height / 2));
         }
     }
 

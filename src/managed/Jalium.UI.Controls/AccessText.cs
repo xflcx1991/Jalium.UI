@@ -6,7 +6,7 @@ namespace Jalium.UI.Controls;
 /// Specifies that the text should be parsed for underscored access keys (mnemonics).
 /// The first character following an underscore is used as the access key.
 /// </summary>
-public sealed class AccessText : FrameworkElement
+public class AccessText : FrameworkElement
 {
     #region Dependency Properties
 

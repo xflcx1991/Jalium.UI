@@ -9,7 +9,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Represents a container that enables navigation of app content with WinUI-style appearance.
 /// </summary>
-public sealed class NavigationView : ContentControl
+public class NavigationView : ContentControl
 {
     #region Fields
 

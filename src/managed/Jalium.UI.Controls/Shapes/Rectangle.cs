@@ -1,11 +1,11 @@
-﻿using Jalium.UI.Media;
+using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls.Shapes;
 
 /// <summary>
 /// Draws a rectangle.
 /// </summary>
-public sealed class Rectangle : Shape
+public class Rectangle : Shape
 {
     #region Dependency Properties
 

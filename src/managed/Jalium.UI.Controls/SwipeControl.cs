@@ -1,4 +1,4 @@
-﻿using Jalium.UI.Input;
+using Jalium.UI.Input;
 using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
@@ -6,7 +6,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Represents a container that provides access to contextual commands through touch interactions.
 /// </summary>
-public sealed class SwipeControl : ContentControl
+public class SwipeControl : ContentControl
 {
     private static readonly SolidColorBrush s_defaultSwipeBackgroundBrush = new(Color.FromRgb(0, 120, 212));
     private static readonly SolidColorBrush s_defaultSwipeForegroundBrush = new(Color.FromRgb(255, 255, 255));

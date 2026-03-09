@@ -7,7 +7,7 @@ namespace Jalium.UI.Controls;
 /// Represents an icon that uses a glyph from a specified font.
 /// Mirrors WinUI's Microsoft.UI.Xaml.Controls.FontIcon.
 /// </summary>
-public sealed class FontIcon : IconElement
+public class FontIcon : IconElement
 {
     // Prefer MDL2 as a compatibility baseline; callers can still set FontFamily explicitly.
     private static readonly FontFamily DefaultFontFamily = new("Segoe MDL2 Assets");

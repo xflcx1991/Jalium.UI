@@ -901,7 +901,7 @@ public class TextBox : TextBoxBase, IImeSupport
     private void DrawText(DrawingContext dc, Rect contentRect, double lineHeight)
     {
         var text = Text;
-        var textBrush = Foreground ?? s_whiteBrush;
+        var textBrush = ResolveTextForegroundBrush();
         // Round scroll offsets to prevent sub-pixel jittering
         var roundedVerticalOffset = Math.Round(_verticalOffset);
         var roundedHorizontalOffset = Math.Round(_horizontalOffset);
@@ -1018,7 +1018,8 @@ public class TextBox : TextBoxBase, IImeSupport
 
     private void DrawSelection(DrawingContext dc, Rect contentRect, double lineHeight)
     {
-        if (SelectionBrush == null)
+        var selectionBrush = ResolveSelectionBrush();
+        if (selectionBrush == null)
             return;
 
         var text = Text;
@@ -1057,7 +1058,7 @@ public class TextBox : TextBoxBase, IImeSupport
                     width = Math.Max(Math.Round(width), 1);
 
                     var selRect = new Rect(startX, y, width, lineHeight);
-                    dc.DrawRectangle(SelectionBrush, null, selRect);
+                    dc.DrawRectangle(selectionBrush, null, selRect);
                 }
 
                 // Selection extends past line end (include newline in selection visual)
@@ -1066,7 +1067,7 @@ public class TextBox : TextBoxBase, IImeSupport
                     var lineText = text.Substring(line.StartIndex, line.Length);
                     var startX = Math.Round(contentRect.X + MeasureTextWidth(lineText) - roundedHorizontalOffset);
                     var selRect = new Rect(startX, y, Math.Round(FontSize * 0.3), lineHeight);
-                    dc.DrawRectangle(SelectionBrush, null, selRect);
+                    dc.DrawRectangle(selectionBrush, null, selRect);
                 }
             }
         }
@@ -1131,7 +1132,8 @@ public class TextBox : TextBoxBase, IImeSupport
         // Note: Caret animation is handled by the timer in TextBoxBase.StartCaretTimer()
         // which calls InvalidateVisual() at regular intervals. No fallback needed here.
 
-        if (CaretBrush == null)
+        var caretBrush = ResolveCaretBrush();
+        if (caretBrush == null)
             return;
 
         // During IME composition, don't draw regular caret
@@ -1161,7 +1163,7 @@ public class TextBox : TextBoxBase, IImeSupport
 
         // Create a brush with the animated opacity
         Brush caretBrushWithOpacity;
-        if (CaretBrush is SolidColorBrush solidBrush)
+        if (caretBrush is SolidColorBrush solidBrush)
         {
             var color = solidBrush.Color;
             var alpha = (byte)(color.A * caretOpacity);
@@ -1169,7 +1171,7 @@ public class TextBox : TextBoxBase, IImeSupport
         }
         else
         {
-            caretBrushWithOpacity = CaretBrush;
+            caretBrushWithOpacity = caretBrush;
         }
 
         var caretPen = new Pen(caretBrushWithOpacity, 1.5);

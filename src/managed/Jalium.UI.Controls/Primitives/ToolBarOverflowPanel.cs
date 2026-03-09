@@ -1,9 +1,9 @@
-﻿namespace Jalium.UI.Controls.Primitives;
+namespace Jalium.UI.Controls.Primitives;
 
 /// <summary>
 /// Provides a panel that displays overflow items from a ToolBar.
 /// </summary>
-public sealed class ToolBarOverflowPanel : Panel
+public class ToolBarOverflowPanel : Panel
 {
     #region Dependency Properties
 

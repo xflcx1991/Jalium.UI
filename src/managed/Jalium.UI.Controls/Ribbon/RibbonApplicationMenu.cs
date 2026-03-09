@@ -6,7 +6,7 @@ namespace Jalium.UI.Controls.Ribbon;
 /// Represents the Application Menu (backstage view) for a Ribbon control.
 /// </summary>
 [ContentProperty("Items")]
-public sealed class RibbonApplicationMenu : ItemsControl
+public class RibbonApplicationMenu : ItemsControl
 {
     /// <summary>
     /// Gets or sets the small image source for the application button.
@@ -56,7 +56,7 @@ public sealed class RibbonApplicationSplitMenuItem : RibbonSplitButton
 /// Represents the Quick Access Toolbar for a Ribbon.
 /// </summary>
 [ContentProperty("Items")]
-public sealed class RibbonQuickAccessToolBar : ItemsControl
+public class RibbonQuickAccessToolBar : ItemsControl
 {
     /// <summary>
     /// Gets or sets whether the customize menu button is visible.
@@ -77,7 +77,7 @@ public sealed class RibbonQuickAccessToolBar : ItemsControl
 /// <summary>
 /// Represents a contextual tab group header on a Ribbon.
 /// </summary>
-public sealed class RibbonContextualTabGroup : Control
+public class RibbonContextualTabGroup : Control
 {
     /// <summary>
     /// Identifies the Header dependency property.

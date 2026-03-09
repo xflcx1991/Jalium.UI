@@ -8,7 +8,7 @@ namespace Jalium.UI.Controls;
 /// Represents a switch that can be toggled between on and off states,
 /// with spring-physics-driven animations for hover, press, drag, and toggle.
 /// </summary>
-public sealed class ToggleSwitch : Control
+public class ToggleSwitch : Control
 {
     #region Animation Constants
 

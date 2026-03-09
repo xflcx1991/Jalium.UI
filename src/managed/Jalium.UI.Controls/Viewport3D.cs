@@ -6,7 +6,7 @@ namespace Jalium.UI.Controls;
 /// <summary>
 /// Renders the contained 3-D content within the 2-D layout bounds of this element.
 /// </summary>
-public sealed class Viewport3D : FrameworkElement
+public class Viewport3D : FrameworkElement
 {
     #region Dependency Properties
 

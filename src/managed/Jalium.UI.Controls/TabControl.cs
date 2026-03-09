@@ -20,7 +20,7 @@ public enum Dock
 /// <summary>
 /// Represents a control that contains multiple items that share the same space on the screen.
 /// </summary>
-public sealed class TabControl : Selector
+public class TabControl : Selector
 {
     // Cached brushes for OnRender fallback paths
     private static readonly SolidColorBrush s_tabStripBackgroundBrush = new(ThemeColors.TabStripBackground);
@@ -557,7 +557,7 @@ public sealed class TabControl : Selector
 /// <summary>
 /// Represents an item in a TabControl.
 /// </summary>
-public sealed class TabItem : HeaderedContentControl
+public class TabItem : HeaderedContentControl
 {
     // Cached brushes for OnRender fallback paths
     private static readonly SolidColorBrush s_selectedBackgroundBrush = new(ThemeColors.TabItemSelectedBackground);
@@ -733,6 +733,11 @@ public sealed class TabItem : HeaderedContentControl
     protected override Size ArrangeOverride(Size finalSize)
     {
         return finalSize;
+    }
+
+    protected override void OnIsMouseOverChanged(bool oldValue, bool newValue)
+    {
+        InvalidateVisual();
     }
 
     protected override void OnRender(object drawingContextObj)

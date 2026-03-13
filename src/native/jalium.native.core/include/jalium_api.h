@@ -510,6 +510,21 @@ JALIUM_API JaliumImage* jalium_bitmap_create_from_memory(
     uint32_t dataSize
 );
 
+/// Creates a bitmap from raw BGRA8 pixel data.
+/// @param ctx The rendering context.
+/// @param pixels Raw BGRA8 pixel buffer.
+/// @param width The bitmap width in pixels.
+/// @param height The bitmap height in pixels.
+/// @param stride The number of bytes between two adjacent rows.
+/// @return A handle to the created bitmap, or nullptr on failure.
+JALIUM_API JaliumImage* jalium_bitmap_create_from_pixels(
+    JaliumContext* ctx,
+    const uint8_t* pixels,
+    uint32_t width,
+    uint32_t height,
+    uint32_t stride
+);
+
 /// Gets the width of a bitmap.
 /// @param bitmap The bitmap.
 /// @return The width in pixels.

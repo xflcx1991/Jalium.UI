@@ -13,6 +13,7 @@ public class Track : FrameworkElement
     /// <summary>
     /// Identifies the Orientation dependency property.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public static readonly DependencyProperty OrientationProperty =
         DependencyProperty.Register(nameof(Orientation), typeof(Orientation), typeof(Track),
             new PropertyMetadata(Orientation.Horizontal, OnLayoutPropertyChanged));
@@ -20,6 +21,7 @@ public class Track : FrameworkElement
     /// <summary>
     /// Identifies the Minimum dependency property.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public static readonly DependencyProperty MinimumProperty =
         DependencyProperty.Register(nameof(Minimum), typeof(double), typeof(Track),
             new PropertyMetadata(0.0, OnLayoutPropertyChanged));
@@ -27,6 +29,7 @@ public class Track : FrameworkElement
     /// <summary>
     /// Identifies the Maximum dependency property.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public static readonly DependencyProperty MaximumProperty =
         DependencyProperty.Register(nameof(Maximum), typeof(double), typeof(Track),
             new PropertyMetadata(1.0, OnLayoutPropertyChanged));
@@ -34,6 +37,7 @@ public class Track : FrameworkElement
     /// <summary>
     /// Identifies the Value dependency property.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Other)]
     public static readonly DependencyProperty ValueProperty =
         DependencyProperty.Register(nameof(Value), typeof(double), typeof(Track),
             new PropertyMetadata(0.0, OnLayoutPropertyChanged));
@@ -41,6 +45,7 @@ public class Track : FrameworkElement
     /// <summary>
     /// Identifies the ViewportSize dependency property.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public static readonly DependencyProperty ViewportSizeProperty =
         DependencyProperty.Register(nameof(ViewportSize), typeof(double), typeof(Track),
             new PropertyMetadata(double.NaN, OnLayoutPropertyChanged));
@@ -48,6 +53,7 @@ public class Track : FrameworkElement
     /// <summary>
     /// Identifies the IsDirectionReversed dependency property.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public static readonly DependencyProperty IsDirectionReversedProperty =
         DependencyProperty.Register(nameof(IsDirectionReversed), typeof(bool), typeof(Track),
             new PropertyMetadata(false, OnLayoutPropertyChanged));
@@ -57,6 +63,7 @@ public class Track : FrameworkElement
     /// When set to a positive value, the thumb is centered and constrained to this
     /// thickness on the axis perpendicular to scrolling.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public static readonly DependencyProperty ThumbCrossAxisThicknessProperty =
         DependencyProperty.Register(nameof(ThumbCrossAxisThickness), typeof(double), typeof(Track),
             new PropertyMetadata(double.NaN, OnThumbCrossAxisThicknessChanged));
@@ -80,6 +87,7 @@ public class Track : FrameworkElement
     /// <summary>
     /// Gets or sets the orientation of the Track.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public Orientation Orientation
     {
         get => (Orientation)GetValue(OrientationProperty)!;
@@ -89,6 +97,7 @@ public class Track : FrameworkElement
     /// <summary>
     /// Gets or sets the minimum value of the Track.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public double Minimum
     {
         get => (double)GetValue(MinimumProperty)!;
@@ -98,6 +107,7 @@ public class Track : FrameworkElement
     /// <summary>
     /// Gets or sets the maximum value of the Track.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public double Maximum
     {
         get => (double)GetValue(MaximumProperty)!;
@@ -107,6 +117,7 @@ public class Track : FrameworkElement
     /// <summary>
     /// Gets or sets the current value of the Track.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Other)]
     public double Value
     {
         get => (double)GetValue(ValueProperty)!;
@@ -116,6 +127,7 @@ public class Track : FrameworkElement
     /// <summary>
     /// Gets or sets the size of the viewport for scrolling scenarios.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public double ViewportSize
     {
         get => (double)GetValue(ViewportSizeProperty)!;
@@ -125,6 +137,7 @@ public class Track : FrameworkElement
     /// <summary>
     /// Gets or sets whether the direction of increasing value is reversed.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public bool IsDirectionReversed
     {
         get => (bool)GetValue(IsDirectionReversedProperty)!;
@@ -135,6 +148,7 @@ public class Track : FrameworkElement
     /// Gets or sets the thumb thickness on the cross axis.
     /// Set to NaN (default) to use the track's normal inset behavior.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public double ThumbCrossAxisThickness
     {
         get => (double)GetValue(ThumbCrossAxisThicknessProperty)!;

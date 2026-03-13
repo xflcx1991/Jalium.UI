@@ -17,6 +17,19 @@
         <Setter Property="Template">
             <ControlTemplate TargetType="ComboBox">
                 <Grid>
+                    <Border Name="FocusOuter"
+                            IsHitTestVisible="False"
+                            BorderBrush="{DynamicResource FocusStrokeColorOuterBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Opacity="0" />
+                    <Border Name="FocusInner"
+                            IsHitTestVisible="False"
+                            BorderBrush="{DynamicResource FocusStrokeColorInnerBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Margin="2"
+                            Opacity="0" />
                     <Border Name="PART_MainBorder"
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
@@ -102,10 +115,17 @@
             <PropertyTrigger Property="IsMouseOver" Value="True">
                 <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderHover}" />
             </PropertyTrigger>
+            <PropertyTrigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="FocusOuter" Property="Opacity" Value="1" />
+                <Setter TargetName="FocusInner" Property="Opacity" Value="1" />
+                <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderFocused}" />
+            </PropertyTrigger>
             <PropertyTrigger Property="IsDropDownOpen" Value="True">
                 <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderFocused}" />
             </PropertyTrigger>
             <PropertyTrigger Property="IsEnabled" Value="False">
+                <Setter TargetName="FocusOuter" Property="Opacity" Value="0" />
+                <Setter TargetName="FocusInner" Property="Opacity" Value="0" />
                 <Setter Property="Background" Value="{DynamicResource ControlBackgroundDisabled}" />
                 <Setter Property="Foreground" Value="{DynamicResource TextDisabled}" />
             </PropertyTrigger>
@@ -161,22 +181,44 @@
         <Setter Property="Padding" Value="2" />
         <Setter Property="Template">
             <ControlTemplate TargetType="ListBox">
-                <Border Name="PART_OuterBorder"
-                        Background="{TemplateBinding Background}"
-                        BorderBrush="{TemplateBinding BorderBrush}"
-                        BorderThickness="{TemplateBinding BorderThickness}"
-                        CornerRadius="{TemplateBinding CornerRadius}"
-                        Padding="{TemplateBinding Padding}">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled">
-                        <ItemsPresenter />
-                    </ScrollViewer>
-                </Border>
+                <Grid>
+                    <Border Name="PART_OuterBorder"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Padding="{TemplateBinding Padding}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <ItemsPresenter />
+                        </ScrollViewer>
+                    </Border>
+                    <Border Name="FocusOuter"
+                            IsHitTestVisible="False"
+                            BorderBrush="{DynamicResource FocusStrokeColorOuterBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Opacity="0" />
+                    <Border Name="FocusInner"
+                            IsHitTestVisible="False"
+                            BorderBrush="{DynamicResource FocusStrokeColorInnerBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Margin="2"
+                            Opacity="0" />
+                </Grid>
             </ControlTemplate>
         </Setter>
 
         <Style.Triggers>
+            <PropertyTrigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="FocusOuter" Property="Opacity" Value="1" />
+                <Setter TargetName="FocusInner" Property="Opacity" Value="1" />
+                <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderFocused}" />
+            </PropertyTrigger>
             <PropertyTrigger Property="IsEnabled" Value="False">
+                <Setter TargetName="FocusOuter" Property="Opacity" Value="0" />
+                <Setter TargetName="FocusInner" Property="Opacity" Value="0" />
                 <Setter Property="Background" Value="{DynamicResource ControlBackgroundDisabled}" />
                 <Setter Property="Foreground" Value="{DynamicResource TextDisabled}" />
             </PropertyTrigger>
@@ -193,14 +235,39 @@
         <Setter Property="MinHeight" Value="28" />
         <Setter Property="Template">
             <ControlTemplate TargetType="ListBoxItem">
-                <Border Name="PART_BackgroundBorder"
-                        Background="{TemplateBinding Background}"
-                        CornerRadius="4"
-                        Padding="{TemplateBinding Padding}">
-                    <ContentPresenter VerticalAlignment="Center" />
-                </Border>
+                <Grid>
+                    <Border Name="PART_BackgroundBorder"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="4"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter VerticalAlignment="Center" />
+                    </Border>
+                    <Border Name="FocusOuter"
+                            IsHitTestVisible="False"
+                            BorderBrush="{DynamicResource FocusStrokeColorOuterBrush}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Opacity="0" />
+                    <Border Name="FocusInner"
+                            IsHitTestVisible="False"
+                            BorderBrush="{DynamicResource FocusStrokeColorInnerBrush}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Margin="2"
+                            Opacity="0" />
+                </Grid>
             </ControlTemplate>
         </Setter>
+
+        <Style.Triggers>
+            <PropertyTrigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="FocusOuter" Property="Opacity" Value="1" />
+                <Setter TargetName="FocusInner" Property="Opacity" Value="1" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsSelected" Value="True">
+                <Setter TargetName="FocusInner" Property="BorderBrush" Value="{DynamicResource FocusStrokeColorOuterBrush}" />
+            </PropertyTrigger>
+        </Style.Triggers>
 
     </Style>
 
@@ -215,38 +282,60 @@
         <Setter Property="CornerRadius" Value="4" />
         <Setter Property="Template">
             <ControlTemplate TargetType="ListView">
-                <Border Name="PART_OuterBorder"
-                        Background="{TemplateBinding Background}"
-                        BorderBrush="{TemplateBinding BorderBrush}"
-                        BorderThickness="{TemplateBinding BorderThickness}"
-                        CornerRadius="{TemplateBinding CornerRadius}">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-                        <!-- Column headers (visible when using GridView) -->
-                        <Border Name="PART_ColumnHeadersBorder"
-                                Grid.Row="0"
-                                Background="{DynamicResource SurfaceBackground}"
-                                BorderBrush="{DynamicResource ControlBorder}"
-                                BorderThickness="0,0,0,1"
-                                Visibility="Collapsed">
-                            <StackPanel Name="PART_ColumnHeadersHost" Orientation="Horizontal" />
-                        </Border>
-                        <!-- Items area -->
-                        <ScrollViewer Grid.Row="1"
-                                      VerticalScrollBarVisibility="Auto"
-                                      HorizontalScrollBarVisibility="Disabled">
-                            <ItemsPresenter />
-                        </ScrollViewer>
-                    </Grid>
-                </Border>
+                <Grid>
+                    <Border Name="PART_OuterBorder"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <!-- Column headers (visible when using GridView) -->
+                            <Border Name="PART_ColumnHeadersBorder"
+                                    Grid.Row="0"
+                                    Background="{DynamicResource SurfaceBackground}"
+                                    BorderBrush="{DynamicResource ControlBorder}"
+                                    BorderThickness="0,0,0,1"
+                                    Visibility="Collapsed">
+                                <StackPanel Name="PART_ColumnHeadersHost" Orientation="Horizontal" />
+                            </Border>
+                            <!-- Items area -->
+                            <ScrollViewer Grid.Row="1"
+                                          VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <ItemsPresenter />
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+                    <Border Name="FocusOuter"
+                            IsHitTestVisible="False"
+                            BorderBrush="{DynamicResource FocusStrokeColorOuterBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Opacity="0" />
+                    <Border Name="FocusInner"
+                            IsHitTestVisible="False"
+                            BorderBrush="{DynamicResource FocusStrokeColorInnerBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Margin="2"
+                            Opacity="0" />
+                </Grid>
             </ControlTemplate>
         </Setter>
 
         <Style.Triggers>
+            <PropertyTrigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="FocusOuter" Property="Opacity" Value="1" />
+                <Setter TargetName="FocusInner" Property="Opacity" Value="1" />
+                <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderFocused}" />
+            </PropertyTrigger>
             <PropertyTrigger Property="IsEnabled" Value="False">
+                <Setter TargetName="FocusOuter" Property="Opacity" Value="0" />
+                <Setter TargetName="FocusInner" Property="Opacity" Value="0" />
                 <Setter Property="Background" Value="{DynamicResource ControlBackgroundDisabled}" />
                 <Setter Property="Foreground" Value="{DynamicResource TextDisabled}" />
             </PropertyTrigger>
@@ -263,15 +352,41 @@
         <Setter Property="MinHeight" Value="28" />
         <Setter Property="Template">
             <ControlTemplate TargetType="ListViewItem">
-                <Border Name="PART_BackgroundBorder"
-                        Background="{TemplateBinding Background}"
-                        Padding="{TemplateBinding Padding}">
-                    <StackPanel Name="PART_CellsPanel" Orientation="Horizontal">
-                        <ContentPresenter VerticalAlignment="Center" />
-                    </StackPanel>
-                </Border>
+                <Grid>
+                    <Border Name="PART_BackgroundBorder"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="4"
+                            Padding="{TemplateBinding Padding}">
+                        <StackPanel Name="PART_CellsPanel" Orientation="Horizontal">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+                    <Border Name="FocusOuter"
+                            IsHitTestVisible="False"
+                            BorderBrush="{DynamicResource FocusStrokeColorOuterBrush}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Opacity="0" />
+                    <Border Name="FocusInner"
+                            IsHitTestVisible="False"
+                            BorderBrush="{DynamicResource FocusStrokeColorInnerBrush}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Margin="2"
+                            Opacity="0" />
+                </Grid>
             </ControlTemplate>
         </Setter>
+
+        <Style.Triggers>
+            <PropertyTrigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="FocusOuter" Property="Opacity" Value="1" />
+                <Setter TargetName="FocusInner" Property="Opacity" Value="1" />
+            </PropertyTrigger>
+            <PropertyTrigger Property="IsSelected" Value="True">
+                <Setter TargetName="FocusInner" Property="BorderBrush" Value="{DynamicResource FocusStrokeColorOuterBrush}" />
+            </PropertyTrigger>
+        </Style.Triggers>
 
     </Style>
 

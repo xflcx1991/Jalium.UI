@@ -9,6 +9,12 @@ namespace Jalium.UI.Controls;
 /// </summary>
 public class ComboBox : Selector
 {
+    /// <inheritdoc />
+    protected override Jalium.UI.Automation.AutomationPeer? OnCreateAutomationPeer()
+    {
+        return new Jalium.UI.Controls.Automation.ComboBoxAutomationPeer(this);
+    }
+
     private Popup? _popup;
     private ToggleButton? _toggleButton;
     private TextBox? _editableTextBox;
@@ -26,6 +32,7 @@ public class ComboBox : Selector
     /// <summary>
     /// Identifies the IsDropDownOpen dependency property.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public static readonly DependencyProperty IsDropDownOpenProperty =
         DependencyProperty.Register(nameof(IsDropDownOpen), typeof(bool), typeof(ComboBox),
             new PropertyMetadata(false, OnIsDropDownOpenChanged));
@@ -33,6 +40,7 @@ public class ComboBox : Selector
     /// <summary>
     /// Identifies the MaxDropDownHeight dependency property.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public static readonly DependencyProperty MaxDropDownHeightProperty =
         DependencyProperty.Register(nameof(MaxDropDownHeight), typeof(double), typeof(ComboBox),
             new PropertyMetadata(200.0));
@@ -40,6 +48,7 @@ public class ComboBox : Selector
     /// <summary>
     /// Identifies the IsEditable dependency property.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public static readonly DependencyProperty IsEditableProperty =
         DependencyProperty.Register(nameof(IsEditable), typeof(bool), typeof(ComboBox),
             new PropertyMetadata(false, OnIsEditableChanged));
@@ -47,6 +56,7 @@ public class ComboBox : Selector
     /// <summary>
     /// Identifies the Text dependency property.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Content)]
     public static readonly DependencyProperty TextProperty =
         DependencyProperty.Register(nameof(Text), typeof(string), typeof(ComboBox),
             new PropertyMetadata(string.Empty, OnTextChanged));
@@ -54,6 +64,7 @@ public class ComboBox : Selector
     /// <summary>
     /// Identifies the Placeholder dependency property.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Content)]
     public static readonly DependencyProperty PlaceholderTextProperty =
         DependencyProperty.Register(nameof(PlaceholderText), typeof(string), typeof(ComboBox),
             new PropertyMetadata("Select an item...", OnPlaceholderTextChanged));
@@ -61,6 +72,7 @@ public class ComboBox : Selector
     /// <summary>
     /// Identifies the SelectionBoxItem dependency property.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public static readonly DependencyProperty SelectionBoxItemProperty =
         DependencyProperty.Register(nameof(SelectionBoxItem), typeof(object), typeof(ComboBox),
             new PropertyMetadata(null, OnSelectionBoxItemChanged));
@@ -106,6 +118,7 @@ public class ComboBox : Selector
     /// <summary>
     /// Gets or sets whether the dropdown is open.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public bool IsDropDownOpen
     {
         get => (bool)GetValue(IsDropDownOpenProperty);
@@ -115,6 +128,7 @@ public class ComboBox : Selector
     /// <summary>
     /// Gets or sets the maximum height of the dropdown.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public double MaxDropDownHeight
     {
         get => (double)GetValue(MaxDropDownHeightProperty);
@@ -124,6 +138,7 @@ public class ComboBox : Selector
     /// <summary>
     /// Gets or sets whether users can type text directly into the control.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public bool IsEditable
     {
         get => (bool)GetValue(IsEditableProperty);
@@ -133,6 +148,7 @@ public class ComboBox : Selector
     /// <summary>
     /// Gets or sets the current text in the combo box.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Content)]
     public string Text
     {
         get => (string)(GetValue(TextProperty) ?? string.Empty);
@@ -142,6 +158,7 @@ public class ComboBox : Selector
     /// <summary>
     /// Gets or sets the placeholder text shown when no item is selected.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Content)]
     public string PlaceholderText
     {
         get => (string)(GetValue(PlaceholderTextProperty) ?? "Select an item...");
@@ -151,6 +168,7 @@ public class ComboBox : Selector
     /// <summary>
     /// Gets the item displayed in the selection box.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public object? SelectionBoxItem
     {
         get => GetValue(SelectionBoxItemProperty);
@@ -283,6 +301,11 @@ public class ComboBox : Selector
 
     private void OnMouseDownHandler(object sender, RoutedEventArgs e)
     {
+        if (!IsEnabled)
+        {
+            return;
+        }
+
         if (IsEditable && IsEventFromEditableTextBox(e))
         {
             // Let the inner TextBox handle focus/caret behavior.
@@ -399,6 +422,17 @@ public class ComboBox : Selector
     protected override void UpdateContainerSelection()
     {
         UpdateSelectionBoxItem();
+    }
+
+    /// <inheritdoc />
+    protected override void OnIsEnabledChanged(bool oldValue, bool newValue)
+    {
+        base.OnIsEnabledChanged(oldValue, newValue);
+
+        if (!newValue && IsDropDownOpen)
+        {
+            IsDropDownOpen = false;
+        }
     }
 
     private void UpdateSelectionBoxItem()

@@ -26,6 +26,7 @@ public class ScrollBar : RangeBase
     /// <summary>
     /// Identifies the Orientation dependency property.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public static readonly DependencyProperty OrientationProperty =
         DependencyProperty.Register(nameof(Orientation), typeof(Orientation), typeof(ScrollBar),
             new PropertyMetadata(Orientation.Vertical, OnLayoutPropertyChanged));
@@ -33,6 +34,7 @@ public class ScrollBar : RangeBase
     /// <summary>
     /// Identifies the ViewportSize dependency property.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public static readonly DependencyProperty ViewportSizeProperty =
         DependencyProperty.Register(nameof(ViewportSize), typeof(double), typeof(ScrollBar),
             new PropertyMetadata(0.0, OnLayoutPropertyChanged));
@@ -41,6 +43,7 @@ public class ScrollBar : RangeBase
     /// Identifies the ThumbStyle dependency property.
     /// Allows ScrollBar themes to directly inject a keyed thumb style.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Other)]
     public static readonly DependencyProperty ThumbStyleProperty =
         DependencyProperty.Register(nameof(ThumbStyle), typeof(Style), typeof(ScrollBar),
             new PropertyMetadata(null, OnPartStylePropertyChanged));
@@ -49,6 +52,7 @@ public class ScrollBar : RangeBase
     /// Identifies the IsThumbSlim dependency property.
     /// When true, the Track renders the thumb as a thin line centered in the track.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public static readonly DependencyProperty IsThumbSlimProperty =
         DependencyProperty.Register(nameof(IsThumbSlim), typeof(bool), typeof(ScrollBar),
             new PropertyMetadata(false, OnThumbPresentationPropertyChanged));
@@ -80,6 +84,7 @@ public class ScrollBar : RangeBase
     /// <summary>
     /// Gets or sets the orientation of the ScrollBar.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public Orientation Orientation
     {
         get => (Orientation)GetValue(OrientationProperty)!;
@@ -89,6 +94,7 @@ public class ScrollBar : RangeBase
     /// <summary>
     /// Gets or sets the size of the viewport, which determines the thumb size.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public double ViewportSize
     {
         get => (double)GetValue(ViewportSizeProperty)!;
@@ -98,6 +104,7 @@ public class ScrollBar : RangeBase
     /// <summary>
     /// Gets or sets the style applied to the internal Track thumb.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Other)]
     public Style? ThumbStyle
     {
         get => (Style?)GetValue(ThumbStyleProperty);
@@ -107,6 +114,7 @@ public class ScrollBar : RangeBase
     /// <summary>
     /// Gets or sets whether the thumb should render in slim mode.
     /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public bool IsThumbSlim
     {
         get => (bool)GetValue(IsThumbSlimProperty)!;
@@ -123,6 +131,9 @@ public class ScrollBar : RangeBase
     private const double DefaultThickness = 16;
     private const double MinThumbLength = 20;
     private bool _isDragging;
+    private double _thumbDragStartValue;
+    private double _thumbDragAccumulatedHorizontal;
+    private double _thumbDragAccumulatedVertical;
     private bool _hasCustomLineButtonStyle;
     private DispatcherTimer? _autoHideVisualTimer;
     private long _autoHideVisualAnimStartTick;
@@ -724,15 +735,23 @@ public class ScrollBar : RangeBase
 
     private void OnThumbDragStarted(object sender, DragStartedEventArgs e)
     {
-        _isDragging = true;
+        BeginThumbDrag();
     }
 
     private void OnThumbDragDelta(object sender, DragDeltaEventArgs e)
     {
         if (_track != null)
         {
-            var valueDelta = _track.ValueFromDistance(e.HorizontalChange, e.VerticalChange);
-            var newValue = Math.Clamp(Value + valueDelta, Minimum, Maximum);
+            if (!_isDragging)
+            {
+                BeginThumbDrag();
+            }
+
+            _thumbDragAccumulatedHorizontal += e.HorizontalChange;
+            _thumbDragAccumulatedVertical += e.VerticalChange;
+
+            var newValue = _thumbDragStartValue + _track.ValueFromDistance(_thumbDragAccumulatedHorizontal, _thumbDragAccumulatedVertical);
+            newValue = Math.Clamp(newValue, Minimum, Maximum);
 
             if (Math.Abs(newValue - Value) > double.Epsilon)
             {
@@ -744,7 +763,7 @@ public class ScrollBar : RangeBase
 
     private void OnThumbDragCompleted(object sender, DragCompletedEventArgs e)
     {
-        _isDragging = false;
+        EndThumbDrag();
         RaiseScrollEvent(ScrollEventType.EndScroll);
     }
 
@@ -952,6 +971,21 @@ public class ScrollBar : RangeBase
     private static double Lerp(double from, double to, double t)
     {
         return from + ((to - from) * t);
+    }
+
+    private void BeginThumbDrag()
+    {
+        _isDragging = true;
+        _thumbDragStartValue = Value;
+        _thumbDragAccumulatedHorizontal = 0;
+        _thumbDragAccumulatedVertical = 0;
+    }
+
+    private void EndThumbDrag()
+    {
+        _isDragging = false;
+        _thumbDragAccumulatedHorizontal = 0;
+        _thumbDragAccumulatedVertical = 0;
     }
 
     #endregion

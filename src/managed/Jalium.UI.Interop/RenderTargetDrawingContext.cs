@@ -1293,11 +1293,24 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
 
         NativeBitmap? nativeBitmap = null;
 
-        if (imageSource is BitmapImage bitmapImage && bitmapImage.ImageData != null)
+        if (imageSource is BitmapImage bitmapImage)
         {
             try
             {
-                nativeBitmap = _context.CreateBitmap(bitmapImage.ImageData);
+                if (bitmapImage.RawPixelData != null &&
+                    bitmapImage.PixelWidth > 0 &&
+                    bitmapImage.PixelHeight > 0)
+                {
+                    nativeBitmap = _context.CreateBitmapFromPixels(
+                        bitmapImage.RawPixelData,
+                        bitmapImage.PixelWidth,
+                        bitmapImage.PixelHeight,
+                        bitmapImage.PixelStride);
+                }
+                else if (bitmapImage.ImageData != null)
+                {
+                    nativeBitmap = _context.CreateBitmap(bitmapImage.ImageData);
+                }
             }
             catch
             {

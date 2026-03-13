@@ -2,6 +2,7 @@ using System.Reflection;
 using Jalium.UI;
 using Jalium.UI.Controls;
 using Jalium.UI.Controls.Themes;
+using Jalium.UI.Input;
 
 namespace Jalium.UI.Tests;
 
@@ -104,6 +105,34 @@ public class ComboBoxEditableTests
         }
     }
 
+    [Fact]
+    public void ComboBox_Disabled_MouseDown_ShouldNotOpenDropDown()
+    {
+        var comboBox = new ComboBox
+        {
+            IsEnabled = false
+        };
+
+        comboBox.RaiseEvent(CreateMouseDown(new Point(8, 8)));
+
+        Assert.False(comboBox.IsDropDownOpen);
+    }
+
+    [Fact]
+    public void ComboBox_DisablingControl_ShouldCloseDropDown()
+    {
+        var comboBox = new ComboBox
+        {
+            IsDropDownOpen = true
+        };
+
+        Assert.True(comboBox.IsDropDownOpen);
+
+        comboBox.IsEnabled = false;
+
+        Assert.False(comboBox.IsDropDownOpen);
+    }
+
     private static void ResetApplicationState()
     {
         var currentField = typeof(Application).GetField("_current",
@@ -138,5 +167,22 @@ public class ComboBoxEditableTests
         }
 
         return null;
+    }
+
+    private static MouseButtonEventArgs CreateMouseDown(Point position)
+    {
+        return new MouseButtonEventArgs(
+            UIElement.MouseDownEvent,
+            position,
+            MouseButton.Left,
+            MouseButtonState.Pressed,
+            clickCount: 1,
+            leftButton: MouseButtonState.Pressed,
+            middleButton: MouseButtonState.Released,
+            rightButton: MouseButtonState.Released,
+            xButton1: MouseButtonState.Released,
+            xButton2: MouseButtonState.Released,
+            modifiers: ModifierKeys.None,
+            timestamp: 0);
     }
 }

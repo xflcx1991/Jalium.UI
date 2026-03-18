@@ -1,6 +1,6 @@
 # Jalium.UI 手动配置构建说明
 
-本文档面向“**不修改仓库源码**，只在用户本机做配置”的场景。
+本文档面向"**不修改仓库源码**，只在用户本机做配置"的场景。
 
 结论先说：
 
@@ -34,7 +34,7 @@ mkdir packages\build
 这一步的目的不是放包，而是避免 `NU1301`：
 
 ```text
-本地源“...\packages”不存在
+本地源"...\packages"不存在
 ```
 
 ## 3. 先做还原
@@ -207,8 +207,8 @@ msbuild .\src\native\Jalium.Native.sln /m /p:Configuration=Debug /p:Platform=x64
 
 不要承诺：
 
-- “整仓一定能一键编过”
-- “只要装好 SDK 就行”
-- “不需要 Visual Studio / MSBuild / C++ 工具链”
+- "整仓一定能一键编过"
+- "只要装好 SDK 就行"
+- "不需要 Visual Studio / MSBuild / C++ 工具链"
 
 这些承诺和当前仓库实际状态不一致。

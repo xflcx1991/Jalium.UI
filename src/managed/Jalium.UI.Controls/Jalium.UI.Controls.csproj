@@ -7,6 +7,8 @@
 		<IsPackable>true</IsPackable>
 		<PackageId>Jalium.UI.Controls</PackageId>
 		<TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
+		<IsTrimmable>true</IsTrimmable>
+		<IsAotCompatible>true</IsAotCompatible>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -29,6 +31,13 @@
 		<PackageReference Include="SoundFlow" Version="1.4.0" />
 		<PackageReference Include="SoundFlow.Codecs.FFMpeg" Version="1.4.0" />
 		<PackageReference Include="System.Drawing.Common" Version="*" />
+	</ItemGroup>
+
+	<!-- ILLink descriptor to preserve types accessed via reflection (AOT/trimming) -->
+	<ItemGroup>
+		<EmbeddedResource Include="ILLink.Descriptors.xml">
+			<LogicalName>ILLink.Descriptors.xml</LogicalName>
+		</EmbeddedResource>
 	</ItemGroup>
 
 	<!-- Embed theme files as resources (default naming: Jalium.UI.Controls.Themes.{path}.{filename}.jalxaml) -->

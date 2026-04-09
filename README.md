@@ -1,5 +1,7 @@
 ﻿﻿# Jalium.UI
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/VeryJokerJal/Jalium.UI)
+
 Jalium.UI is a Windows-first, GPU-accelerated UI framework for .NET 10.
 It combines a WPF-style object model, JALXAML markup, and a DirectX 12 renderer.
 

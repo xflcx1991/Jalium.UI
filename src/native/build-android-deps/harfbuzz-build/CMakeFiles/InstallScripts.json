@@ -1,7 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-deps/harfbuzz-build/cmake_install.cmake"
-	],
-	"Parallel" : false
-}

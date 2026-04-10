@@ -385,3 +385,6 @@ bugreport-*.zip
 
 # Sample projects
 samples/
+
+# Native build output
+src/native/build-*/

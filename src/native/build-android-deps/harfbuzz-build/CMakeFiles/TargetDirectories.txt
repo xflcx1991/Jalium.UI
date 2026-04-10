@@ -1,7 +1,0 @@
-D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-deps/harfbuzz-build/CMakeFiles/harfbuzz.dir
-D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-deps/harfbuzz-build/CMakeFiles/edit_cache.dir
-D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-deps/harfbuzz-build/CMakeFiles/rebuild_cache.dir
-D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-deps/harfbuzz-build/CMakeFiles/list_install_components.dir
-D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-deps/harfbuzz-build/CMakeFiles/install.dir
-D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-deps/harfbuzz-build/CMakeFiles/install/local.dir
-D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-deps/harfbuzz-build/CMakeFiles/install/strip.dir

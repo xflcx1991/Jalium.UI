@@ -1,0 +1,9 @@
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-deps/freetype-build/CMakeFiles/freetype.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-deps/freetype-build/CMakeFiles/package.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-deps/freetype-build/CMakeFiles/package_source.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-deps/freetype-build/CMakeFiles/edit_cache.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-deps/freetype-build/CMakeFiles/rebuild_cache.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-deps/freetype-build/CMakeFiles/list_install_components.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-deps/freetype-build/CMakeFiles/install.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-deps/freetype-build/CMakeFiles/install/local.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-deps/freetype-build/CMakeFiles/install/strip.dir

@@ -1,0 +1,17 @@
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-x86_64/CMakeFiles/edit_cache.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-x86_64/CMakeFiles/rebuild_cache.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-x86_64/jalium.native.core/CMakeFiles/jalium.native.core.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-x86_64/jalium.native.core/CMakeFiles/edit_cache.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-x86_64/jalium.native.core/CMakeFiles/rebuild_cache.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-x86_64/jalium.native.platform/CMakeFiles/jalium.native.platform.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-x86_64/jalium.native.platform/CMakeFiles/edit_cache.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-x86_64/jalium.native.platform/CMakeFiles/rebuild_cache.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-x86_64/jalium.native.text/CMakeFiles/jalium.native.text.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-x86_64/jalium.native.text/CMakeFiles/edit_cache.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-x86_64/jalium.native.text/CMakeFiles/rebuild_cache.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-x86_64/jalium.native.vulkan/CMakeFiles/jalium.native.vulkan.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-x86_64/jalium.native.vulkan/CMakeFiles/edit_cache.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-x86_64/jalium.native.vulkan/CMakeFiles/rebuild_cache.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-x86_64/jalium.native.software/CMakeFiles/jalium.native.software.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-x86_64/jalium.native.software/CMakeFiles/edit_cache.dir
+D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-x86_64/jalium.native.software/CMakeFiles/rebuild_cache.dir

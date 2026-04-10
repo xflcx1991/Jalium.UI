@@ -119,6 +119,19 @@ jalium.native.core\fast:
 .PHONY : jalium.native.core\fast
 
 #=============================================================================
+# Target rules for targets named jalium.native.platform
+
+# Build rule for target.
+jalium.native.platform: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 /nologo -$(MAKEFLAGS) jalium.native.platform
+.PHONY : jalium.native.platform
+
+# fast build rule for target.
+jalium.native.platform\fast:
+	$(MAKE) $(MAKESILENT) -f jalium.native.platform\CMakeFiles\jalium.native.platform.dir\build.make /nologo -$(MAKEFLAGS) jalium.native.platform\CMakeFiles\jalium.native.platform.dir\build
+.PHONY : jalium.native.platform\fast
+
+#=============================================================================
 # Target rules for targets named jalium.native.d3d12
 
 # Build rule for target.
@@ -130,45 +143,6 @@ jalium.native.d3d12: cmake_check_build_system
 jalium.native.d3d12\fast:
 	$(MAKE) $(MAKESILENT) -f jalium.native.d3d12\CMakeFiles\jalium.native.d3d12.dir\build.make /nologo -$(MAKEFLAGS) jalium.native.d3d12\CMakeFiles\jalium.native.d3d12.dir\build
 .PHONY : jalium.native.d3d12\fast
-
-#=============================================================================
-# Target rules for targets named jalium.native.vulkan
-
-# Build rule for target.
-jalium.native.vulkan: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 /nologo -$(MAKEFLAGS) jalium.native.vulkan
-.PHONY : jalium.native.vulkan
-
-# fast build rule for target.
-jalium.native.vulkan\fast:
-	$(MAKE) $(MAKESILENT) -f jalium.native.vulkan\CMakeFiles\jalium.native.vulkan.dir\build.make /nologo -$(MAKEFLAGS) jalium.native.vulkan\CMakeFiles\jalium.native.vulkan.dir\build
-.PHONY : jalium.native.vulkan\fast
-
-#=============================================================================
-# Target rules for targets named jalium.native.metal
-
-# Build rule for target.
-jalium.native.metal: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 /nologo -$(MAKEFLAGS) jalium.native.metal
-.PHONY : jalium.native.metal
-
-# fast build rule for target.
-jalium.native.metal\fast:
-	$(MAKE) $(MAKESILENT) -f jalium.native.metal\CMakeFiles\jalium.native.metal.dir\build.make /nologo -$(MAKEFLAGS) jalium.native.metal\CMakeFiles\jalium.native.metal.dir\build
-.PHONY : jalium.native.metal\fast
-
-#=============================================================================
-# Target rules for targets named jalium.native.software
-
-# Build rule for target.
-jalium.native.software: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 /nologo -$(MAKEFLAGS) jalium.native.software
-.PHONY : jalium.native.software
-
-# fast build rule for target.
-jalium.native.software\fast:
-	$(MAKE) $(MAKESILENT) -f jalium.native.software\CMakeFiles\jalium.native.software.dir\build.make /nologo -$(MAKEFLAGS) jalium.native.software\CMakeFiles\jalium.native.software.dir\build
-.PHONY : jalium.native.software\fast
 
 #=============================================================================
 # Target rules for targets named jalium.native.browser
@@ -183,6 +157,19 @@ jalium.native.browser\fast:
 	$(MAKE) $(MAKESILENT) -f jalium.native.browser\CMakeFiles\jalium.native.browser.dir\build.make /nologo -$(MAKEFLAGS) jalium.native.browser\CMakeFiles\jalium.native.browser.dir\build
 .PHONY : jalium.native.browser\fast
 
+#=============================================================================
+# Target rules for targets named jalium.native.software
+
+# Build rule for target.
+jalium.native.software: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 /nologo -$(MAKEFLAGS) jalium.native.software
+.PHONY : jalium.native.software
+
+# fast build rule for target.
+jalium.native.software\fast:
+	$(MAKE) $(MAKESILENT) -f jalium.native.software\CMakeFiles\jalium.native.software.dir\build.make /nologo -$(MAKEFLAGS) jalium.native.software\CMakeFiles\jalium.native.software.dir\build
+.PHONY : jalium.native.software\fast
+
 # Help Target
 help:
 	@echo The following are some of the valid targets for this Makefile:
@@ -194,9 +181,8 @@ help:
 	@echo ... jalium.native.browser
 	@echo ... jalium.native.core
 	@echo ... jalium.native.d3d12
-	@echo ... jalium.native.metal
+	@echo ... jalium.native.platform
 	@echo ... jalium.native.software
-	@echo ... jalium.native.vulkan
 .PHONY : help
 
 

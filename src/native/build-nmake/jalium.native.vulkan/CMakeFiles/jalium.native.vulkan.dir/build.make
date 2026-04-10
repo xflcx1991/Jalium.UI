@@ -209,12 +209,12 @@ bin\jalium.native.vulkan.dll: jalium.native.vulkan\CMakeFiles\jalium.native.vulk
 bin\jalium.native.vulkan.dll: jalium.native.vulkan\CMakeFiles\jalium.native.vulkan.dir\src\vulkan_runtime.cpp.obj
 bin\jalium.native.vulkan.dll: jalium.native.vulkan\CMakeFiles\jalium.native.vulkan.dir\build.make
 bin\jalium.native.vulkan.dll: lib\jalium.native.core.lib
-bin\jalium.native.vulkan.dll: D:\Users\suppe\source\repos\Jalium.SDK\VulkanSDK\1.4.341.1\Lib\vulkan-1.lib
+bin\jalium.native.vulkan.dll: C:\VulkanSDK\1.4.341.1\Lib\vulkan-1.lib
 bin\jalium.native.vulkan.dll: jalium.native.vulkan\CMakeFiles\jalium.native.vulkan.dir\objects1.rsp
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=D:\Users\suppe\source\repos\Jalium.UI\src\native\build-nmake\CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Linking CXX shared library ..\bin\jalium.native.vulkan.dll"
 	cd D:\Users\suppe\source\repos\Jalium.UI\src\native\build-nmake\jalium.native.vulkan
 	"C:\Program Files\CMake\bin\cmake.exe" -E vs_link_dll --msvc-ver=1950 --intdir=CMakeFiles\jalium.native.vulkan.dir --rc=rc --mt=C:\PROGRA~2\WI3CF2~1\10\bin\100261~1.0\x64\mt.exe --manifests -- "D:\Program Files\Microsoft Visual Studio\18\Insiders\VC\Tools\MSVC\14.50.35717\bin\Hostx64\x64\link.exe" /nologo @CMakeFiles\jalium.native.vulkan.dir\objects1.rsp @<<
- /out:..\bin\jalium.native.vulkan.dll /implib:..\lib\jalium.native.vulkan.lib /pdb:D:\Users\suppe\source\repos\Jalium.UI\src\native\build-nmake\bin\jalium.native.vulkan.pdb /dll /version:0.0 /machine:x64 /debug /INCREMENTAL  ..\lib\jalium.native.core.lib D:\Users\suppe\source\repos\Jalium.SDK\VulkanSDK\1.4.341.1\Lib\vulkan-1.lib dwrite.lib windowscodecs.lib ole32.lib dxgi.lib d3d11.lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib  
+ /out:..\bin\jalium.native.vulkan.dll /implib:..\lib\jalium.native.vulkan.lib /pdb:D:\Users\suppe\source\repos\Jalium.UI\src\native\build-nmake\bin\jalium.native.vulkan.pdb /dll /version:0.0 /machine:x64 /debug /INCREMENTAL  ..\lib\jalium.native.core.lib C:\VulkanSDK\1.4.341.1\Lib\vulkan-1.lib dwrite.lib windowscodecs.lib ole32.lib dxgi.lib d3d11.lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib  
 <<
 	cd D:\Users\suppe\source\repos\Jalium.UI\src\native\build-nmake
 

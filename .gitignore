@@ -376,3 +376,9 @@ FodyWeavers.xsd
 # Ignore hidden directories at repository root.
 /.*/
 !/.github/
+
+# IDE cache files
+*.lscache
+
+# Android bugreport
+bugreport-*.zip

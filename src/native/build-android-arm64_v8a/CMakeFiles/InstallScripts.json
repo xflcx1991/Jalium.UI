@@ -1,0 +1,12 @@
+{
+	"InstallScripts" : 
+	[
+		"D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-arm64_v8a/cmake_install.cmake",
+		"D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-arm64_v8a/jalium.native.core/cmake_install.cmake",
+		"D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-arm64_v8a/jalium.native.platform/cmake_install.cmake",
+		"D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-arm64_v8a/jalium.native.text/cmake_install.cmake",
+		"D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-arm64_v8a/jalium.native.vulkan/cmake_install.cmake",
+		"D:/Users/suppe/source/repos/Jalium.UI/src/native/build-android-arm64_v8a/jalium.native.software/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

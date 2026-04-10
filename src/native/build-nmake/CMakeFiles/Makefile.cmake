@@ -43,9 +43,8 @@ set(CMAKE_MAKEFILE_DEPENDS
   "D:/Users/suppe/source/repos/Jalium.UI/src/native/jalium.native.browser/CMakeLists.txt"
   "D:/Users/suppe/source/repos/Jalium.UI/src/native/jalium.native.core/CMakeLists.txt"
   "D:/Users/suppe/source/repos/Jalium.UI/src/native/jalium.native.d3d12/CMakeLists.txt"
-  "D:/Users/suppe/source/repos/Jalium.UI/src/native/jalium.native.metal/CMakeLists.txt"
+  "D:/Users/suppe/source/repos/Jalium.UI/src/native/jalium.native.platform/CMakeLists.txt"
   "D:/Users/suppe/source/repos/Jalium.UI/src/native/jalium.native.software/CMakeLists.txt"
-  "D:/Users/suppe/source/repos/Jalium.UI/src/native/jalium.native.vulkan/CMakeLists.txt"
   )
 
 # The corresponding makefile is:
@@ -58,19 +57,17 @@ set(CMAKE_MAKEFILE_OUTPUTS
 set(CMAKE_MAKEFILE_PRODUCTS
   "CMakeFiles/CMakeDirectoryInformation.cmake"
   "jalium.native.core/CMakeFiles/CMakeDirectoryInformation.cmake"
+  "jalium.native.platform/CMakeFiles/CMakeDirectoryInformation.cmake"
   "jalium.native.d3d12/CMakeFiles/CMakeDirectoryInformation.cmake"
-  "jalium.native.vulkan/CMakeFiles/CMakeDirectoryInformation.cmake"
-  "jalium.native.metal/CMakeFiles/CMakeDirectoryInformation.cmake"
-  "jalium.native.software/CMakeFiles/CMakeDirectoryInformation.cmake"
   "jalium.native.browser/CMakeFiles/CMakeDirectoryInformation.cmake"
+  "jalium.native.software/CMakeFiles/CMakeDirectoryInformation.cmake"
   )
 
 # Dependency information for all targets:
 set(CMAKE_DEPEND_INFO_FILES
   "jalium.native.core/CMakeFiles/jalium.native.core.dir/DependInfo.cmake"
+  "jalium.native.platform/CMakeFiles/jalium.native.platform.dir/DependInfo.cmake"
   "jalium.native.d3d12/CMakeFiles/jalium.native.d3d12.dir/DependInfo.cmake"
-  "jalium.native.vulkan/CMakeFiles/jalium.native.vulkan.dir/DependInfo.cmake"
-  "jalium.native.metal/CMakeFiles/jalium.native.metal.dir/DependInfo.cmake"
-  "jalium.native.software/CMakeFiles/jalium.native.software.dir/DependInfo.cmake"
   "jalium.native.browser/CMakeFiles/jalium.native.browser.dir/DependInfo.cmake"
+  "jalium.native.software/CMakeFiles/jalium.native.software.dir/DependInfo.cmake"
   )

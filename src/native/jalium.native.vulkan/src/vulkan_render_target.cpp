@@ -5789,12 +5789,13 @@ void VulkanRenderTarget::RasterizePolygonToGpuBitmap(
     const size_t stride = static_cast<size_t>(bw) * 4u;
     const size_t vertexCount = worldPoints.size() / 2;
 
-    // Premultiplied target color. SrcOver with an alpha=effA source, so the
-    // output pixel is effectively (srcColor * effA / 255, effA). We write
-    // alpha unblended — later, DrawReplayFrame's bitmap pipeline composites
-    // the whole thing onto the swap-chain with SrcOver, so the final on-
-    // screen color is correct.
-    const uint32_t srcA = effA;
+    // Straight (unpremultiplied) BGRA. DrawReplayFrame's bitmap pipeline
+    // blends with VK_BLEND_FACTOR_SRC_ALPHA / VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+    // and CPU replay's BlendBuffer → BlendPixel does the same straight-alpha
+    // SrcOver, so we must store the color channels unmodified and let the
+    // blend pipeline multiply by srcA once. Premultiplying here would square
+    // alpha and make fallback shapes noticeably dimmer than normal fills.
+    const uint8_t srcA = effA;
 
     for (int y = bboxTop; y < bboxBottom; ++y) {
         const float py = static_cast<float>(y) + 0.5f;
@@ -5843,11 +5844,11 @@ void VulkanRenderTarget::RasterizePolygonToGpuBitmap(
 
             const int localX = x - bboxLeft;
             uint8_t* dst = row + static_cast<size_t>(localX) * 4u;
-            // Write premultiplied BGRA straight — buffer started zeroed.
-            dst[0] = static_cast<uint8_t>((static_cast<uint32_t>(b) * srcA) / 255u);
-            dst[1] = static_cast<uint8_t>((static_cast<uint32_t>(g) * srcA) / 255u);
-            dst[2] = static_cast<uint8_t>((static_cast<uint32_t>(r) * srcA) / 255u);
-            dst[3] = static_cast<uint8_t>(srcA);
+            // Straight BGRA — alpha is applied once by the blend pipeline.
+            dst[0] = b;
+            dst[1] = g;
+            dst[2] = r;
+            dst[3] = srcA;
         }
     }
 
@@ -5861,9 +5862,8 @@ void VulkanRenderTarget::RasterizePolygonToGpuBitmap(
     cmd.bitmap.y = static_cast<float>(bboxTop);
     cmd.bitmap.w = static_cast<float>(bw);
     cmd.bitmap.h = static_cast<float>(bh);
-    // The pixels are already premultiplied with the current opacity, so the
-    // per-bitmap opacity must be 1.0 — otherwise DrawReplayFrame would
-    // multiply by opacity twice.
+    // The opacity stack is already baked into srcA, so the per-bitmap
+    // opacity must be 1.0 to avoid multiplying alpha twice at blend time.
     cmd.bitmap.opacity = 1.0f;
 
     // Populate clip/scissor on the actual command (not the probe).
@@ -5950,7 +5950,10 @@ void VulkanRenderTarget::RasterizePolylineToGpuBitmap(
         static_cast<size_t>(bw) * static_cast<size_t>(bh) * 4u, 0);
     auto& buffer = *pixels;
     const size_t stride = static_cast<size_t>(bw) * 4u;
-    const uint32_t srcA = effA;
+    // Straight (unpremultiplied) BGRA — the GPU bitmap pipeline and CPU
+    // BlendBuffer both apply SrcOver with src * srcA, so we must NOT
+    // premultiply here. See RasterizePolygonToGpuBitmap for details.
+    const uint8_t srcA = effA;
 
     auto stamp = [&](int cx, int cy) {
         const int x0 = std::max(bboxLeft,      cx - halfThick);
@@ -5961,10 +5964,10 @@ void VulkanRenderTarget::RasterizePolylineToGpuBitmap(
             uint8_t* row = buffer.data() + static_cast<size_t>(py - bboxTop) * stride;
             for (int px = x0; px < x1; ++px) {
                 uint8_t* dst = row + static_cast<size_t>(px - bboxLeft) * 4u;
-                dst[0] = static_cast<uint8_t>((static_cast<uint32_t>(b) * srcA) / 255u);
-                dst[1] = static_cast<uint8_t>((static_cast<uint32_t>(g) * srcA) / 255u);
-                dst[2] = static_cast<uint8_t>((static_cast<uint32_t>(r) * srcA) / 255u);
-                dst[3] = static_cast<uint8_t>(srcA);
+                dst[0] = b;
+                dst[1] = g;
+                dst[2] = r;
+                dst[3] = srcA;
             }
         }
     };

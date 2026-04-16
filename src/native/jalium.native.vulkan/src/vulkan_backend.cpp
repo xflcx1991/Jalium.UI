@@ -5,24 +5,15 @@
 
 #include <cstring>
 
-#ifndef _WIN32
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_NO_STDIO
 #define STBI_FAILURE_USERMSG
 #include <stb_image.h>
-#endif
-
-#ifdef _WIN32
-#include <dwrite.h>
-#include <wincodec.h>
-#include <wrl/client.h>
-#endif
 
 namespace jalium {
 
 namespace {
 
-#ifndef _WIN32
 Bitmap* DecodeBitmapWithStb(const uint8_t* data, uint32_t dataSize)
 {
     int width = 0;
@@ -50,7 +41,7 @@ Bitmap* DecodeBitmapWithStb(const uint8_t* data, uint32_t dataSize)
 
     std::vector<uint8_t> bgraPixels(pixelDataSize, 0);
     // STBI_rgb_alpha guarantees decodedPixels has exactly pixelDataSize bytes (RGBA).
-    // Convert RGBA → BGRA in-place for D2D/Vulkan surface compatibility.
+    // Convert RGBA → BGRA for Vulkan surface compatibility.
     for (size_t offset = 0; offset + 3 < pixelDataSize; offset += 4u) {
         bgraPixels[offset + 0] = decodedPixels[offset + 2];
         bgraPixels[offset + 1] = decodedPixels[offset + 1];
@@ -61,7 +52,6 @@ Bitmap* DecodeBitmapWithStb(const uint8_t* data, uint32_t dataSize)
     stbi_image_free(decodedPixels);
     return new VulkanBitmap(static_cast<uint32_t>(width), static_cast<uint32_t>(height), std::move(bgraPixels));
 }
-#endif
 
 } // namespace
 
@@ -71,28 +61,11 @@ bool VulkanBackend::Initialize()
         return true;
     }
 
-    if (!IsExperimentalVulkanEnabled() || !IsVulkanRuntimeAvailable()) {
+    if (!IsVulkanRuntimeAvailable()) {
         return false;
     }
 
-#ifdef _WIN32
-    const HRESULT dwriteHr = DWriteCreateFactory(
-        DWRITE_FACTORY_TYPE_SHARED,
-        __uuidof(IDWriteFactory),
-        reinterpret_cast<IUnknown**>(dwriteFactory_.GetAddressOf()));
-    if (FAILED(dwriteHr)) {
-        return false;
-    }
-
-    const HRESULT wicHr = CoCreateInstance(
-        CLSID_WICImagingFactory,
-        nullptr,
-        CLSCTX_INPROC_SERVER,
-        IID_PPV_ARGS(&wicFactory_));
-    if (FAILED(wicHr)) {
-        return false;
-    }
-#else
+#ifndef _WIN32
     // Initialize cross-platform text engine (FreeType + HarfBuzz)
     textEngine_ = std::make_unique<TextEngine>();
     JaliumResult textResult = textEngine_->Initialize();
@@ -187,11 +160,11 @@ TextFormat* VulkanBackend::CreateTextFormat(
     int32_t fontStyle)
 {
 #ifdef _WIN32
-    if (!Initialize() || !dwriteFactory_) {
+    if (!Initialize()) {
         return nullptr;
     }
 
-    return new VulkanTextFormat(dwriteFactory_.Get(), fontFamily, fontSize, fontWeight, fontStyle);
+    return new VulkanTextFormat(fontFamily, fontSize, fontWeight, fontStyle);
 #else
     if (!Initialize()) {
         return nullptr;
@@ -213,52 +186,7 @@ Bitmap* VulkanBackend::CreateBitmapFromMemory(const uint8_t* data, uint32_t data
         return nullptr;
     }
 
-#ifdef _WIN32
-    if (!wicFactory_) {
-        return nullptr;
-    }
-
-    Microsoft::WRL::ComPtr<IWICStream> stream;
-    HRESULT hr = wicFactory_->CreateStream(&stream);
-    if (FAILED(hr)) return nullptr;
-
-    hr = stream->InitializeFromMemory(const_cast<uint8_t*>(data), dataSize);
-    if (FAILED(hr)) return nullptr;
-
-    Microsoft::WRL::ComPtr<IWICBitmapDecoder> decoder;
-    hr = wicFactory_->CreateDecoderFromStream(stream.Get(), nullptr, WICDecodeMetadataCacheOnDemand, &decoder);
-    if (FAILED(hr)) return nullptr;
-
-    Microsoft::WRL::ComPtr<IWICBitmapFrameDecode> frame;
-    hr = decoder->GetFrame(0, &frame);
-    if (FAILED(hr)) return nullptr;
-
-    Microsoft::WRL::ComPtr<IWICFormatConverter> converter;
-    hr = wicFactory_->CreateFormatConverter(&converter);
-    if (FAILED(hr)) return nullptr;
-
-    hr = converter->Initialize(
-        frame.Get(),
-        GUID_WICPixelFormat32bppPBGRA,
-        WICBitmapDitherTypeNone,
-        nullptr,
-        0.0f,
-        WICBitmapPaletteTypeMedianCut);
-    if (FAILED(hr)) return nullptr;
-
-    UINT width = 0;
-    UINT height = 0;
-    hr = converter->GetSize(&width, &height);
-    if (FAILED(hr) || width == 0 || height == 0) return nullptr;
-
-    std::vector<uint8_t> pixels(width * height * 4);
-    hr = converter->CopyPixels(nullptr, width * 4, static_cast<UINT>(pixels.size()), pixels.data());
-    if (FAILED(hr)) return nullptr;
-
-    return new VulkanBitmap(width, height, std::move(pixels));
-#else
     return DecodeBitmapWithStb(data, dataSize);
-#endif
 }
 
 Bitmap* VulkanBackend::CreateBitmapFromPixels(const uint8_t* pixels, uint32_t width, uint32_t height, uint32_t stride)

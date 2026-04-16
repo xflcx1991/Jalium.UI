@@ -66,11 +66,6 @@ if(WIN32)
     target_link_libraries(${PROJECT_NAME}
         PRIVATE
             ${JALIUM_VULKAN_SDK_ROOT}/Lib/vulkan-1.lib
-            dwrite
-            windowscodecs
-            ole32
-            dxgi
-            d3d11
     )
 elseif(ANDROID)
     target_link_libraries(${PROJECT_NAME}

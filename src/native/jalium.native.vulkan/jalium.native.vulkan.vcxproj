@@ -48,7 +48,7 @@
     <IntDir>$(Configuration)\</IntDir>
     <TargetName>jalium.native.vulkan</TargetName>
     <JaliumSdkRoot Condition="'$(JALIUM_SDK_ROOT)' != ''">$(JALIUM_SDK_ROOT)</JaliumSdkRoot>
-    <JaliumSdkRoot Condition="'$(JaliumSdkRoot)' == ''">$(SolutionDir)..\Jalium.SDK</JaliumSdkRoot>
+    <JaliumSdkRoot Condition="'$(JaliumSdkRoot)' == ''">$(SolutionDir)..\..\..\Jalium.SDK</JaliumSdkRoot>
     <VulkanSdkRoot Condition="'$(VULKAN_SDK)' != ''">$(VULKAN_SDK)</VulkanSdkRoot>
     <VulkanSdkRoot Condition="'$(VulkanSdkRoot)' == ''">$(JaliumSdkRoot)\VulkanSDK\1.4.341.1</VulkanSdkRoot>
   </PropertyGroup>
@@ -57,7 +57,7 @@
     <IntDir>$(Configuration)\</IntDir>
     <TargetName>jalium.native.vulkan</TargetName>
     <JaliumSdkRoot Condition="'$(JALIUM_SDK_ROOT)' != ''">$(JALIUM_SDK_ROOT)</JaliumSdkRoot>
-    <JaliumSdkRoot Condition="'$(JaliumSdkRoot)' == ''">$(SolutionDir)..\Jalium.SDK</JaliumSdkRoot>
+    <JaliumSdkRoot Condition="'$(JaliumSdkRoot)' == ''">$(SolutionDir)..\..\..\Jalium.SDK</JaliumSdkRoot>
     <VulkanSdkRoot Condition="'$(VULKAN_SDK)' != ''">$(VULKAN_SDK)</VulkanSdkRoot>
     <VulkanSdkRoot Condition="'$(VulkanSdkRoot)' == ''">$(JaliumSdkRoot)\VulkanSDK\1.4.341.1</VulkanSdkRoot>
   </PropertyGroup>
@@ -75,7 +75,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ProgramDatabaseFile>$(ProjectDir)$(IntDir)$(TargetName).pdb</ProgramDatabaseFile>
       <AdditionalLibraryDirectories>$(VulkanSdkRoot)\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>vulkan-1.lib;dwrite.lib;windowscodecs.lib;ole32.lib;dxgi.lib;d3d11.lib;$(SolutionDir)bin\native\$(Configuration)\jalium.native.core.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>vulkan-1.lib;$(SolutionDir)bin\native\$(Configuration)\jalium.native.core.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -97,7 +97,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ProgramDatabaseFile>$(ProjectDir)$(IntDir)$(TargetName).pdb</ProgramDatabaseFile>
       <AdditionalLibraryDirectories>$(VulkanSdkRoot)\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>vulkan-1.lib;dwrite.lib;windowscodecs.lib;ole32.lib;dxgi.lib;d3d11.lib;$(SolutionDir)bin\native\$(Configuration)\jalium.native.core.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>vulkan-1.lib;$(SolutionDir)bin\native\$(Configuration)\jalium.native.core.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>

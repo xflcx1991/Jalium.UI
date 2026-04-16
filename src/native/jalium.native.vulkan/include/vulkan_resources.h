@@ -2,11 +2,7 @@
 
 #include "jalium_backend.h"
 
-#ifdef _WIN32
-#include <dwrite.h>
-#include <wincodec.h>
-#include <wrl/client.h>
-#else
+#ifndef _WIN32
 // Forward declarations for cross-platform text engine
 namespace jalium { class TextEngine; class FreeTypeTextFormat; }
 #endif
@@ -14,12 +10,9 @@ namespace jalium { class TextEngine; class FreeTypeTextFormat; }
 #include <string>
 #include <vector>
 #include <memory>
+#include <cstdint>
 
 namespace jalium {
-
-#ifdef _WIN32
-using Microsoft::WRL::ComPtr;
-#endif
 
 class VulkanSolidBrush : public Brush {
 public:
@@ -85,7 +78,6 @@ class VulkanTextFormat : public TextFormat {
 public:
 #ifdef _WIN32
     VulkanTextFormat(
-        IDWriteFactory* factory,
         const wchar_t* fontFamily,
         float fontSize,
         int32_t fontWeight,
@@ -133,6 +125,11 @@ public:
     float GetFontSize() const { return fontSize_; }
     int32_t GetAlignment() const { return alignment_; }
     int32_t GetParagraphAlignment() const { return paragraphAlignment_; }
+    int32_t GetFontWeight() const { return fontWeight_; }
+    int32_t GetFontStyle() const { return fontStyle_; }
+    int32_t GetTrimming() const { return trimming_; }
+    int32_t GetWordWrapping() const { return wordWrapping_; }
+    uint32_t GetMaxLines() const { return maxLines_; }
 
 #ifndef _WIN32
     FreeTypeTextFormat* GetFreeTypeFormat() const { return ftTextFormat_.get(); }
@@ -141,14 +138,18 @@ public:
 private:
     std::wstring fontFamily_;
     float fontSize_ = 12.0f;
+    int32_t fontWeight_ = 400;
+    int32_t fontStyle_ = 0;
     int32_t alignment_ = JALIUM_TEXT_ALIGN_LEADING;
     int32_t paragraphAlignment_ = JALIUM_PARAGRAPH_ALIGN_NEAR;
     int32_t trimming_ = JALIUM_TEXT_TRIMMING_NONE;
+    int32_t wordWrapping_ = 0;
+    int32_t lineSpacingMethod_ = 0;
+    float lineSpacingMultiplier_ = 0.0f;
+    float lineSpacingBaseline_ = 0.0f;
+    uint32_t maxLines_ = 0;
 
-#ifdef _WIN32
-    ComPtr<IDWriteFactory> factory_;
-    ComPtr<IDWriteTextFormat> format_;
-#else
+#ifndef _WIN32
     // FreeType + HarfBuzz text engine (non-Windows)
     std::unique_ptr<FreeTypeTextFormat> ftTextFormat_;
 #endif

@@ -169,6 +169,39 @@ JALIUM_API JaliumContext* jalium_context_create(JaliumBackend backend) {
 
     LOGI_CTX("jalium_context_create: using backend=%d", (int)actualBackend);
 
+    // On-demand load: if the target backend hasn't been loaded yet (its DLL
+    // hasn't been loaded → DllMain hasn't registered the factory), load it
+    // now. This covers both the env-var override path and the case where the
+    // managed layer passes an explicit backend (e.g. RenderBackend.Vulkan)
+    // without the env var.
+    if (actualBackend != JALIUM_BACKEND_AUTO && !registry.IsAvailable(actualBackend)) {
+#ifdef _WIN32
+        const char* libName = nullptr;
+        switch (actualBackend) {
+            case JALIUM_BACKEND_VULKAN:   libName = "jalium.native.vulkan.dll"; break;
+            case JALIUM_BACKEND_D3D12:    libName = "jalium.native.d3d12.dll"; break;
+            case JALIUM_BACKEND_METAL:    libName = "jalium.native.metal.dll"; break;
+            case JALIUM_BACKEND_SOFTWARE: libName = "jalium.native.software.dll"; break;
+            default: break;
+        }
+        if (libName) {
+            LOGI_CTX("jalium_context_create: on-demand loading %s", libName);
+            (void)LoadLibraryA(libName);
+        }
+#else
+        const char* libName = nullptr;
+        switch (actualBackend) {
+            case JALIUM_BACKEND_VULKAN:   libName = "libjalium.native.vulkan.so"; break;
+            case JALIUM_BACKEND_SOFTWARE: libName = "libjalium.native.software.so"; break;
+            default: break;
+        }
+        if (libName) {
+            LOGI_CTX("jalium_context_create: on-demand loading %s", libName);
+            (void)dlopen(libName, RTLD_NOW | RTLD_GLOBAL);
+        }
+#endif
+    }
+
     auto factory = registry.GetFactory(actualBackend);
     if (!factory) {
         LOGE_CTX("jalium_context_create: no factory for backend %d", (int)actualBackend);

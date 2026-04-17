@@ -2,8 +2,10 @@ namespace Jalium.UI.Media;
 
 /// <summary>
 /// Base class for all brushes that describe how an area is painted.
+/// Derives from <see cref="DependencyObject"/> so brush properties can participate
+/// in the dependency-property system (e.g. receive DynamicResource subscriptions).
 /// </summary>
-public abstract class Brush
+public abstract class Brush : DependencyObject
 {
     private double _opacity = 1.0;
 
@@ -28,16 +30,26 @@ public abstract class Brush
 public sealed class SolidColorBrush : Brush
 {
     /// <summary>
+    /// Identifies the <see cref="Color"/> dependency property.
+    /// </summary>
+    public static readonly DependencyProperty ColorProperty =
+        DependencyProperty.Register(nameof(Color), typeof(Color), typeof(SolidColorBrush),
+            new PropertyMetadata(Color.Transparent));
+
+    /// <summary>
     /// Gets or sets the color of the brush.
     /// </summary>
-    public Color Color { get; set; }
+    public Color Color
+    {
+        get => (Color)(GetValue(ColorProperty) ?? Color.Transparent);
+        set => SetValue(ColorProperty, value);
+    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SolidColorBrush"/> class.
     /// </summary>
     public SolidColorBrush()
     {
-        Color = Color.Transparent;
     }
 
     /// <summary>

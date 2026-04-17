@@ -1,0 +1,49 @@
+<Page xmlns="http://schemas.jalium.ui/2024"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      x:Class="RazorVirtualDataRepro.Views.VitrualDataPage"
+      Title="Virtual Data">
+
+    <Grid RowDefinitions="Auto,Auto,*" Margin="20">
+
+        <TextBlock Grid.Row="0"
+                   Text="@if(#.Adult) inside DataTemplate"
+                   FontSize="22"
+                   Foreground="#FFFFFF"
+                   Margin="0,0,0,4" />
+
+        <TextBlock Grid.Row="1"
+                   Text="Adult = (i % 3) >= 1 → every 3rd row (Person 3, 6, 9, ...) has its Age column hidden."
+                   FontSize="12"
+                   Foreground="#888888"
+                   Margin="0,0,0,16" />
+
+        <Border Grid.Row="2"
+                Background="#FF2D2D2D"
+                BorderBrush="#FF3D3D3D"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="12">
+            <ListBox ItemsSource="{Binding Persons}"
+                     Background="Transparent"
+                     BorderThickness="0">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Grid ColumnDefinitions="100,100,*">
+                            @if(#.Adult)
+                            {
+                                <TextBlock Grid.Column="0"
+                                           Text="{Binding Age}"
+                                           Foreground="#FF4EC9B0" />
+                            }
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding Name}"
+                                       Foreground="#FFFFFFFF" />
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Border>
+
+    </Grid>
+
+</Page>

@@ -3,11 +3,7 @@
 #include "jalium_backend.h"
 #include "vulkan_resources.h"
 
-#ifdef _WIN32
-#include <dwrite.h>
-#include <wincodec.h>
-#include <wrl/client.h>
-#else
+#ifndef _WIN32
 #include "text_engine.h"
 #endif
 
@@ -53,17 +49,12 @@ public:
     Bitmap* CreateBitmapFromMemory(const uint8_t* data, uint32_t dataSize) override;
     Bitmap* CreateBitmapFromPixels(const uint8_t* pixels, uint32_t width, uint32_t height, uint32_t stride) override;
 
-#ifdef _WIN32
-    IDWriteFactory* GetDWriteFactory() const { return dwriteFactory_.Get(); }
-#else
+#ifndef _WIN32
     TextEngine* GetTextEngine() const { return textEngine_.get(); }
 #endif
 
 private:
-#ifdef _WIN32
-    Microsoft::WRL::ComPtr<IDWriteFactory> dwriteFactory_;
-    Microsoft::WRL::ComPtr<IWICImagingFactory> wicFactory_;
-#else
+#ifndef _WIN32
     std::unique_ptr<TextEngine> textEngine_;
 #endif
     bool initialized_ = false;

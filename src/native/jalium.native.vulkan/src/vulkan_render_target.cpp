@@ -25,9 +25,6 @@
 
 #ifdef _WIN32
 #include <Windows.h>
-#include <d3d11.h>
-#include <dxgi1_2.h>
-#include <wrl/client.h>
 #else
 #include "text_engine.h"
 #include "text_layout.h"
@@ -37,228 +34,6 @@
 namespace jalium {
 
 namespace {
-
-#ifdef _WIN32
-using Microsoft::WRL::ComPtr;
-
-class DxgiDesktopDuplicator {
-public:
-    bool Capture(int32_t screenX, int32_t screenY, int32_t width, int32_t height, std::vector<uint8_t>& outPixels)
-    {
-        if (width <= 0 || height <= 0) {
-            outPixels.clear();
-            return false;
-        }
-
-        if (!EnsureForRect(screenX, screenY, width, height)) {
-            return false;
-        }
-
-        DXGI_OUTDUPL_FRAME_INFO frameInfo {};
-        ComPtr<IDXGIResource> desktopResource;
-        HRESULT hr = duplication_->AcquireNextFrame(16, &frameInfo, &desktopResource);
-        if (hr == DXGI_ERROR_WAIT_TIMEOUT) {
-            return TryReadStagingRect(screenX, screenY, width, height, outPixels);
-        }
-        if (hr == DXGI_ERROR_ACCESS_LOST) {
-            Reset();
-            return false;
-        }
-        if (FAILED(hr) || !desktopResource) {
-            return false;
-        }
-
-        ComPtr<ID3D11Texture2D> frameTexture;
-        hr = desktopResource.As(&frameTexture);
-        if (FAILED(hr) || !frameTexture) {
-            duplication_->ReleaseFrame();
-            return false;
-        }
-
-        EnsureStagingTexture();
-        if (!stagingTexture_) {
-            duplication_->ReleaseFrame();
-            return false;
-        }
-
-        context_->CopyResource(stagingTexture_.Get(), frameTexture.Get());
-        duplication_->ReleaseFrame();
-        return TryReadStagingRect(screenX, screenY, width, height, outPixels);
-    }
-
-private:
-    bool EnsureForRect(int32_t screenX, int32_t screenY, int32_t width, int32_t height)
-    {
-        if (duplication_ && IsRectWithinOutput(screenX, screenY, width, height)) {
-            return true;
-        }
-
-        Reset();
-
-        ComPtr<IDXGIFactory1> factory;
-        if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory)))) {
-            return false;
-        }
-
-        for (UINT adapterIndex = 0;; ++adapterIndex) {
-            ComPtr<IDXGIAdapter1> adapter;
-            if (factory->EnumAdapters1(adapterIndex, &adapter) == DXGI_ERROR_NOT_FOUND) {
-                break;
-            }
-
-            for (UINT outputIndex = 0;; ++outputIndex) {
-                ComPtr<IDXGIOutput> output;
-                if (adapter->EnumOutputs(outputIndex, &output) == DXGI_ERROR_NOT_FOUND) {
-                    break;
-                }
-
-                DXGI_OUTPUT_DESC desc {};
-                if (FAILED(output->GetDesc(&desc))) {
-                    continue;
-                }
-
-                const RECT rect = desc.DesktopCoordinates;
-                if (screenX < rect.left || screenY < rect.top ||
-                    screenX + width > rect.right || screenY + height > rect.bottom) {
-                    continue;
-                }
-
-                UINT creationFlags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
-#if defined(_DEBUG)
-                creationFlags |= D3D11_CREATE_DEVICE_DEBUG;
-#endif
-                D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
-                HRESULT hr = D3D11CreateDevice(
-                    adapter.Get(),
-                    D3D_DRIVER_TYPE_UNKNOWN,
-                    nullptr,
-                    creationFlags,
-                    nullptr,
-                    0,
-                    D3D11_SDK_VERSION,
-                    &device_,
-                    &featureLevel,
-                    &context_);
-                if (FAILED(hr)) {
-                    continue;
-                }
-
-                ComPtr<IDXGIOutput1> output1;
-                hr = output.As(&output1);
-                if (FAILED(hr) || !output1) {
-                    Reset();
-                    continue;
-                }
-
-                hr = output1->DuplicateOutput(device_.Get(), &duplication_);
-                if (FAILED(hr) || !duplication_) {
-                    Reset();
-                    continue;
-                }
-
-                outputDesc_ = desc;
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    bool IsRectWithinOutput(int32_t screenX, int32_t screenY, int32_t width, int32_t height) const
-    {
-        const RECT rect = outputDesc_.DesktopCoordinates;
-        return screenX >= rect.left && screenY >= rect.top &&
-            screenX + width <= rect.right &&
-            screenY + height <= rect.bottom;
-    }
-
-    void EnsureStagingTexture()
-    {
-        if (!duplication_) {
-            return;
-        }
-
-        DXGI_OUTDUPL_DESC duplicationDesc {};
-        duplication_->GetDesc(&duplicationDesc);
-        if (stagingTexture_ &&
-            duplicationDesc.ModeDesc.Width == stagingWidth_ &&
-            duplicationDesc.ModeDesc.Height == stagingHeight_) {
-            return;
-        }
-
-        stagingTexture_.Reset();
-        stagingWidth_ = duplicationDesc.ModeDesc.Width;
-        stagingHeight_ = duplicationDesc.ModeDesc.Height;
-
-        D3D11_TEXTURE2D_DESC desc {};
-        desc.Width = stagingWidth_;
-        desc.Height = stagingHeight_;
-        desc.MipLevels = 1;
-        desc.ArraySize = 1;
-        desc.Format = duplicationDesc.ModeDesc.Format;
-        desc.SampleDesc.Count = 1;
-        desc.Usage = D3D11_USAGE_STAGING;
-        desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-        device_->CreateTexture2D(&desc, nullptr, &stagingTexture_);
-    }
-
-    bool TryReadStagingRect(int32_t screenX, int32_t screenY, int32_t width, int32_t height, std::vector<uint8_t>& outPixels)
-    {
-        if (!stagingTexture_) {
-            return false;
-        }
-
-        D3D11_MAPPED_SUBRESOURCE mapped {};
-        HRESULT hr = context_->Map(stagingTexture_.Get(), 0, D3D11_MAP_READ, 0, &mapped);
-        if (FAILED(hr)) {
-            return false;
-        }
-
-        const int32_t sourceX = screenX - outputDesc_.DesktopCoordinates.left;
-        const int32_t sourceY = screenY - outputDesc_.DesktopCoordinates.top;
-        outPixels.assign(static_cast<size_t>(width) * static_cast<size_t>(height) * 4u, 0);
-
-        const auto* sourceBytes = static_cast<const uint8_t*>(mapped.pData);
-        for (int32_t row = 0; row < height; ++row) {
-            const auto* sourceRow = sourceBytes + static_cast<size_t>(sourceY + row) * mapped.RowPitch + static_cast<size_t>(sourceX) * 4u;
-            auto* destRow = outPixels.data() + static_cast<size_t>(row) * static_cast<size_t>(width) * 4u;
-            std::memcpy(destRow, sourceRow, static_cast<size_t>(width) * 4u);
-        }
-
-        context_->Unmap(stagingTexture_.Get(), 0);
-        for (int i = 0; i < width * height; ++i) {
-            outPixels[static_cast<size_t>(i) * 4u + 3] = 255;
-        }
-
-        return true;
-    }
-
-    void Reset()
-    {
-        stagingTexture_.Reset();
-        duplication_.Reset();
-        context_.Reset();
-        device_.Reset();
-        stagingWidth_ = 0;
-        stagingHeight_ = 0;
-        std::memset(&outputDesc_, 0, sizeof(outputDesc_));
-    }
-
-    ComPtr<ID3D11Device> device_;
-    ComPtr<ID3D11DeviceContext> context_;
-    ComPtr<IDXGIOutputDuplication> duplication_;
-    ComPtr<ID3D11Texture2D> stagingTexture_;
-    DXGI_OUTPUT_DESC outputDesc_ {};
-    UINT stagingWidth_ = 0;
-    UINT stagingHeight_ = 0;
-};
-
-DxgiDesktopDuplicator& GetDxgiDesktopDuplicator()
-{
-    static DxgiDesktopDuplicator duplicator;
-    return duplicator;
-}
-#endif
 
 template <typename T>
 T LoadInstanceProc(PFN_vkGetInstanceProcAddr getProc, VkInstance instance, const char* name)
@@ -865,15 +640,8 @@ JaliumResult VulkanRenderTarget::EndDraw()
         if (!impl_->initialized) {
             VK_LOG("[Vulkan] EndDraw: impl not initialized, skipping draw");
         } else if (gpuReplaySupported_ && gpuReplayHasClear_) {
-            // GPU replay path: pixelBuffer_ will be discarded, so any CPU work
-            // done this frame was wasted — but thanks to cpuRasterNeeded_ being
-            // false (or only lazily flipped to true), most of it never ran.
             ok = impl_->DrawReplayFrame(gpuReplayCommands_, clearColor_);
         } else {
-            // CPU upload path: DrawFrame will upload pixelBuffer_ verbatim.
-            // If the frame skipped CPU rasterization assuming it'd go through
-            // the replay path, we now have to catch pixelBuffer_ up to the
-            // recorded commands before uploading.
             EnsureCpuRasterization();
             ok = impl_->DrawFrame(pixelBuffer_.data(), static_cast<uint32_t>(width_), static_cast<uint32_t>(height_));
         }
@@ -1251,6 +1019,40 @@ bool VulkanRenderTarget::Impl::RecreateSwapchain(int32_t width, int32_t height, 
 
     DestroyGraphicsResources();
 
+    // The upload image and its view were created for the old swapchain extent.
+    // After DestroyGraphicsResources the descriptor pool/set are gone, so
+    // UpdateFrameDescriptorSet (called inside EnsureGraphicsResources when the
+    // new pool is allocated) would try to write the stale uploadImageView into
+    // the new descriptor set — which crashes the NVIDIA driver. Destroy the
+    // upload image in *every* per-frame slot (not just the current alias) so
+    // EnsureUploadImage recreates it at the new size when each slot runs.
+    CommitCurrentFrame();
+    for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+        auto& s = perFrameStates_[i];
+        if (s.uploadImageView != VK_NULL_HANDLE && destroyImageView) {
+            destroyImageView(device, s.uploadImageView, nullptr);
+        }
+        if (s.uploadImage != VK_NULL_HANDLE && destroyImage) {
+            destroyImage(device, s.uploadImage, nullptr);
+        }
+        if (s.uploadImageMemory != VK_NULL_HANDLE && freeMemory) {
+            freeMemory(device, s.uploadImageMemory, nullptr);
+        }
+        s.uploadImage = VK_NULL_HANDLE;
+        s.uploadImageMemory = VK_NULL_HANDLE;
+        s.uploadImageView = VK_NULL_HANDLE;
+        s.uploadImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        s.uploadWidth = 0;
+        s.uploadHeight = 0;
+    }
+    // Clear the current alias too.
+    uploadImage = VK_NULL_HANDLE;
+    uploadImageMemory = VK_NULL_HANDLE;
+    uploadImageView = VK_NULL_HANDLE;
+    uploadImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    uploadWidth = 0;
+    uploadHeight = 0;
+
     VkSurfaceCapabilitiesKHR capabilities {};
     if (getSurfaceCapabilities(physicalDevice, surface, &capabilities) != VK_SUCCESS) {
         return false;
@@ -1267,7 +1069,7 @@ bool VulkanRenderTarget::Impl::RecreateSwapchain(int32_t width, int32_t height, 
     }
 
     VkSurfaceFormatKHR selectedFormat = formats.front();
-    // Prefer UNORM format to match D3D12's DXGI_FORMAT_R8G8B8A8_UNORM behavior.
+    // Prefer UNORM format so CPU canvas and GPU replay pass sRGB values directly.
     // CPU canvas and GPU replay pass sRGB color values directly, so using an SRGB
     // swapchain would apply an unwanted linear→sRGB conversion (double encoding).
     // Try B8G8R8A8 first (Windows/desktop common), then R8G8B8A8 (Android common).
@@ -2963,6 +2765,11 @@ bool VulkanRenderTarget::Impl::UpdateFrameDescriptorSet()
 
     VkDescriptorImageInfo samplerInfo {};
     samplerInfo.sampler = frameSampler;
+    // Spec says imageView is ignored for VK_DESCRIPTOR_TYPE_SAMPLER, but the
+    // NVIDIA driver dereferences it anyway (null + offset 0x3104 → AV).
+    // Supply the upload view so the driver sees a valid handle.
+    samplerInfo.imageView = uploadImageView;
+    samplerInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
     VkWriteDescriptorSet writes[2] {};
     writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -2996,6 +2803,9 @@ bool VulkanRenderTarget::Impl::UpdateTransitionDescriptorSet()
     imageInfos[1].imageView = transitionImageViews[1];
     imageInfos[1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     imageInfos[2].sampler = frameSampler;
+    // NVIDIA driver workaround: dereferences imageView even for SAMPLER type.
+    imageInfos[2].imageView = transitionImageViews[0];
+    imageInfos[2].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
     VkWriteDescriptorSet writes[3] {};
     for (uint32_t index = 0; index < 3; ++index) {
@@ -7716,6 +7526,10 @@ void VulkanRenderTarget::DrawBitmap(Bitmap* bitmap, float x, float y, float w, f
         /* drop: skip this primitive but keep replay path */ (void)__FUNCTION__;
     }
 
+    if (!cpuRasterNeeded_) {
+        return;
+    }
+
     if (!bitmap || opacity <= 0.0f) {
         return;
     }
@@ -7877,14 +7691,13 @@ void VulkanRenderTarget::RenderText(const wchar_t* text, uint32_t textLength, Te
         SetBkMode(memoryDc, TRANSPARENT);
         SetTextColor(memoryDc, RGB(255, 255, 255));
 
-        const int fontWeight = FW_NORMAL;
         HFONT font = CreateFontW(
             fontHeight,
             0,
             0,
             0,
-            fontWeight,
-            FALSE,
+            textFormat->GetFontWeight(),
+            (textFormat->GetFontStyle() == 1 || textFormat->GetFontStyle() == 2) ? TRUE : FALSE,
             FALSE,
             FALSE,
             DEFAULT_CHARSET,
@@ -8230,13 +8043,6 @@ void VulkanRenderTarget::CaptureDesktopArea(int32_t screenX, int32_t screenY, in
     if (width <= 0 || height <= 0) {
         desktopCapturePixels_.clear();
         desktopCaptureValid_ = false;
-        return;
-    }
-
-    if (GetDxgiDesktopDuplicator().Capture(screenX, screenY, width, height, desktopCapturePixels_)) {
-        desktopCaptureWidth_ = width;
-        desktopCaptureHeight_ = height;
-        desktopCaptureValid_ = true;
         return;
     }
 

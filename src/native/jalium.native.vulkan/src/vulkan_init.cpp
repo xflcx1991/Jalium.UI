@@ -20,7 +20,12 @@ static IRenderBackend* CreateVulkanBackendWrapper()
 
 static int32_t IsVulkanBackendAvailable()
 {
-    return IsExperimentalVulkanEnabled() && IsVulkanRuntimeAvailable() ? 1 : 0;
+    // When Vulkan is explicitly requested (managed passes RenderBackend.Vulkan
+    // or JALIUM_RENDER_BACKEND=vulkan), the availability check gates whether
+    // the factory can be used. Only require the Vulkan runtime — do not gate
+    // on the JALIUM_EXPERIMENTAL_VULKAN env var, because the caller already
+    // made an explicit choice.
+    return IsVulkanRuntimeAvailable() ? 1 : 0;
 }
 
 void RegisterVulkanBackend()

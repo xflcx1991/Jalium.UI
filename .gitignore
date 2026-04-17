@@ -383,10 +383,8 @@ FodyWeavers.xsd
 # Android bugreport
 bugreport-*.zip
 
-# Sample projects — by default ignored; opt in specific samples below.
-samples/*
-# In-repo sample for @if(#.Property) DataTemplate reproduction.
-!samples/RazorVirtualDataRepro/
+# Sample projects
+samples/
 
 # Native build output
 src/native/build-*/

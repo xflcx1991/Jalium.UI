@@ -860,5 +860,174 @@ public class RazorSyntaxTests
 
         public TextBlock? StatusText { get; set; }
     }
+
+    // -----------------------------------------------------------------------
+    // DataTemplate + @if(#.Adult) per-item conditional rendering
+    // Repro for: bug where @if in a DataTemplate evaluates once against the
+    // template container (not the per-item DataContext), so every realized
+    // item either all-render or all-hide the conditional child.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void RazorIf_InsideDataTemplate_ShouldUpdateWhenAdultChanges()
+    {
+        // Reproduces: "@if(#.Adult) only evaluates once at init; when Adult flips to false,
+        // the child is still rendered."
+        // This verifies the MultiBinding + DataContext trigger actually fires on property change.
+        const string templateXaml = """
+            <DataTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                          xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+              <Grid>
+                @if(#.Adult)
+                {
+                  <TextBlock x:Name="AdultText" Text="{Binding Age}" />
+                }
+                <TextBlock x:Name="NameText" Text="{Binding Name}" />
+              </Grid>
+            </DataTemplate>
+            """;
+
+        var template = (DataTemplate)XamlReader.Parse(templateXaml);
+        var model = new PersonModel { Name = "Charlie", Age = 20, Adult = true };
+
+        var grid = (Grid)template.LoadContent();
+        grid.DataContext = model;
+
+        var adultText = (TextBlock)grid.Children[0];
+
+        Assert.Equal(Visibility.Visible, adultText.Visibility);
+
+        // Flip Adult to false — child must hide.
+        model.Adult = false;
+        Assert.Equal(Visibility.Collapsed, adultText.Visibility);
+
+        // Flip back — child must re-show.
+        model.Adult = true;
+        Assert.Equal(Visibility.Visible, adultText.Visibility);
+    }
+
+    [Fact]
+    public void RazorIf_InsideItemsControlDataTemplate_ShouldRenderPerItem()
+    {
+        // Reproduces the reported scenario: ItemsControl + DataTemplate + @if(#.Adult)
+        // where each item has its own Adult value.
+        const string xaml = """
+            <ItemsControl xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                          xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Grid>
+                    @if(#.Adult)
+                    {
+                      <TextBlock Text="{Binding Age}" />
+                    }
+                    <TextBlock Text="{Binding Name}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            """;
+
+        var items = new List<PersonModel>
+        {
+            new() { Name = "Alice", Age = 30, Adult = true },
+            new() { Name = "Bob",   Age = 15, Adult = false },
+        };
+
+        var itemsControl = (ItemsControl)XamlReader.Parse(xaml);
+        itemsControl.ItemsSource = items;
+
+        // Force the container generator to realize all items.
+        itemsControl.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        itemsControl.Arrange(new Rect(0, 0, 500, 500));
+
+        var realizedGrids = new List<Grid>();
+        CollectGrids(itemsControl, realizedGrids);
+
+        Assert.Equal(2, realizedGrids.Count);
+
+        var (aliceAdultText, _) = ExtractTexts(realizedGrids[0]);
+        var (bobAdultText, _)   = ExtractTexts(realizedGrids[1]);
+
+        Assert.Equal(Visibility.Visible,   aliceAdultText.Visibility);
+        Assert.Equal(Visibility.Collapsed, bobAdultText.Visibility);
+    }
+
+    private static void CollectGrids(Visual root, List<Grid> grids)
+    {
+        if (root is Grid g && g.Children.Count == 2 && g.Children[0] is TextBlock && g.Children[1] is TextBlock)
+            grids.Add(g);
+
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            if (VisualTreeHelper.GetChild(root, i) is Visual child)
+                CollectGrids(child, grids);
+        }
+    }
+
+    private static (TextBlock AdultText, TextBlock NameText) ExtractTexts(Grid grid)
+    {
+        return ((TextBlock)grid.Children[0], (TextBlock)grid.Children[1]);
+    }
+
+    [Fact]
+    public void RazorIf_InsideDataTemplate_ShouldBindPerItemDataContext()
+    {
+        const string templateXaml = """
+            <DataTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                          xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+              <Grid>
+                @if(#.Adult)
+                {
+                  <TextBlock x:Name="AdultText" Text="{Binding Age}" />
+                }
+                <TextBlock x:Name="NameText" Text="{Binding Name}" />
+              </Grid>
+            </DataTemplate>
+            """;
+
+        var template = (DataTemplate)XamlReader.Parse(templateXaml);
+
+        // Instance 1: Adult = true — Age TextBlock should be VISIBLE
+        var instance1 = (Grid)template.LoadContent();
+        instance1.DataContext = new PersonModel { Name = "Alice", Age = 30, Adult = true };
+        Assert.Equal(2, instance1.Children.Count);
+        var adultText1 = (TextBlock)instance1.Children[0];
+        Assert.Equal(Visibility.Visible, adultText1.Visibility);
+
+        // Instance 2: Adult = false — Age TextBlock should be COLLAPSED
+        var instance2 = (Grid)template.LoadContent();
+        instance2.DataContext = new PersonModel { Name = "Bob", Age = 15, Adult = false };
+        Assert.Equal(2, instance2.Children.Count);
+        var adultText2 = (TextBlock)instance2.Children[0];
+        Assert.Equal(Visibility.Collapsed, adultText2.Visibility);
+    }
+
+    private sealed class PersonModel : INotifyPropertyChanged
+    {
+        private string _name = string.Empty;
+        private int _age;
+        private bool _adult;
+
+        public string Name
+        {
+            get => _name;
+            set { _name = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Name))); }
+        }
+
+        public int Age
+        {
+            get => _age;
+            set { _age = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Age))); }
+        }
+
+        public bool Adult
+        {
+            get => _adult;
+            set { _adult = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Adult))); }
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+    }
 }
 

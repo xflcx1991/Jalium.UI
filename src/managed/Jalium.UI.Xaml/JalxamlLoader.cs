@@ -111,7 +111,10 @@ public static class JalxamlLoader
 
         using var reader = new System.IO.StreamReader(stream);
         var content = reader.ReadToEnd();
-        return content.Contains("@if(", StringComparison.Ordinal)
+        return content.Contains("@$.", StringComparison.Ordinal)
+            || content.Contains("@#.", StringComparison.Ordinal)
+            || content.Contains("@(", StringComparison.Ordinal)
+            || content.Contains("@if(", StringComparison.Ordinal)
             || content.Contains("@if (", StringComparison.Ordinal)
             || content.Contains("@for(", StringComparison.Ordinal)
             || content.Contains("@for (", StringComparison.Ordinal)

@@ -217,6 +217,30 @@ internal static partial class NativeMethods
     [LibraryImport(CoreLib, EntryPoint = "jalium_render_target_set_engine")]
     internal static partial int RenderTargetSetEngine(nint renderTarget, RenderingEngine engine);
 
+    /// <summary>
+    /// Mirrors native <c>JaliumGpuStats</c> — sequential layout matches the C struct.
+    /// Used by the DevTools Perf tab to surface GPU resource usage.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct GpuStatsNative
+    {
+        public int GlyphSlotsUsed;
+        public int GlyphSlotsTotal;
+        public long GlyphBytes;
+        public int PathEntries;
+        public long PathBytes;
+        public int TextureCount;
+        public long TextureBytes;
+    }
+
+    /// <summary>
+    /// Snapshots GPU resource usage for a render target. Returns JALIUM_OK (0) on
+    /// success, JALIUM_ERROR_NOT_SUPPORTED (3) if the backend hasn't implemented
+    /// the query.
+    /// </summary>
+    [LibraryImport(CoreLib, EntryPoint = "jalium_render_target_query_gpu_stats")]
+    internal static partial int RenderTargetQueryGpuStats(nint renderTarget, out GpuStatsNative stats);
+
     #endregion
 
     #region Render Target Management
@@ -845,6 +869,14 @@ internal static partial class NativeMethods
     /// </summary>
     [LibraryImport(CoreLib, EntryPoint = "jalium_draw_bitmap")]
     internal static partial void DrawBitmap(nint renderTarget, nint bitmap, float x, float y, float width, float height, float opacity);
+
+    /// <summary>
+    /// Draws a bitmap with explicit scaling-mode selection.
+    /// scalingMode values mirror <see cref="Jalium.UI.Media.BitmapScalingMode"/> integer ordinals
+    /// (Unspecified=0, LowQuality=1, HighQuality=2, NearestNeighbor=3, Linear=4, Fant=5).
+    /// </summary>
+    [LibraryImport(CoreLib, EntryPoint = "jalium_draw_bitmap_ex")]
+    internal static partial void DrawBitmapEx(nint renderTarget, nint bitmap, float x, float y, float width, float height, float opacity, int scalingMode);
 
     /// <summary>
     /// Captures the desktop area at the specified screen coordinates.

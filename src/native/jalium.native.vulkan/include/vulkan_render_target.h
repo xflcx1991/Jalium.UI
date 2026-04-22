@@ -58,6 +58,7 @@ public:
     void AddDirtyRect(float x, float y, float w, float h) override;
     void SetFullInvalidation() override;
     void DrawBitmap(Bitmap* bitmap, float x, float y, float w, float h, float opacity) override;
+    void DrawBitmap(Bitmap* bitmap, float x, float y, float w, float h, float opacity, int scalingMode) override;
     void DrawBackdropFilter(float x, float y, float w, float h, const char* backdropFilter, const char* material, const char* materialTint, float tintOpacity, float blurRadius, float cornerRadiusTL, float cornerRadiusTR, float cornerRadiusBR, float cornerRadiusBL) override;
     void DrawGlowingBorderHighlight(float x, float y, float w, float h, float animationPhase, float glowColorR, float glowColorG, float glowColorB, float strokeWidth, float trailLength, float dimOpacity, float screenWidth, float screenHeight) override;
     void DrawGlowingBorderTransition(float fromX, float fromY, float fromW, float fromH, float toX, float toY, float toW, float toH, float headProgress, float tailProgress, float animationPhase, float glowColorR, float glowColorG, float glowColorB, float strokeWidth, float trailLength, float dimOpacity, float screenWidth, float screenHeight) override;
@@ -86,6 +87,9 @@ public:
         }
         return JALIUM_OK;
     }
+
+    /// Override: report glyph atlas / path / texture usage for DevTools Perf tab.
+    JaliumResult QueryGpuStats(JaliumGpuStats* out) const override;
 
     /// Returns true if the active engine is Impeller.
     bool IsImpellerActive() const { return activeEngine_ == JALIUM_ENGINE_IMPELLER; }
@@ -421,7 +425,9 @@ private:
     //   [4] bitmapHeight
     //   [5] brush BGRA packed (b | g<<8 | r<<16 | a<<24)
     //   [6] drawFlags (alignment bits)
-    using TextCacheKey = std::tuple<std::wstring, std::wstring, int, int, int, uint32_t, int>;
+    //   [7] fontWeight (LOGFONT.lfWeight — Bold/Light/etc. produces different glyphs)
+    //   [8] fontStyle (italic flag — italic produces different glyphs from upright)
+    using TextCacheKey = std::tuple<std::wstring, std::wstring, int, int, int, uint32_t, int, int, int>;
     struct TextCacheEntry {
         // Stored as shared_ptr so the bitmap command can alias it instead of
         // deep-copying 16 KB per text primitive. The cache owns a strong ref;

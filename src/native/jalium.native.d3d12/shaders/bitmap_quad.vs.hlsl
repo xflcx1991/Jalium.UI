@@ -11,7 +11,8 @@ struct BitmapInstance
     float2 uvMin;
     float2 uvMax;
     float  opacity;
-    float3 _pad;
+    float  samplerIdx;  // 0=linear, 1=point/nearest, 2=anisotropic
+    float2 _pad;
 };
 
 StructuredBuffer<BitmapInstance> bitmaps : register(t0);
@@ -23,9 +24,10 @@ cbuffer InstanceOffset : register(b1)
 
 struct VsOutput
 {
-    float4 clipPos : SV_Position;
-    float2 uv      : TEXCOORD0;
-    float  opacity : TEXCOORD1;
+    float4 clipPos     : SV_Position;
+    float2 uv          : TEXCOORD0;
+    float  opacity     : TEXCOORD1;
+    nointerpolation float samplerIdx : TEXCOORD2;
 };
 
 VsOutput main(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
@@ -46,5 +48,6 @@ VsOutput main(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
         0.0, 1.0);
     o.uv = lerp(b.uvMin, b.uvMax, corner);
     o.opacity = b.opacity;
+    o.samplerIdx = b.samplerIdx;
     return o;
 }

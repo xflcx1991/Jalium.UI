@@ -6,6 +6,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cstdio>
+#include <limits>
 
 namespace jalium {
 
@@ -80,6 +81,40 @@ JaliumResult D3D12RenderTarget::SetRenderingEngine(JaliumRenderingEngine engine)
     if (directRenderer_) {
         directRenderer_->SetVelloEnabled(resolved == JALIUM_ENGINE_VELLO);
     }
+    return JALIUM_OK;
+}
+
+// ============================================================================
+// GPU Diagnostics (Perf tab)
+// ============================================================================
+
+JaliumResult D3D12RenderTarget::QueryGpuStats(JaliumGpuStats* out) const {
+    if (!out) return JALIUM_ERROR_INVALID_ARGUMENT;
+    *out = JaliumGpuStats{};
+
+    // Glyph atlas is the only persistent GPU cache here — pull slot usage + bytes.
+    if (directRenderer_) {
+        if (auto* atlas = directRenderer_->GetGlyphAtlas()) {
+            out->glyphSlotsUsed = atlas->GetCacheEntryCount();
+            out->glyphSlotsTotal = atlas->GetEstimatedCapacity();
+            out->glyphBytes = atlas->GetPackedBytes();
+        }
+        // Bitmap textures are per-frame but the count is indicative of load.
+        out->textureCount = directRenderer_->GetBitmapBatchTextureCount();
+        out->textureBytes = directRenderer_->GetBitmapBatchTextureBytes();
+        // Add the glyph atlas texture itself to the texture pool.
+        if (auto* atlas = directRenderer_->GetGlyphAtlas()) {
+            out->textureCount += 1;
+            out->textureBytes += atlas->GetTotalBytes();
+        }
+    }
+
+    // Path-cache-ish metric: current in-flight Impeller batches (tessellated paths).
+    // Vello uses compute, no per-frame CPU-side count beyond what's encoded.
+    if (impellerEngine_) {
+        out->pathEntries = static_cast<int32_t>(impellerEngine_->GetEncodedPathCount());
+    }
+
     return JALIUM_OK;
 }
 
@@ -318,20 +353,6 @@ JaliumResult D3D12RenderTarget::BeginDraw() {
         activeEngine_ = pendingEngine_;
     }
 
-    // Log active engine on first frame (or after switch)
-    {
-        static JaliumRenderingEngine lastLogged = (JaliumRenderingEngine)-1;
-        if (activeEngine_ != lastLogged) {
-            const char* name = (activeEngine_ == JALIUM_ENGINE_VELLO) ? "Vello"
-                             : (activeEngine_ == JALIUM_ENGINE_IMPELLER) ? "Impeller"
-                             : "Auto";
-            char buf[128];
-            sprintf_s(buf, "[RenderEngine] Active engine: %s (%d)\n", name, (int)activeEngine_);
-            OutputDebugStringA(buf);
-            lastLogged = activeEngine_;
-        }
-    }
-
     isDrawing_ = true;
     preGlassSnapshotCaptured_ = false;
 
@@ -480,22 +501,6 @@ void D3D12RenderTarget::FlushVelloIfNeeded() {
 
 void D3D12RenderTarget::FlushImpellerBatches() {
     if (!impellerEngine_ || !impellerEngine_->HasPendingWork() || !directRenderer_) return;
-
-    {
-        static int flushLog = 0;
-        if (flushLog++ < 5) {
-            auto& batches = impellerEngine_->GetBatches();
-            uint32_t solidCount = 0, emptyCount = 0;
-            for (auto& b : batches) {
-                if (b.vertices.empty() || b.indices.empty()) emptyCount++;
-                else solidCount++;
-            }
-            char buf[256];
-            sprintf_s(buf, "[Impeller] FlushImpellerBatches: %zu batches (solid=%u empty=%u)\n",
-                batches.size(), solidCount, emptyCount);
-            OutputDebugStringA(buf);
-        }
-    }
 
     // Convert Impeller batches to DirectRenderer triangles.
     // Impeller vertices are in pixel-space; DirectRenderer shader expects DIP-space.
@@ -665,8 +670,14 @@ void D3D12RenderTarget::FillEllipse(float cx, float cy, float rx, float ry, Brus
             et.m21 = t.m21 * dpiScale; et.m22 = t.m22 * dpiScale;
             et.dx = t.dx * dpiScale; et.dy = t.dy * dpiScale;
 
-            if (impellerEngine_->EncodeFillEllipse(cx, cy, rx, ry, bd, et))
+            if (impellerEngine_->EncodeFillEllipse(cx, cy, rx, ry, bd, et)) {
+                // Immediately drain Impeller batches into DirectRenderer so their
+                // drawOrder reflects the actual call site, not the end of the frame.
+                // Otherwise every Impeller-rendered shape ends up on top of all
+                // subsequent UI (e.g. popup menus cannot occlude icon paths).
+                FlushImpellerBatches();
                 return;
+            }
         }
     }
 
@@ -805,8 +816,10 @@ void D3D12RenderTarget::FillPolygon(const float* points, uint32_t pointCount, Br
             et.dx = t.dx * dpiScale; et.dy = t.dy * dpiScale;
 
             FillRule fr = (fillRule == 1) ? FillRule::NonZero : FillRule::EvenOdd;
-            if (impellerEngine_->EncodeFillPolygon(points, pointCount, bd, fr, et))
+            if (impellerEngine_->EncodeFillPolygon(points, pointCount, bd, fr, et)) {
+                FlushImpellerBatches();
                 return;
+            }
         }
     }
 
@@ -906,8 +919,10 @@ void D3D12RenderTarget::DrawPolygon(const float* points, uint32_t pointCount, Br
 
             if (impellerEngine_->EncodeStrokePath(
                     points[0], points[1], cmds.data(), (uint32_t)cmds.size(),
-                    bd, strokeWidth, closed, lineJoin, miterLimit, 0, nullptr, 0, 0.0f, et))
+                    bd, strokeWidth, closed, lineJoin, miterLimit, 0, nullptr, 0, 0.0f, et)) {
+                FlushImpellerBatches();
                 return;
+            }
         }
     }
 
@@ -1023,23 +1038,10 @@ void D3D12RenderTarget::FillPath(float startX, float startY, const float* comman
 
                 FillRule fr = (fillRule == 1) ? FillRule::NonZero : FillRule::EvenOdd;
                 if (impellerEngine_->EncodeFillPath(startX, startY, commands, commandLength, bd, fr, et)) {
+                    FlushImpellerBatches();
                     return;
-                } else {
-                    static int failCount = 0;
-                    if (failCount++ < 5) {
-                        char buf[256];
-                        sprintf_s(buf, "[Impeller] EncodeFillPath FAILED start=(%.1f,%.1f) cmdLen=%u color=(%.2f,%.2f,%.2f,%.2f)\n",
-                            startX, startY, commandLength, r, g, b, a);
-                        OutputDebugStringA(buf);
-                    }
                 }
-            } else {
-                static int failCount = 0;
-                if (failCount++ < 3) OutputDebugStringA("[Impeller] FillPath: ExtractBrushColor failed\n");
             }
-        } else {
-            static bool logged = false;
-            if (!logged) { OutputDebugStringA("[Impeller] FillPath: EnsureImpellerEngine failed\n"); logged = true; }
         }
         // Impeller encoding failed — fall through to CPU fallback
     } else {
@@ -1126,8 +1128,10 @@ void D3D12RenderTarget::StrokePath(float startX, float startY, const float* comm
 
                 if (impellerEngine_->EncodeStrokePath(startX, startY, commands, commandLength,
                         bd, strokeWidth, closed, lineJoin, miterLimit, lineCap,
-                        dashPattern, dashCount, dashOffset, et))
+                        dashPattern, dashCount, dashOffset, et)) {
+                    FlushImpellerBatches();
                     return;
+                }
             }
         }
         // Impeller encoding failed — fall through to CPU
@@ -1215,6 +1219,10 @@ void D3D12RenderTarget::RenderText(
 // ============================================================================
 
 void D3D12RenderTarget::DrawBitmap(Bitmap* bitmap, float x, float y, float w, float h, float opacity) {
+    DrawBitmap(bitmap, x, y, w, h, opacity, 0 /* JALIUM_BITMAP_SCALING_UNSPECIFIED */);
+}
+
+void D3D12RenderTarget::DrawBitmap(Bitmap* bitmap, float x, float y, float w, float h, float opacity, int scalingMode) {
     if (!isDrawing_ || !directRenderer_ || !bitmap) return;
     FlushVelloIfNeeded();
 
@@ -1226,7 +1234,7 @@ void D3D12RenderTarget::DrawBitmap(Bitmap* bitmap, float x, float y, float w, fl
     // Using the wrong format family for the SRV causes D3D12 validation failure → device lost.
     auto texDesc = tex->GetDesc();
     directRenderer_->AddBitmap(x, y, w, h, opacity * directRenderer_->GetOpacity(),
-                                tex, texDesc.Format);
+                                tex, texDesc.Format, 1.0f, 1.0f, scalingMode);
 }
 
 // ============================================================================
@@ -1305,21 +1313,129 @@ void D3D12RenderTarget::SetDpi(float dpiX, float dpiY) {
 // Dirty Rect Tracking
 // ============================================================================
 
+// ── Dirty-rect aggregation helpers ───────────────────────────────────────────
+namespace {
+
+inline bool RectContains(const D3D12RenderTarget::DirtyRect& outer,
+                         const D3D12RenderTarget::DirtyRect& inner) {
+    return outer.x <= inner.x
+        && outer.y <= inner.y
+        && outer.x + outer.w >= inner.x + inner.w
+        && outer.y + outer.h >= inner.y + inner.h;
+}
+
+inline bool RectsIntersect(const D3D12RenderTarget::DirtyRect& a,
+                           const D3D12RenderTarget::DirtyRect& b) {
+    return a.x < b.x + b.w
+        && b.x < a.x + a.w
+        && a.y < b.y + b.h
+        && b.y < a.y + a.h;
+}
+
+inline D3D12RenderTarget::DirtyRect RectUnion(
+    const D3D12RenderTarget::DirtyRect& a,
+    const D3D12RenderTarget::DirtyRect& b) {
+    float x0 = (std::min)(a.x, b.x);
+    float y0 = (std::min)(a.y, b.y);
+    float x1 = (std::max)(a.x + a.w, b.x + b.w);
+    float y1 = (std::max)(a.y + a.h, b.y + b.h);
+    return { x0, y0, x1 - x0, y1 - y0 };
+}
+
+inline bool ShouldMergeRects(
+    const D3D12RenderTarget::DirtyRect& a,
+    const D3D12RenderTarget::DirtyRect& b,
+    float adjacencyEpsilon, float wasteRatio) {
+    if (RectsIntersect(a, b)) return true;
+
+    bool xClose = a.x + a.w + adjacencyEpsilon >= b.x
+        && b.x + b.w + adjacencyEpsilon >= a.x;
+    bool yClose = a.y + a.h + adjacencyEpsilon >= b.y
+        && b.y + b.h + adjacencyEpsilon >= a.y;
+    if (xClose && yClose) return true;
+
+    float aArea = a.w * a.h;
+    float bArea = b.w * b.h;
+    auto u = RectUnion(a, b);
+    float uArea = u.w * u.h;
+    float waste = uArea - (aArea + bArea);
+    float larger = (std::max)(aArea, bArea);
+    if (larger <= 0.0f) return false;
+    return waste / larger <= wasteRatio;
+}
+
+} // namespace
+
 void D3D12RenderTarget::AddDirtyRect(float x, float y, float w, float h) {
     if (fullInvalidation_) return;
-    float margin = DirtyRectMargin;
-    float nx = (std::max)(x - margin, 0.0f);
-    float ny = (std::max)(y - margin, 0.0f);
-    float nw = w + margin * 2;
-    float nh = h + margin * 2;
 
-    // Merge into existing rects or add new
-    if (dirtyRects_.size() >= MaxDirtyRects) {
-        fullInvalidation_ = true;
-        dirtyRects_.clear();
-        return;
+    // Inflate by the fixed margin.  The C# caller now also applies a DPI-aware
+    // margin, but we still add a small constant here so that external callers
+    // (DevTools overlays, tests) don't have to know about AA fringes.
+    float margin = DirtyRectMargin;
+    DirtyRect r{
+        (std::max)(x - margin, 0.0f),
+        (std::max)(y - margin, 0.0f),
+        w + margin * 2.0f,
+        h + margin * 2.0f
+    };
+    if (r.w <= 0.0f || r.h <= 0.0f) return;
+
+    // 1. Absorption — new rect already contained in an existing one.
+    for (const auto& existing : dirtyRects_) {
+        if (RectContains(existing, r)) return;
     }
-    dirtyRects_.push_back({ nx, ny, nw, nh });
+
+    // 2. Replacement — new rect swallows existing ones; drop them.
+    for (size_t i = dirtyRects_.size(); i-- > 0; ) {
+        if (RectContains(r, dirtyRects_[i])) {
+            dirtyRects_.erase(dirtyRects_.begin() + i);
+        }
+    }
+
+    // 3. Beneficial merge — overlap / near-adjacency. Iterate to a fixed point
+    //    because merging two rects may make the result eligible to merge with
+    //    yet another.
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (size_t i = 0; i < dirtyRects_.size(); i++) {
+            if (ShouldMergeRects(dirtyRects_[i], r,
+                                 DirtyRectAdjacencyEpsilon,
+                                 DirtyRectMergeWasteRatio)) {
+                r = RectUnion(dirtyRects_[i], r);
+                dirtyRects_.erase(dirtyRects_.begin() + i);
+                changed = true;
+                break;
+            }
+        }
+    }
+
+    dirtyRects_.push_back(r);
+
+    // 4. Capacity — if we've overflown, perform repeated minimum-waste merges
+    //    of the closest pair. This bounds memory and Present1-array size
+    //    without the "give up → full redraw" fallback the old code used.
+    while (dirtyRects_.size() > MaxDirtyRects) {
+        size_t bestI = 0, bestJ = 1;
+        float bestExtra = std::numeric_limits<float>::max();
+        for (size_t i = 0; i < dirtyRects_.size(); i++) {
+            float ai = dirtyRects_[i].w * dirtyRects_[i].h;
+            for (size_t j = i + 1; j < dirtyRects_.size(); j++) {
+                auto u = RectUnion(dirtyRects_[i], dirtyRects_[j]);
+                float extra = u.w * u.h - ai - dirtyRects_[j].w * dirtyRects_[j].h;
+                if (extra < bestExtra) {
+                    bestExtra = extra;
+                    bestI = i;
+                    bestJ = j;
+                }
+            }
+        }
+        auto merged = RectUnion(dirtyRects_[bestI], dirtyRects_[bestJ]);
+        dirtyRects_.erase(dirtyRects_.begin() + bestJ);
+        dirtyRects_.erase(dirtyRects_.begin() + bestI);
+        dirtyRects_.push_back(merged);
+    }
 }
 
 void D3D12RenderTarget::SetFullInvalidation() {

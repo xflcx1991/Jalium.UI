@@ -113,6 +113,30 @@ public:
     /// Clears the entire atlas cache (e.g. on device lost).
     void Clear();
 
+    // ── Diagnostics accessors (DevTools Perf tab) ──
+    // Lock around mutex_ since cache_ may be written from a rasterization
+    // thread while the UI thread is snapshotting.
+
+    int32_t GetCacheEntryCount() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return static_cast<int32_t>(cache_.size());
+    }
+
+    int32_t GetEstimatedCapacity() const {
+        return (kAtlasWidth * kAtlasHeight) / (16 * 16);
+    }
+
+    int64_t GetPackedBytes() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        int64_t wholeRows = static_cast<int64_t>(packY_) * kAtlasWidth;
+        int64_t currentRowPartial = static_cast<int64_t>(packX_) * rowHeight_;
+        return (wholeRows + currentRowPartial) * 4;
+    }
+
+    int64_t GetTotalBytes() const {
+        return static_cast<int64_t>(kAtlasWidth) * kAtlasHeight * 4;
+    }
+
 private:
     std::vector<uint8_t> atlasPixels_;
 

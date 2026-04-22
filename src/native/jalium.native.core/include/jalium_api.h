@@ -101,6 +101,20 @@ JALIUM_API JaliumResult jalium_context_set_default_engine(
 JALIUM_API JaliumRenderingEngine jalium_context_get_default_engine(JaliumContext* ctx);
 
 // ============================================================================
+// GPU Diagnostics
+// ============================================================================
+
+/// Snapshots the GPU resource usage for a render target.
+/// Safe to call from the UI thread immediately after end_draw. Zero-fills and
+/// returns an error if the backend does not implement the query.
+/// @param rt The render target.
+/// @param out Output structure to receive the stats.
+/// @return JALIUM_OK on success, JALIUM_ERROR_NOT_SUPPORTED if unimplemented.
+JALIUM_API JaliumResult jalium_render_target_query_gpu_stats(
+    JaliumRenderTarget* rt,
+    JaliumGpuStats* out);
+
+// ============================================================================
 // Render Target Management
 // ============================================================================
 
@@ -682,6 +696,34 @@ JALIUM_API void jalium_draw_bitmap(
     JaliumImage* bitmap,
     float x, float y, float width, float height,
     float opacity
+);
+
+/// Bitmap scaling-mode ordinals — must match Jalium.UI.Media.BitmapScalingMode.
+/// Used by jalium_draw_bitmap_ex to pick the GPU sampler / CPU resampler kernel.
+typedef enum {
+    JALIUM_BITMAP_SCALING_UNSPECIFIED     = 0,  ///< Backend default — currently HighQuality.
+    JALIUM_BITMAP_SCALING_LOW_QUALITY     = 1,  ///< Bilinear (no mipmap).
+    JALIUM_BITMAP_SCALING_HIGH_QUALITY    = 2,  ///< Anisotropic + trilinear mipmap.
+    JALIUM_BITMAP_SCALING_NEAREST_NEIGHBOR = 3, ///< Point sampling — pixel art / 1:1 UI.
+    JALIUM_BITMAP_SCALING_LINEAR          = 4,  ///< Bilinear (no mipmap), explicit.
+    JALIUM_BITMAP_SCALING_FANT            = 5   ///< Treated as HighQuality (Anisotropic + mipmap).
+} JaliumBitmapScalingMode;
+
+/// Draws a bitmap with an explicit scaling mode.
+/// @param rt The render target.
+/// @param bitmap The bitmap to draw.
+/// @param x The destination x coordinate.
+/// @param y The destination y coordinate.
+/// @param width The destination width.
+/// @param height The destination height.
+/// @param opacity The opacity (0.0 - 1.0).
+/// @param scalingMode One of JaliumBitmapScalingMode — selects the sampler / kernel.
+JALIUM_API void jalium_draw_bitmap_ex(
+    JaliumRenderTarget* rt,
+    JaliumImage* bitmap,
+    float x, float y, float width, float height,
+    float opacity,
+    int scalingMode
 );
 
 // ============================================================================

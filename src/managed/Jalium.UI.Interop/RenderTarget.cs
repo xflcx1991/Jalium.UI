@@ -3,6 +3,20 @@ using Jalium.UI;
 namespace Jalium.UI.Interop;
 
 /// <summary>
+/// Snapshot of a render target's GPU resource usage, returned by
+/// <see cref="RenderTarget.TryQueryGpuStats(out GpuResourceStats)"/>.
+/// Field semantics mirror native <c>JaliumGpuStats</c>.
+/// </summary>
+public readonly record struct GpuResourceStats(
+    int GlyphSlotsUsed,
+    int GlyphSlotsTotal,
+    long GlyphBytes,
+    int PathEntries,
+    long PathBytes,
+    int TextureCount,
+    long TextureBytes);
+
+/// <summary>
 /// Represents a native render target for drawing.
 /// </summary>
 public sealed class RenderTarget : IDisposable
@@ -225,6 +239,27 @@ public sealed class RenderTarget : IDisposable
         }
 
         return JaliumResultMapper.FromCode(resultCode);
+    }
+
+    /// <summary>
+    /// Snapshots the backend's GPU resource usage (glyph atlas, path cache,
+    /// texture totals). Returns true when the backend filled the struct, false
+    /// when either the handle is invalid or the backend hasn't implemented the
+    /// query yet — DevTools treats that case as "no snapshot published".
+    /// </summary>
+    public bool TryQueryGpuStats(out GpuResourceStats stats)
+    {
+        stats = default;
+        if (_disposed || _handle == nint.Zero) return false;
+
+        int resultCode = NativeMethods.RenderTargetQueryGpuStats(_handle, out var raw);
+        if (resultCode != 0) return false;
+
+        stats = new GpuResourceStats(
+            raw.GlyphSlotsUsed, raw.GlyphSlotsTotal, raw.GlyphBytes,
+            raw.PathEntries, raw.PathBytes,
+            raw.TextureCount, raw.TextureBytes);
+        return true;
     }
 
     /// <summary>
@@ -650,6 +685,23 @@ public sealed class RenderTarget : IDisposable
         ThrowIfDisposed();
         if (bitmap == null || !bitmap.IsValid) return;
         NativeMethods.DrawBitmap(_handle, bitmap.Handle, x, y, width, height, opacity);
+    }
+
+    /// <summary>
+    /// Draws a bitmap with the specified scaling mode.
+    /// </summary>
+    /// <param name="bitmap">The bitmap to draw.</param>
+    /// <param name="x">The x coordinate.</param>
+    /// <param name="y">The y coordinate.</param>
+    /// <param name="width">The width.</param>
+    /// <param name="height">The height.</param>
+    /// <param name="opacity">The opacity (0-1).</param>
+    /// <param name="scalingMode">The bitmap scaling algorithm to use.</param>
+    public void DrawBitmap(NativeBitmap bitmap, float x, float y, float width, float height, float opacity, Jalium.UI.Media.BitmapScalingMode scalingMode)
+    {
+        ThrowIfDisposed();
+        if (bitmap == null || !bitmap.IsValid) return;
+        NativeMethods.DrawBitmapEx(_handle, bitmap.Handle, x, y, width, height, opacity, (int)scalingMode);
     }
 
     /// <summary>

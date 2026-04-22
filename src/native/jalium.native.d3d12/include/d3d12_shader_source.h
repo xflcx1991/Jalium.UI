@@ -328,7 +328,8 @@ struct BitmapInstance
     float2 uvMin;
     float2 uvMax;
     float  opacity;
-    float3 _pad;
+    float  samplerIdx;
+    float2 _pad;
 };
 
 StructuredBuffer<BitmapInstance> bitmaps : register(t0);
@@ -340,9 +341,10 @@ cbuffer InstanceOffset : register(b1)
 
 struct VsOutput
 {
-    float4 clipPos : SV_Position;
-    float2 uv      : TEXCOORD0;
-    float  opacity : TEXCOORD1;
+    float4 clipPos     : SV_Position;
+    float2 uv          : TEXCOORD0;
+    float  opacity     : TEXCOORD1;
+    nointerpolation float samplerIdx : TEXCOORD2;
 };
 
 VsOutput main(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
@@ -363,24 +365,35 @@ VsOutput main(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
         0.0, 1.0);
     o.uv = lerp(b.uvMin, b.uvMax, corner);
     o.opacity = b.opacity;
+    o.samplerIdx = b.samplerIdx;
     return o;
 }
 )HLSL";
 
 static const char kBitmapQuadPS[] = R"HLSL(
 Texture2D<float4> bitmapTexture : register(t1);
-SamplerState bitmapSampler : register(s0);
+SamplerState linearSampler : register(s0);
+SamplerState pointSampler  : register(s1);
+SamplerState anisoSampler  : register(s2);
 
 struct PsInput
 {
-    float4 clipPos : SV_Position;
-    float2 uv      : TEXCOORD0;
-    float  opacity : TEXCOORD1;
+    float4 clipPos     : SV_Position;
+    float2 uv          : TEXCOORD0;
+    float  opacity     : TEXCOORD1;
+    nointerpolation float samplerIdx : TEXCOORD2;
 };
 
 float4 main(PsInput input) : SV_Target
 {
-    float4 color = bitmapTexture.Sample(bitmapSampler, input.uv);
+    int idx = (int)input.samplerIdx;
+    float4 color;
+    if (idx == 1)
+        color = bitmapTexture.Sample(pointSampler, input.uv);
+    else if (idx == 2)
+        color = bitmapTexture.Sample(anisoSampler, input.uv);
+    else
+        color = bitmapTexture.Sample(linearSampler, input.uv);
     color *= input.opacity;
     if (color.a < 1.0 / 255.0) discard;
     return color;

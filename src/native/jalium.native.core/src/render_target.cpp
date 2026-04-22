@@ -543,6 +543,20 @@ JALIUM_API void jalium_draw_bitmap(
     }
 }
 
+JALIUM_API void jalium_draw_bitmap_ex(
+    JaliumRenderTarget* rt,
+    JaliumImage* bitmap,
+    float x, float y, float width, float height,
+    float opacity,
+    int scalingMode)
+{
+    if (rt && bitmap) {
+        reinterpret_cast<jalium::RenderTarget*>(rt)->DrawBitmap(
+            reinterpret_cast<jalium::Bitmap*>(bitmap),
+            x, y, width, height, opacity, scalingMode);
+    }
+}
+
 JALIUM_API void jalium_draw_backdrop_filter(
     JaliumRenderTarget* rt,
     float x, float y, float width, float height,

@@ -89,7 +89,8 @@ struct BitmapQuadInstance {
     float uvMinX, uvMinY;       // texture UV top-left [0,1]      offset 16
     float uvMaxX, uvMaxY;       // texture UV bottom-right [0,1]  offset 24
     float opacity;              // overall opacity [0,1]           offset 32
-    float _pad0, _pad1, _pad2;  //                                offset 36 (pad to 48)
+    float samplerIdx;           // 0=linear,1=point,2=anisotropic  offset 36
+    float _pad1, _pad2;         //                                offset 40 (pad to 48)
 };
 static_assert(sizeof(BitmapQuadInstance) == 48, "BitmapQuadInstance must be 48 bytes");
 
@@ -180,7 +181,8 @@ public:
                  float r, float g, float b, float a);
     void AddBitmap(float x, float y, float w, float h, float opacity,
                    ID3D12Resource* textureResource, DXGI_FORMAT format,
-                   float uvMaxX = 1.0f, float uvMaxY = 1.0f);
+                   float uvMaxX = 1.0f, float uvMaxY = 1.0f,
+                   int scalingMode = 0 /* JALIUM_BITMAP_SCALING_UNSPECIFIED */);
 
     // --- Triangle path fill (flat-shaded triangulated polygon) ---
     void AddTriangles(const TriangleVertex* vertices, uint32_t vertexCount);
@@ -322,6 +324,27 @@ public:
     void FlushVelloPaths();
     void ApplyScissorToVello();
     void SetVelloEnabled(bool enabled) { velloEnabled_ = enabled; }
+
+    // --- Diagnostics accessors (Perf tab) ---
+    D3D12GlyphAtlas* GetGlyphAtlas() const { return glyphAtlas_.get(); }
+    int32_t GetBitmapBatchTextureCount() const { return static_cast<int32_t>(bitmapTextures_.size()); }
+    int64_t GetBitmapBatchTextureBytes() const {
+        int64_t total = 0;
+        for (const auto& tx : bitmapTextures_) {
+            if (!tx.textureResource) continue;
+            auto desc = tx.textureResource->GetDesc();
+            // DXGI_FORMAT width × height × bytes/pixel is a reasonable approximation.
+            int64_t bpp = 4;
+            switch (desc.Format) {
+                case DXGI_FORMAT_R8_UNORM: bpp = 1; break;
+                case DXGI_FORMAT_R8G8_UNORM: bpp = 2; break;
+                case DXGI_FORMAT_R16G16B16A16_FLOAT: bpp = 8; break;
+                default: bpp = 4; break;
+            }
+            total += static_cast<int64_t>(desc.Width) * desc.Height * bpp;
+        }
+        return total;
+    }
 
 private:
     bool CreatePSOs();

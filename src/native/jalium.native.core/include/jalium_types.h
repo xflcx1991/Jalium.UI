@@ -232,6 +232,19 @@ typedef struct JaliumAdapterInfo {
     uint32_t deviceId;              ///< PCI device ID
 } JaliumAdapterInfo;
 
+/// Per-frame GPU resource snapshot used by DevTools Perf tab.
+/// All fields are point-in-time values at call site — not accumulators.
+/// Missing / not-applicable categories should be zero-filled by the backend.
+typedef struct JaliumGpuStats {
+    int32_t glyphSlotsUsed;    ///< Glyph cache entries currently resident
+    int32_t glyphSlotsTotal;   ///< Estimated slot capacity at current avg glyph size
+    int64_t glyphBytes;        ///< Bytes of the glyph atlas that are packed
+    int32_t pathEntries;       ///< Path / tessellation cache entry count
+    int64_t pathBytes;         ///< Path / tessellation cache bytes in flight
+    int32_t textureCount;      ///< Backend-owned GPU textures (atlas + swap + effects)
+    int64_t textureBytes;      ///< Combined texture bytes
+} JaliumGpuStats;
+
 /// Platform-neutral native surface descriptor.
 /// handle0/1/2 are backend/platform-specific payload slots (for example HWND,
 /// X11 Display + Window, or ANativeWindow pointer).

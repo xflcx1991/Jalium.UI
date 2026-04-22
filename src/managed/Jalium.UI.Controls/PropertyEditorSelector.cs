@@ -20,6 +20,8 @@ internal class PropertyEditorSelector
         typeof(decimal)
     };
 
+    private static readonly Thickness s_editorMargin = new Thickness(4, 3, 8, 3);
+
     /// <summary>
     /// Creates an appropriate editor <see cref="FrameworkElement"/> for the given property item.
     /// </summary>
@@ -58,14 +60,19 @@ internal class PropertyEditorSelector
         return CreateStringEditor(item, owner);
     }
 
+    private static Style? ResolveStyle(PropertyGrid owner, string key)
+        => owner.TryFindResource(key) as Style;
+
     private static FrameworkElement CreateBoolEditor(PropertyItem item, PropertyGrid owner)
     {
+        // Use the default CheckBox theme style; just adjust layout to fit the row.
         var checkBox = new CheckBox
         {
             IsChecked = item.Value is true,
             IsEnabled = !item.IsReadOnly && !owner.IsReadOnly,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(4, 2, 4, 2)
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Margin = s_editorMargin
         };
 
         checkBox.Checked += (_, _) =>
@@ -92,7 +99,8 @@ internal class PropertyEditorSelector
             IsChecked = item.Value as bool?,
             IsEnabled = !item.IsReadOnly && !owner.IsReadOnly,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(4, 2, 4, 2)
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Margin = s_editorMargin
         };
 
         checkBox.Checked += (_, _) =>
@@ -119,12 +127,16 @@ internal class PropertyEditorSelector
 
     private static FrameworkElement CreateEnumEditor(PropertyItem item, PropertyGrid owner)
     {
+        // Use the default ComboBox theme style; local values compress the row.
         var comboBox = new ComboBox
         {
             IsEnabled = !item.IsReadOnly && !owner.IsReadOnly,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(4, 2, 4, 2),
-            HorizontalAlignment = HorizontalAlignment.Stretch
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Margin = s_editorMargin,
+            MinHeight = 24,
+            Padding = new Thickness(8, 2, 4, 2),
+            FontSize = 12
         };
 
         var values = Enum.GetValues(item.PropertyType);
@@ -166,7 +178,8 @@ internal class PropertyEditorSelector
             IsEnabled = !item.IsReadOnly && !owner.IsReadOnly,
             IsCompact = true,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(4, 2, 4, 2)
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Margin = s_editorMargin
         };
 
         colorPicker.ColorChanged += (_, e) =>
@@ -186,8 +199,9 @@ internal class PropertyEditorSelector
             Text = item.Value?.ToString() ?? string.Empty,
             IsReadOnly = item.IsReadOnly || owner.IsReadOnly,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(4, 2, 4, 2),
-            HorizontalAlignment = HorizontalAlignment.Stretch
+            Margin = s_editorMargin,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Style = ResolveStyle(owner, "PropertyGridEditorTextBoxStyle")
         };
 
         textBox.LostFocus += (_, _) =>
@@ -218,8 +232,9 @@ internal class PropertyEditorSelector
             Text = item.Value?.ToString() ?? string.Empty,
             IsReadOnly = item.IsReadOnly || owner.IsReadOnly,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(4, 2, 4, 2),
-            HorizontalAlignment = HorizontalAlignment.Stretch
+            Margin = s_editorMargin,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Style = ResolveStyle(owner, "PropertyGridEditorTextBoxStyle")
         };
 
         textBox.LostFocus += (_, _) =>
@@ -257,9 +272,18 @@ internal class PropertyEditorSelector
         {
             Text = item.Value?.ToString() ?? "(null)",
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(4, 2, 4, 2),
-            Foreground = new SolidColorBrush(Color.FromRgb(128, 128, 128))
+            Margin = new Thickness(4, 3, 8, 3),
+            FontSize = 12
         };
+
+        if (owner.TryFindResource("TextFillColorTertiaryBrush") is Brush tertiary)
+        {
+            summaryText.Foreground = tertiary;
+        }
+        else
+        {
+            summaryText.Foreground = new SolidColorBrush(Color.FromRgb(140, 140, 140));
+        }
 
         var expander = new Expander
         {

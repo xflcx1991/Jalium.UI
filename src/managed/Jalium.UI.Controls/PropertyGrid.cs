@@ -1,8 +1,10 @@
 using System.Collections;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Reflection;
 using Jalium.UI.Input;
 using Jalium.UI.Media;
+using Jalium.UI.Threading;
 
 namespace Jalium.UI.Controls;
 
@@ -18,13 +20,37 @@ public class PropertyGrid : Control
     private readonly List<PropertyItem> _allPropertyItems = new();
     private readonly Dictionary<PropertyItem, FrameworkElement> _propertyRowMap = new();
 
-    private StackPanel? _toolBar;
+    private Border? _toolBar;
+    private Border? _searchBoxBorder;
     private TextBox? _searchBox;
+    private Button? _categorizedButton;
+    private Button? _alphabeticalButton;
     private ScrollViewer? _propertiesHost;
     private StackPanel? _propertiesPanel;
     private Border? _descriptionArea;
     private TextBlock? _descriptionTitle;
     private TextBlock? _descriptionText;
+
+    // Default row brushes (used only when theme resources can't be resolved).
+    private static readonly Brush s_defaultRowHoverBrush = new SolidColorBrush(Color.FromArgb(18, 255, 255, 255));
+    private static readonly Brush s_defaultRowSelectedBrush = new SolidColorBrush(Color.FromArgb(56, 124, 77, 255));
+    private static readonly Brush s_defaultSelectionAccentBrush = new SolidColorBrush(Color.FromRgb(124, 77, 255));
+
+    // Description area animation (height + opacity, non-linear cubic ease-out).
+    private const double DescriptionExpandMs = 260.0;
+    private const double DescriptionCollapseMs = 180.0;
+    // Floor keeps layout stable even if measurement briefly yields 0 (e.g. before
+    // the first layout pass). The real target is always the measured DesiredSize.
+    private const double DescriptionMinHeight = 36.0;
+
+    private DispatcherTimer? _descriptionAnimationTimer;
+    private readonly Stopwatch _descriptionStopwatch = new();
+    private double _descriptionAnimationDurationMs = DescriptionExpandMs;
+    private double _descriptionStartHeight;
+    private double _descriptionStartOpacity;
+    private double _descriptionTargetHeight;
+    private double _descriptionTargetOpacity;
+    private bool _descriptionVisible;
 
     /// <inheritdoc />
     protected override Jalium.UI.Automation.AutomationPeer? OnCreateAutomationPeer()
@@ -370,26 +396,84 @@ public class PropertyGrid : Control
     {
         base.OnApplyTemplate();
 
-        // Unhook old search box
+        // Unhook old search box / buttons
         if (_searchBox != null)
         {
             _searchBox.TextChanged -= OnSearchBoxTextChanged;
         }
+        if (_categorizedButton != null)
+        {
+            _categorizedButton.Click -= OnCategorizedButtonClick;
+        }
+        if (_alphabeticalButton != null)
+        {
+            _alphabeticalButton.Click -= OnAlphabeticalButtonClick;
+        }
 
-        _toolBar = GetTemplateChild("PART_ToolBar") as StackPanel;
-        _searchBox = GetTemplateChild("PART_SearchBox") as TextBox;
+        _toolBar = GetTemplateChild("PART_ToolBar") as Border;
+        _searchBoxBorder = GetTemplateChild("PART_SearchBox") as Border;
+        _searchBox = GetTemplateChild("PART_SearchTextBox") as TextBox;
+        _categorizedButton = GetTemplateChild("PART_CategorizedButton") as Button;
+        _alphabeticalButton = GetTemplateChild("PART_AlphabeticalButton") as Button;
         _propertiesHost = GetTemplateChild("PART_PropertiesHost") as ScrollViewer;
         _propertiesPanel = GetTemplateChild("PART_PropertiesPanel") as StackPanel;
         _descriptionArea = GetTemplateChild("PART_DescriptionArea") as Border;
+        _descriptionTitle = GetTemplateChild("PART_PropertyNameText") as TextBlock;
+        _descriptionText = GetTemplateChild("PART_PropertyDescriptionText") as TextBlock;
 
-        // Wire up search box
         if (_searchBox != null)
         {
             _searchBox.TextChanged += OnSearchBoxTextChanged;
+            _searchBox.Text = SearchText ?? string.Empty;
+        }
+        if (_categorizedButton != null)
+        {
+            _categorizedButton.Click += OnCategorizedButtonClick;
+        }
+        if (_alphabeticalButton != null)
+        {
+            _alphabeticalButton.Click += OnAlphabeticalButtonClick;
         }
 
+        // Reset description area to collapsed state; animation will open it
+        // when a property with a description becomes selected.
+        if (_descriptionArea != null)
+        {
+            _descriptionArea.Height = 0;
+            _descriptionArea.Opacity = 0;
+            _descriptionArea.Visibility = Visibility.Collapsed;
+        }
+        _descriptionVisible = false;
+
+        UpdateSortModeButtons();
         UpdateVisibility();
         RebuildView();
+    }
+
+    private void OnCategorizedButtonClick(object? sender, RoutedEventArgs e)
+    {
+        SortMode = PropertyGridSortMode.Categorized;
+    }
+
+    private void OnAlphabeticalButtonClick(object? sender, RoutedEventArgs e)
+    {
+        SortMode = PropertyGridSortMode.Alphabetical;
+    }
+
+    private void UpdateSortModeButtons()
+    {
+        var activeStyle = TryFindResource("PropertyGridToolbarButtonActiveStyle") as Style;
+        var inactiveStyle = TryFindResource("PropertyGridToolbarButtonStyle") as Style;
+        var isCategorized = SortMode == PropertyGridSortMode.Categorized;
+
+        if (_categorizedButton != null)
+        {
+            _categorizedButton.Style = isCategorized ? activeStyle : inactiveStyle;
+        }
+        if (_alphabeticalButton != null)
+        {
+            _alphabeticalButton.Style = isCategorized ? inactiveStyle : activeStyle;
+        }
     }
 
     #endregion
@@ -421,6 +505,14 @@ public class PropertyGrid : Control
     private static void OnViewPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var grid = (PropertyGrid)d;
+        grid.UpdateSortModeButtons();
+        grid.RebuildView();
+    }
+
+    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var grid = (PropertyGrid)d;
+        grid.UpdateVisibility();
         grid.RebuildView();
     }
 
@@ -658,6 +750,8 @@ public class PropertyGrid : Control
             .ThenBy(c => c, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        var categoryExpanderStyle = TryFindResource("PropertyGridCategoryExpanderStyle") as Style;
+
         foreach (var category in sortedCategories)
         {
             var items = groups[category];
@@ -674,14 +768,20 @@ public class PropertyGrid : Control
 
             var headerText = new TextBlock
             {
-                Text = category,
-                FontWeight = FontWeights.Bold,
-                Margin = new Thickness(4, 2, 4, 2),
+                Text = category.ToUpperInvariant(),
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 11,
                 VerticalAlignment = VerticalAlignment.Center
             };
 
             if (CategoryHeaderForeground != null)
+            {
                 headerText.Foreground = CategoryHeaderForeground;
+            }
+            else if (TryFindResource("TextFillColorSecondaryBrush") is Brush secondary)
+            {
+                headerText.Foreground = secondary;
+            }
 
             var expander = new Expander
             {
@@ -691,8 +791,15 @@ public class PropertyGrid : Control
                 Margin = new Thickness(0, 0, 0, 2)
             };
 
+            if (categoryExpanderStyle != null)
+            {
+                expander.Style = categoryExpanderStyle;
+            }
+
             if (CategoryHeaderBackground != null)
+            {
                 expander.HeaderBackground = CategoryHeaderBackground;
+            }
 
             _propertiesPanel.Children.Add(expander);
         }
@@ -717,50 +824,108 @@ public class PropertyGrid : Control
 
     private FrameworkElement CreatePropertyRowInternal(PropertyItem item)
     {
-        var grid = new Grid
+        // Row container: Border supports IsMouseOver-style background; we use
+        // MouseEnter/Leave handlers since Border's style system already applies
+        // other visual settings in themes.
+        var rowBorder = new Border
         {
-            Margin = new Thickness(0, 1, 0, 1)
+            Background = Brushes.Transparent,
+            CornerRadius = new CornerRadius(3),
+            Padding = new Thickness(0),
+            Margin = new Thickness(4, 0, 4, 0)
         };
 
+        var grid = new Grid();
+
+        // Column 0: 2px accent bar (visible only when selected)
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Pixel) });
+        // Column 1: name
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(NameColumnWidth, GridUnitType.Pixel) });
+        // Column 2: editor
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-        // Name label
+        var accentBar = new Border
+        {
+            Background = Brushes.Transparent,
+            CornerRadius = new CornerRadius(1),
+            Margin = new Thickness(0, 3, 4, 3),
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        Grid.SetColumn(accentBar, 0);
+        grid.Children.Add(accentBar);
+
         var nameLabel = new TextBlock
         {
             Text = item.DisplayName,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(4, 2, 4, 2),
+            Margin = new Thickness(6, 4, 8, 4),
+            FontSize = 12,
             TextTrimming = TextTrimming.CharacterEllipsis
         };
 
         if (PropertyNameForeground != null)
+        {
             nameLabel.Foreground = PropertyNameForeground;
+        }
+        else if (TryFindResource("TextFillColorSecondaryBrush") is Brush secondary)
+        {
+            nameLabel.Foreground = secondary;
+        }
 
-        Grid.SetColumn(nameLabel, 0);
+        Grid.SetColumn(nameLabel, 1);
         grid.Children.Add(nameLabel);
 
-        // Editor
         var editor = _editorSelector.CreateEditor(item, this);
-        Grid.SetColumn(editor, 1);
+        Grid.SetColumn(editor, 2);
         grid.Children.Add(editor);
 
-        // Selection handling
-        grid.AddHandler(MouseDownEvent, new MouseButtonEventHandler((_, e) =>
+        rowBorder.Child = grid;
+
+        // Store the accent bar so UpdateRowHighlights can toggle it.
+        rowBorder.Tag = accentBar;
+
+        // Hover + selection wiring
+        rowBorder.AddHandler(MouseEnterEvent, new MouseEventHandler((_, _) =>
+        {
+            if (!ReferenceEquals(SelectedProperty, item))
+            {
+                rowBorder.Background = ResolveRowHoverBrush();
+            }
+        }));
+
+        rowBorder.AddHandler(MouseLeaveEvent, new MouseEventHandler((_, _) =>
+        {
+            if (!ReferenceEquals(SelectedProperty, item))
+            {
+                rowBorder.Background = Brushes.Transparent;
+            }
+        }));
+
+        rowBorder.AddHandler(MouseDownEvent, new MouseButtonEventHandler((_, e) =>
         {
             SelectedProperty = item;
             RaiseEvent(new RoutedEventArgs(PropertyEditingStartedEvent, this));
             e.Handled = true;
         }));
 
-        // Track focus loss on the editor for editing-ended
         editor.LostFocus += (_, _) =>
         {
             RaiseEvent(new RoutedEventArgs(PropertyEditingEndedEvent, this));
         };
 
-        return grid;
+        return rowBorder;
     }
+
+    private Brush ResolveRowHoverBrush()
+        => TryFindResource("SubtleFillColorSecondaryBrush") as Brush ?? s_defaultRowHoverBrush;
+
+    private Brush ResolveRowSelectedBrush()
+        => TryFindResource("PropertyGridSelectionBackground") as Brush
+           ?? TryFindResource("SubtleFillColorTertiaryBrush") as Brush
+           ?? s_defaultRowSelectedBrush;
+
+    private Brush ResolveSelectionAccentBrush()
+        => TryFindResource("AccentBrush") as Brush ?? s_defaultSelectionAccentBrush;
 
     private void FilterProperties(string searchText)
     {
@@ -805,14 +970,29 @@ public class PropertyGrid : Control
     {
         if (oldProperty != null && _propertyRowMap.TryGetValue(oldProperty, out var oldRow))
         {
-            if (oldRow is Grid oldGrid)
-                oldGrid.Background = null;
+            if (oldRow is Border oldBorder)
+            {
+                // Preserve hover state if the pointer is still over the row.
+                oldBorder.Background = oldBorder.IsMouseOver
+                    ? ResolveRowHoverBrush()
+                    : Brushes.Transparent;
+                if (oldBorder.Tag is Border oldAccent)
+                {
+                    oldAccent.Background = Brushes.Transparent;
+                }
+            }
         }
 
         if (newProperty != null && _propertyRowMap.TryGetValue(newProperty, out var newRow))
         {
-            if (newRow is Grid newGrid)
-                newGrid.Background = new SolidColorBrush(Color.FromArgb(40, 0, 120, 215));
+            if (newRow is Border newBorder)
+            {
+                newBorder.Background = ResolveRowSelectedBrush();
+                if (newBorder.Tag is Border newAccent)
+                {
+                    newAccent.Background = ResolveSelectionAccentBrush();
+                }
+            }
         }
     }
 
@@ -821,42 +1001,208 @@ public class PropertyGrid : Control
         if (_descriptionArea == null)
             return;
 
-        if (property == null || !ShowDescription)
+        var description = property?.Description;
+        var hasDescription = ShowDescription
+                             && property != null
+                             && !string.IsNullOrWhiteSpace(description);
+
+        if (hasDescription)
+        {
+            EnsureDescriptionChildren();
+
+            if (_descriptionTitle != null)
+                _descriptionTitle.Text = property!.DisplayName;
+            if (_descriptionText != null)
+                _descriptionText.Text = description!;
+        }
+        else
         {
             if (_descriptionTitle != null)
                 _descriptionTitle.Text = string.Empty;
             if (_descriptionText != null)
                 _descriptionText.Text = string.Empty;
+        }
+
+        AnimateDescription(hasDescription);
+    }
+
+    /// <summary>
+    /// Animates the description area's height + opacity with a non-linear
+    /// cubic ease-out, hiding it entirely when there's nothing to show.
+    /// The target height is measured from the actual content so longer
+    /// descriptions get taller panels and shorter descriptions shrink.
+    /// </summary>
+    private void AnimateDescription(bool show)
+    {
+        if (_descriptionArea == null)
+            return;
+
+        // Capture current visual state so re-triggered animations blend smoothly.
+        var currentHeight = double.IsNaN(_descriptionArea.Height) ? _descriptionArea.ActualHeight : _descriptionArea.Height;
+        var currentOpacity = _descriptionArea.Opacity;
+
+        double targetHeight;
+        double targetOpacity;
+
+        if (show)
+        {
+            _descriptionArea.Visibility = Visibility.Visible;
+            targetHeight = MeasureDescriptionNaturalHeight();
+            targetOpacity = 1.0;
+        }
+        else
+        {
+            targetHeight = 0.0;
+            targetOpacity = 0.0;
+        }
+
+        // Fast path: already at target and no animation in flight.
+        if (show == _descriptionVisible
+            && _descriptionAnimationTimer?.IsEnabled != true
+            && Math.Abs(currentHeight - targetHeight) < 0.5
+            && Math.Abs(currentOpacity - targetOpacity) < 0.01)
+        {
             return;
         }
 
-        // Build description content programmatically if no template children for title/text
-        EnsureDescriptionChildren();
+        _descriptionVisible = show;
+        _descriptionAnimationDurationMs = show ? DescriptionExpandMs : DescriptionCollapseMs;
+        _descriptionStartHeight = currentHeight;
+        _descriptionStartOpacity = currentOpacity;
+        _descriptionTargetHeight = targetHeight;
+        _descriptionTargetOpacity = targetOpacity;
 
-        if (_descriptionTitle != null)
-            _descriptionTitle.Text = property.DisplayName;
-        if (_descriptionText != null)
-            _descriptionText.Text = property.Description ?? string.Empty;
+        if (Math.Abs(_descriptionStartHeight - _descriptionTargetHeight) < 0.5
+            && Math.Abs(_descriptionStartOpacity - _descriptionTargetOpacity) < 0.01)
+        {
+            // Already at target — snap without running the timer.
+            ApplyDescriptionFinalState();
+            return;
+        }
+
+        // Prime the starting frame so the first tick doesn't jump when the
+        // panel was previously sized to Auto/NaN.
+        _descriptionArea.Height = currentHeight;
+        _descriptionArea.Opacity = currentOpacity;
+
+        _descriptionStopwatch.Restart();
+
+        if (_descriptionAnimationTimer == null)
+        {
+            _descriptionAnimationTimer = new DispatcherTimer
+            {
+                Interval = CompositionTarget.FrameInterval
+            };
+            _descriptionAnimationTimer.Tick += OnDescriptionAnimationTick;
+        }
+        _descriptionAnimationTimer.Start();
     }
+
+    private double MeasureDescriptionNaturalHeight()
+    {
+        if (_descriptionArea == null)
+            return DescriptionMinHeight;
+
+        _descriptionArea.Height = double.NaN;
+        _descriptionArea.InvalidateMeasure();
+
+        var availableWidth = _descriptionArea.ActualWidth > 0
+            ? _descriptionArea.ActualWidth
+            : (_descriptionArea.VisualParent is FrameworkElement parent && parent.ActualWidth > 0
+                ? parent.ActualWidth
+                : double.PositiveInfinity);
+
+        _descriptionArea.Measure(new Size(availableWidth, double.PositiveInfinity));
+        var desired = _descriptionArea.DesiredSize.Height;
+
+        return desired > 0.0 ? desired : DescriptionMinHeight;
+    }
+
+    private void ApplyDescriptionFinalState()
+    {
+        if (_descriptionArea == null)
+            return;
+
+        _descriptionAnimationTimer?.Stop();
+        _descriptionStopwatch.Stop();
+
+        if (_descriptionVisible)
+        {
+            // Auto-sized — content changes (new description text) will reflow naturally.
+            _descriptionArea.Height = double.NaN;
+            _descriptionArea.Opacity = 1.0;
+        }
+        else
+        {
+            _descriptionArea.Height = 0.0;
+            _descriptionArea.Opacity = 0.0;
+            _descriptionArea.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void OnDescriptionAnimationTick(object? sender, EventArgs e)
+    {
+        if (_descriptionArea == null)
+        {
+            _descriptionAnimationTimer?.Stop();
+            return;
+        }
+
+        var elapsed = _descriptionStopwatch.Elapsed.TotalMilliseconds;
+        var t = Math.Min(1.0, elapsed / Math.Max(1.0, _descriptionAnimationDurationMs));
+
+        // Non-linear: cubic ease-out on expand, cubic ease-in on collapse.
+        var eased = _descriptionVisible ? EaseOutCubic(t) : EaseInCubic(t);
+
+        var height = _descriptionStartHeight + (_descriptionTargetHeight - _descriptionStartHeight) * eased;
+        var opacity = _descriptionStartOpacity + (_descriptionTargetOpacity - _descriptionStartOpacity) * eased;
+
+        _descriptionArea.Height = height;
+        _descriptionArea.Opacity = opacity;
+
+        if (t >= 1.0)
+        {
+            ApplyDescriptionFinalState();
+        }
+    }
+
+    private static double EaseOutCubic(double t) => 1.0 - Math.Pow(1.0 - t, 3.0);
+
+    private static double EaseInCubic(double t) => t * t * t;
 
     private void EnsureDescriptionChildren()
     {
         if (_descriptionTitle != null || _descriptionArea == null)
             return;
 
-        var panel = new StackPanel { Orientation = Orientation.Vertical, Margin = new Thickness(4) };
+        var panel = new StackPanel { Orientation = Orientation.Vertical };
 
         _descriptionTitle = new TextBlock
         {
-            FontWeight = FontWeights.Bold,
-            Margin = new Thickness(0, 0, 0, 2)
+            FontWeight = FontWeights.SemiBold,
+            FontSize = 12,
+            Margin = new Thickness(0, 0, 0, 3)
         };
+
+        if (TryFindResource("TextFillColorPrimaryBrush") is Brush primary)
+        {
+            _descriptionTitle.Foreground = primary;
+        }
 
         _descriptionText = new TextBlock
         {
             TextWrapping = TextWrapping.Wrap,
-            Foreground = new SolidColorBrush(Color.FromRgb(128, 128, 128))
+            FontSize = 11
         };
+
+        if (TryFindResource("TextFillColorSecondaryBrush") is Brush secondary)
+        {
+            _descriptionText.Foreground = secondary;
+        }
+        else
+        {
+            _descriptionText.Foreground = new SolidColorBrush(Color.FromRgb(160, 160, 160));
+        }
 
         panel.Children.Add(_descriptionTitle);
         panel.Children.Add(_descriptionText);
@@ -868,10 +1214,14 @@ public class PropertyGrid : Control
     {
         if (_toolBar != null)
             _toolBar.Visibility = ShowToolBar ? Visibility.Visible : Visibility.Collapsed;
-        if (_searchBox != null)
+        if (_searchBoxBorder != null)
+            _searchBoxBorder.Visibility = ShowSearchBox ? Visibility.Visible : Visibility.Collapsed;
+        else if (_searchBox != null)
             _searchBox.Visibility = ShowSearchBox ? Visibility.Visible : Visibility.Collapsed;
-        if (_descriptionArea != null)
-            _descriptionArea.Visibility = ShowDescription ? Visibility.Visible : Visibility.Collapsed;
+
+        // Description area visibility is driven by AnimateDescription based on
+        // both ShowDescription and whether the selected property has text to show.
+        UpdateDescription(SelectedProperty);
     }
 
     private void OnSearchBoxTextChanged(object sender, TextChangedEventArgs e)

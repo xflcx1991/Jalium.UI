@@ -176,7 +176,17 @@ internal sealed class ImageHost : FrameworkElement
         var x = (RenderSize.Width - stretchedSize.Width) / 2;
         var y = (RenderSize.Height - stretchedSize.Height) / 2;
 
-        dc.DrawImage(source, new Rect(x, y, stretchedSize.Width, stretchedSize.Height));
+        // Resolve scaling mode from the owner's RenderOptions attached property.
+        // Image defaults to HighQuality (anisotropic + mipmap) so icons and photos
+        // that are scaled away from their native pixel size stay sharp by default —
+        // matches WPF's "high quality is the right default for UI" intent.
+        var mode = Owner != null
+            ? RenderOptions.GetBitmapScalingMode(Owner)
+            : BitmapScalingMode.Unspecified;
+        if (mode == BitmapScalingMode.Unspecified)
+            mode = BitmapScalingMode.HighQuality;
+
+        dc.DrawImage(source, new Rect(x, y, stretchedSize.Width, stretchedSize.Height), mode);
     }
 
     private Size CalculateStretchSize(Size imageSize, Size availableSize)

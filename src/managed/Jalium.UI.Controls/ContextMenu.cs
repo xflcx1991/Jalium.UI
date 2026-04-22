@@ -2,6 +2,8 @@ using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Controls.Themes;
 using Jalium.UI.Input;
 using Jalium.UI.Media;
+using Jalium.UI.Media.Animation;
+using Jalium.UI.Threading;
 
 namespace Jalium.UI.Controls;
 
@@ -15,6 +17,16 @@ public class ContextMenu : ItemsControl
 
     private static readonly SolidColorBrush s_defaultBackgroundBrush = new(ThemeColors.ControlBackground);
     private static readonly SolidColorBrush s_defaultBorderBrush = new(ThemeColors.ControlBorder);
+
+    #endregion
+
+    #region Animation Constants
+
+    private const double PopupOpenDurationMs = 250;
+    private const double PopupCloseDurationMs = 150;
+    private const double PopupSlideOffsetY = -6;
+    private static readonly BackEase s_popupOpenEase = new() { EasingMode = EasingMode.EaseOut, Amplitude = 0.85 };
+    private static readonly CubicEase s_popupCloseEase = new() { EasingMode = EasingMode.EaseInOut };
 
     #endregion
 
@@ -175,6 +187,7 @@ public class ContextMenu : ItemsControl
     private Point _openPosition;
     private Popup? _popup;
     private Border? _popupBorder;
+    private DispatcherTimer? _popupAnimTimer;
 
     #endregion
 
@@ -279,6 +292,12 @@ public class ContextMenu : ItemsControl
     private void EnsurePopup()
     {
         if (_popup != null) return;
+
+        // ContextMenu is normally created standalone (no visual parent), so the
+        // implicit theme style — which supplies CornerRadius, Padding, brushes —
+        // never gets auto-applied through OnVisualParentChanged. Force it here so
+        // the popup chrome matches the theme even for menus built in code.
+        ApplyImplicitStyleIfNeeded();
 
         _popupBorder = new Border
         {
@@ -410,7 +429,7 @@ public class ContextMenu : ItemsControl
 
                 // Transfer placement properties to the popup.
                 // When Open(Point) was called, it already set Absolute placement
-                // and the offsets to the requested position 閳?keep those.
+                // and the offsets to the requested position — keep those.
                 if (!wasExplicitPosition)
                 {
                     popup.Placement = contextMenu.Placement;
@@ -428,27 +447,111 @@ public class ContextMenu : ItemsControl
                 popup.StaysOpen = contextMenu.StaysOpen;
                 popup.IsOpen = true;
 
+                contextMenu.AnimateOpen();
+
                 contextMenu.RaiseEvent(new RoutedEventArgs(OpenedEvent, contextMenu));
             }
             else
             {
-                if (contextMenu._popup != null)
-                {
-                    contextMenu._popup.IsOpen = false;
-                }
-
                 contextMenu.RaiseEvent(new RoutedEventArgs(ClosedEvent, contextMenu));
-
-                // Reset popup state so the next open uses the ContextMenu's own
-                // Placement property instead of a stale Absolute from Open(Point).
-                if (contextMenu._popup != null)
-                {
-                    contextMenu._popup.Placement = PlacementMode.MousePoint;
-                    contextMenu._popup.HorizontalOffset = 0;
-                    contextMenu._popup.VerticalOffset = 0;
-                }
+                contextMenu.AnimateClose();
             }
         }
+    }
+
+    #endregion
+
+    #region Animation
+
+    private void AnimateOpen()
+    {
+        _popupAnimTimer?.Stop();
+
+        var target = _popupBorder;
+        if (target == null) return;
+
+        target.Opacity = 0;
+        target.RenderOffset = new Point(0, PopupSlideOffsetY);
+
+        var startTick = Environment.TickCount64;
+        _popupAnimTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(Math.Max(1, CompositionTarget.FrameIntervalMs))
+        };
+        _popupAnimTimer.Tick += (_, _) =>
+        {
+            var elapsed = Environment.TickCount64 - startTick;
+            var progress = Math.Clamp(elapsed / PopupOpenDurationMs, 0.0, 1.0);
+            var eased = s_popupOpenEase.Ease(progress);
+
+            target.Opacity = eased;
+            target.RenderOffset = new Point(0, PopupSlideOffsetY * (1.0 - eased));
+
+            if (progress >= 1.0)
+            {
+                target.Opacity = 1;
+                target.RenderOffset = default;
+                _popupAnimTimer?.Stop();
+                _popupAnimTimer = null;
+            }
+        };
+        _popupAnimTimer.Start();
+    }
+
+    private void AnimateClose()
+    {
+        _popupAnimTimer?.Stop();
+
+        // If the popup is already closed (e.g. via light-dismiss), finalize synchronously.
+        if (_popup == null || _popupBorder == null || !_popup.IsOpen)
+        {
+            FinalizePopupClose();
+            return;
+        }
+
+        var target = _popupBorder;
+        var startOpacity = target.Opacity;
+        var startOffsetY = target.RenderOffset.Y;
+        var startTick = Environment.TickCount64;
+
+        _popupAnimTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(Math.Max(1, CompositionTarget.FrameIntervalMs))
+        };
+        _popupAnimTimer.Tick += (_, _) =>
+        {
+            var elapsed = Environment.TickCount64 - startTick;
+            var progress = Math.Clamp(elapsed / PopupCloseDurationMs, 0.0, 1.0);
+            var eased = s_popupCloseEase.Ease(progress);
+
+            target.Opacity = startOpacity * (1.0 - eased);
+            target.RenderOffset = new Point(0, startOffsetY + (PopupSlideOffsetY - startOffsetY) * eased);
+
+            if (progress >= 1.0)
+            {
+                _popupAnimTimer?.Stop();
+                _popupAnimTimer = null;
+
+                target.Opacity = 1;
+                target.RenderOffset = default;
+
+                FinalizePopupClose();
+            }
+        };
+        _popupAnimTimer.Start();
+    }
+
+    private void FinalizePopupClose()
+    {
+        if (_popup == null) return;
+
+        _popup.IsOpen = false;
+
+        // Reset popup state so the next open uses the ContextMenu's own
+        // Placement property instead of a stale Absolute from Open(Point).
+        _popup.Placement = PlacementMode.MousePoint;
+        _popup.HorizontalOffset = 0;
+        _popup.VerticalOffset = 0;
     }
 
     #endregion

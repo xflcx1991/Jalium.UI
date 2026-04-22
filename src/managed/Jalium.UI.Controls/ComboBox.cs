@@ -477,6 +477,26 @@ public class ComboBox : Selector
     protected override void UpdateContainerSelection()
     {
         UpdateSelectionBoxItem();
+        SyncItemContainerSelection();
+    }
+
+    private void SyncItemContainerSelection()
+    {
+        if (_itemsPanel == null) return;
+
+        var selectedItem = SelectedItem;
+        foreach (var child in _itemsPanel.Children)
+        {
+            if (child is ComboBoxItem container)
+            {
+                var logicalItem = container.Tag ?? container.Content;
+                var shouldBeSelected = Equals(logicalItem, selectedItem);
+                if (container.IsSelected != shouldBeSelected)
+                {
+                    container.IsSelected = shouldBeSelected;
+                }
+            }
+        }
     }
 
     /// <inheritdoc />
@@ -1020,17 +1040,39 @@ public class ComboBox : Selector
 /// </summary>
 public class ComboBoxItem : ContentControl
 {
-    private bool _isPressed;
+    private static readonly SolidColorBrush s_fallbackHoverBackgroundBrush = new(Themes.ThemeColors.HighlightBackground);
+    private static readonly SolidColorBrush s_fallbackSelectedBackgroundBrush = new(Themes.ThemeColors.SelectionBackground);
+
+    #region Dependency Properties
+
+    /// <summary>
+    /// Identifies the IsSelected dependency property.
+    /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
+    public static readonly DependencyProperty IsSelectedProperty =
+        DependencyProperty.Register(nameof(IsSelected), typeof(bool), typeof(ComboBoxItem),
+            new PropertyMetadata(false, OnIsSelectedChanged));
+
+    #endregion
 
     /// <summary>
     /// Gets or sets whether this item is selected.
     /// </summary>
-    public bool IsSelected { get; set; }
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
+    public bool IsSelected
+    {
+        get => (bool)GetValue(IsSelectedProperty)!;
+        set => SetValue(IsSelectedProperty, value);
+    }
 
     /// <summary>
     /// Occurs when the item is clicked.
     /// </summary>
     public event EventHandler? ItemClicked;
+
+    private bool _isPressed;
+    private bool _isItemMouseOver;
+    private Border? _backgroundBorder;
 
     /// <summary>
     /// Directly invokes the click action - used by Popup for reliable click handling.
@@ -1047,10 +1089,22 @@ public class ComboBoxItem : ContentControl
     {
         // Use ControlTemplate-based rendering (defined in SelectionControls.jalxaml)
         UseTemplateContentManagement();
+        SetCurrentValue(UIElement.TransitionPropertyProperty, "None");
+        ResourcesChanged += OnResourcesChangedHandler;
 
-        // Set up mouse event handlers for click behavior
+        // Set up mouse event handlers for click behavior and hover tracking
         AddHandler(MouseDownEvent, new MouseButtonEventHandler(OnMouseDownHandler));
         AddHandler(MouseUpEvent, new MouseButtonEventHandler(OnMouseUpHandler));
+        AddHandler(MouseEnterEvent, new MouseEventHandler(OnMouseEnterHandler));
+        AddHandler(MouseLeaveEvent, new MouseEventHandler(OnMouseLeaveHandler));
+    }
+
+    /// <inheritdoc />
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+        _backgroundBorder = GetTemplateChild("PART_BackgroundBorder") as Border;
+        UpdateContainerVisualState();
     }
 
     private void OnMouseDownHandler(object sender, MouseButtonEventArgs e)
@@ -1079,6 +1133,24 @@ public class ComboBoxItem : ContentControl
         }
     }
 
+    private void OnMouseEnterHandler(object sender, MouseEventArgs e)
+    {
+        if (!_isItemMouseOver)
+        {
+            _isItemMouseOver = true;
+            UpdateContainerVisualState();
+        }
+    }
+
+    private void OnMouseLeaveHandler(object sender, MouseEventArgs e)
+    {
+        if (_isItemMouseOver)
+        {
+            _isItemMouseOver = false;
+            UpdateContainerVisualState();
+        }
+    }
+
     /// <inheritdoc />
     protected override void OnLostMouseCapture()
     {
@@ -1087,5 +1159,46 @@ public class ComboBoxItem : ContentControl
         {
             _isPressed = false;
         }
+    }
+
+    private static void OnIsSelectedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is ComboBoxItem item)
+        {
+            item.UpdateContainerVisualState();
+        }
+    }
+
+    private void UpdateContainerVisualState()
+    {
+        if (_backgroundBorder == null)
+        {
+            return;
+        }
+
+        if (IsSelected)
+        {
+            _backgroundBorder.Background = ResolveSelectedBackgroundBrush();
+            return;
+        }
+
+        if (_isItemMouseOver)
+        {
+            _backgroundBorder.Background = ResolveHoverBackgroundBrush();
+            return;
+        }
+
+        _backgroundBorder.ClearValue(Border.BackgroundProperty);
+    }
+
+    private Brush ResolveHoverBackgroundBrush()
+        => TryFindResource("HighlightBackground") as Brush ?? s_fallbackHoverBackgroundBrush;
+
+    private Brush ResolveSelectedBackgroundBrush()
+        => TryFindResource("SelectionBackground") as Brush ?? s_fallbackSelectedBackgroundBrush;
+
+    private void OnResourcesChangedHandler(object? sender, EventArgs e)
+    {
+        UpdateContainerVisualState();
     }
 }

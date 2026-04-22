@@ -184,7 +184,6 @@ bool D3D12Backend::CreateD3D12Device(void* preferredWindow) {
         if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&dredSettings)))) {
             dredSettings->SetAutoBreadcrumbsEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
             dredSettings->SetPageFaultEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
-            OutputDebugStringA("[D3D12Backend] DRED auto-breadcrumbs + page-fault enabled.\n");
         }
     }
 #endif
@@ -350,7 +349,6 @@ bool D3D12Backend::CreateD3D12Device(void* preferredWindow) {
         if (SUCCEEDED(device_.As(&infoQueue))) {
             infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
             infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, TRUE);
-            OutputDebugStringA("[D3D12Backend] InfoQueue break on corruption/error enabled.\n");
         }
     }
 #endif

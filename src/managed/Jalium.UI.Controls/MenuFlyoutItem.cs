@@ -309,8 +309,49 @@ public class MenuFlyoutItem : Control
 
     protected virtual void InvokeItem()
     {
+        OnItemInvoking();
         RaiseEvent(new RoutedEventArgs(ClickEvent, this));
         Command?.Execute(CommandParameter);
+        CloseMenuChain();
+    }
+
+    /// <summary>
+    /// Called before the Click event is raised and the Command is executed.
+    /// Derived classes can override this to update state that should be visible to Click handlers.
+    /// </summary>
+    protected virtual void OnItemInvoking()
+    {
+    }
+
+    /// <summary>
+    /// Closes the entire ancestor popup chain (e.g. a submenu popup plus its parent menu popup).
+    /// Items hosted inside a submenu should close the whole menu tree on invocation,
+    /// mirroring WinUI's MenuFlyout behavior.
+    /// </summary>
+    private void CloseMenuChain()
+    {
+        var popupRoot = FindAncestorPopupRoot();
+        while (popupRoot != null)
+        {
+            var popup = popupRoot.OwnerPopup;
+            var placementTarget = popup.PlacementTarget;
+            popup.IsOpen = false;
+
+            popupRoot = FindAncestorPopupRootFrom(placementTarget);
+        }
+    }
+
+    private static PopupRoot? FindAncestorPopupRootFrom(UIElement? element)
+    {
+        for (Visual? current = element; current != null; current = current.VisualParent)
+        {
+            if (current is PopupRoot popupRoot)
+            {
+                return popupRoot;
+            }
+        }
+
+        return null;
     }
 
     protected virtual bool InvokeFromKeyboard()

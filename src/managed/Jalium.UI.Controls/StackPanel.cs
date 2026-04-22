@@ -19,6 +19,14 @@ public class StackPanel : Panel, IScrollInfo
         DependencyProperty.Register(nameof(Orientation), typeof(Orientation), typeof(StackPanel),
             new PropertyMetadata(Orientation.Vertical, OnLayoutPropertyChanged));
 
+    /// <summary>
+    /// Identifies the Spacing dependency property.
+    /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
+    public static readonly DependencyProperty SpacingProperty =
+        DependencyProperty.Register(nameof(Spacing), typeof(double), typeof(StackPanel),
+            new PropertyMetadata(0.0, OnLayoutPropertyChanged));
+
     #endregion
 
     #region CLR Properties
@@ -31,6 +39,26 @@ public class StackPanel : Panel, IScrollInfo
     {
         get => (Orientation)GetValue(OrientationProperty)!;
         set => SetValue(OrientationProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the uniform distance in device-independent pixels between
+    /// adjacent visible child elements along the stacking axis.
+    /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
+    public double Spacing
+    {
+        get => (double)GetValue(SpacingProperty)!;
+        set => SetValue(SpacingProperty, value);
+    }
+
+    private double EffectiveSpacing
+    {
+        get
+        {
+            var value = Spacing;
+            return (double.IsNaN(value) || double.IsInfinity(value) || value < 0) ? 0 : value;
+        }
     }
 
     #endregion
@@ -160,15 +188,28 @@ public class StackPanel : Panel, IScrollInfo
         // Calculate position of child
         double childOffset = 0;
         var isVertical = Orientation == Orientation.Vertical;
+        var spacing = EffectiveSpacing;
+        var sawFirstVisible = false;
 
         foreach (var c in Children)
         {
             if (c == child) break;
             if (c.Visibility == Visibility.Collapsed) continue;
+            if (sawFirstVisible)
+            {
+                childOffset += spacing;
+            }
             // Use RenderSize (actual arranged size) rather than DesiredSize (measured size)
             // to correctly calculate scroll offset after layout is complete.
             var size = c.RenderSize.Width > 0 || c.RenderSize.Height > 0 ? c.RenderSize : c.DesiredSize;
             childOffset += isVertical ? size.Height : size.Width;
+            sawFirstVisible = true;
+        }
+
+        if (sawFirstVisible && child.Visibility != Visibility.Collapsed)
+        {
+            // Account for the gap between the previous visible sibling and the target child.
+            childOffset += spacing;
         }
 
         if (isVertical)
@@ -203,9 +244,11 @@ public class StackPanel : Panel, IScrollInfo
     protected override Size MeasureOverride(Size availableSize)
     {
         var isVertical = Orientation == Orientation.Vertical;
+        var spacing = EffectiveSpacing;
         double totalWidth = 0;
         double totalHeight = 0;
         double maxCross = 0;
+        bool sawVisible = false;
 
         foreach (var child in Children.ToArray())
         {
@@ -243,14 +286,18 @@ public class StackPanel : Panel, IScrollInfo
 
             if (isVertical)
             {
+                if (sawVisible) totalHeight += spacing;
                 totalHeight += childSize.Height;
                 maxCross = Math.Max(maxCross, childSize.Width);
             }
             else
             {
+                if (sawVisible) totalWidth += spacing;
                 totalWidth += childSize.Width;
                 maxCross = Math.Max(maxCross, childSize.Height);
             }
+
+            sawVisible = true;
         }
 
         var extent = isVertical
@@ -275,7 +322,9 @@ public class StackPanel : Panel, IScrollInfo
     protected override Size ArrangeOverride(Size finalSize)
     {
         var isVertical = Orientation == Orientation.Vertical;
+        var spacing = EffectiveSpacing;
         double offset = 0;
+        bool sawVisible = false;
 
         // Apply scroll offset
         double scrollOffsetX = ScrollOwner != null ? -_horizontalOffset : 0;
@@ -286,6 +335,11 @@ public class StackPanel : Panel, IScrollInfo
             // Skip collapsed children
             if (child.Visibility == Visibility.Collapsed)
                 continue;
+
+            if (sawVisible)
+            {
+                offset += spacing;
+            }
 
             var childSize = child.DesiredSize;
             var arrangeWidth = isVertical && _canHorizontallyScroll ? Math.Max(finalSize.Width, _extent.Width) : finalSize.Width;
@@ -320,6 +374,7 @@ public class StackPanel : Panel, IScrollInfo
             }
 
             child.Arrange(childRect);
+            sawVisible = true;
         }
 
         // Update viewport if scrolling

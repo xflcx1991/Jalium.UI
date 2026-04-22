@@ -308,6 +308,16 @@ public:
     /// Draws a bitmap.
     virtual void DrawBitmap(Bitmap* bitmap, float x, float y, float w, float h, float opacity) = 0;
 
+    /// Draws a bitmap with an explicit scaling-mode hint. The default
+    /// implementation falls back to the legacy <c>DrawBitmap</c> so backends
+    /// that don't (yet) honour scaling mode keep working unchanged. Backends
+    /// that select a sampler / mipmap chain based on this hint must override.
+    /// scalingMode values match the JaliumBitmapScalingMode enum.
+    virtual void DrawBitmap(Bitmap* bitmap, float x, float y, float w, float h, float opacity, int /*scalingMode*/)
+    {
+        DrawBitmap(bitmap, x, y, w, h, opacity);
+    }
+
     /// Draws a backdrop filter effect.
     /// @param x X position.
     /// @param y Y position.
@@ -543,6 +553,22 @@ public:
         int neighborCount = 0,
         float fusionRadius = 30.0f,
         const float* neighborData = nullptr) {}
+
+    // ========================================================================
+    // GPU Resource Diagnostics
+    // ========================================================================
+
+    /// Fills <paramref name="out"/> with the backend's current GPU resource usage.
+    /// Called once per frame by DevTools' Perf tab; must be safe to call from the
+    /// UI / render thread and cheap enough to not disturb frame pacing.
+    /// Default implementation zero-fills and returns JALIUM_ERROR_NOT_SUPPORTED so
+    /// the managed side can distinguish "backend not wired up" from "zero usage".
+    virtual JaliumResult QueryGpuStats(JaliumGpuStats* out) const
+    {
+        if (!out) return JALIUM_ERROR_INVALID_ARGUMENT;
+        *out = JaliumGpuStats{};
+        return JALIUM_ERROR_NOT_SUPPORTED;
+    }
 
     // ========================================================================
     // Rendering Engine Selection (Hot-Switch)

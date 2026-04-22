@@ -93,7 +93,7 @@ public class MiniMap : FrameworkElement
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Other)]
     public static readonly DependencyProperty TargetProperty =
         DependencyProperty.Register(nameof(Target), typeof(FrameworkElement), typeof(MiniMap),
-            new PropertyMetadata(null, OnTargetChanged));
+            new PropertyMetadata(null, OnTargetPropertyChanged));
 
     /// <summary>
     /// Identifies the MapViewTarget dependency property.
@@ -101,7 +101,7 @@ public class MiniMap : FrameworkElement
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Other)]
     public static readonly DependencyProperty MapViewTargetProperty =
         DependencyProperty.Register(nameof(MapViewTarget), typeof(MapView), typeof(MiniMap),
-            new PropertyMetadata(null, OnTargetChanged));
+            new PropertyMetadata(null, OnMapViewTargetPropertyChanged));
 
     /// <summary>
     /// Identifies the ViewportBrush dependency property.
@@ -351,6 +351,11 @@ public class MiniMap : FrameworkElement
     private bool _isDraggingViewport;
     private Point _dragOffset;
 
+    // Currently subscribed targets. Used to pair attach/detach of change notifications
+    // so rendering refreshes when scroll offset or map view changes.
+    private ScrollViewer? _attachedScrollTarget;
+    private MapView? _attachedMapViewTarget;
+
     #endregion
 
     #region Constructor
@@ -366,6 +371,9 @@ public class MiniMap : FrameworkElement
         AddHandler(MouseDownEvent, new MouseButtonEventHandler(OnMouseDownHandler));
         AddHandler(MouseUpEvent, new MouseButtonEventHandler(OnMouseUpHandler));
         AddHandler(MouseMoveEvent, new MouseEventHandler(OnMouseMoveHandler));
+
+        Loaded += OnMiniMapLoaded;
+        Unloaded += OnMiniMapUnloaded;
     }
 
     #endregion
@@ -808,10 +816,24 @@ public class MiniMap : FrameworkElement
 
     #region Property Changed Callbacks
 
-    private static void OnTargetChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static void OnTargetPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is MiniMap miniMap)
         {
+            miniMap.DetachScrollTarget();
+            miniMap.AttachScrollTarget(e.NewValue as ScrollViewer);
+            miniMap.InvalidateMeasure();
+            miniMap.InvalidateVisual();
+        }
+    }
+
+    private static void OnMapViewTargetPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is MiniMap miniMap)
+        {
+            miniMap.DetachMapViewTarget();
+            miniMap.AttachMapViewTarget(e.NewValue as MapView);
+            miniMap.InvalidateMeasure();
             miniMap.InvalidateVisual();
         }
     }
@@ -822,6 +844,74 @@ public class MiniMap : FrameworkElement
         {
             miniMap.InvalidateVisual();
         }
+    }
+
+    #endregion
+
+    #region Target Subscriptions
+
+    private void OnMiniMapLoaded(object? sender, RoutedEventArgs e)
+    {
+        // Re-attach notifications in case the MiniMap was unloaded and re-loaded
+        // without Target/MapViewTarget changing (e.g. template re-application).
+        AttachScrollTarget(Target as ScrollViewer);
+        AttachMapViewTarget(MapViewTarget);
+    }
+
+    private void OnMiniMapUnloaded(object? sender, RoutedEventArgs e)
+    {
+        // Release references on the target so it doesn't keep this MiniMap alive
+        // via the routed-event subscription.
+        DetachScrollTarget();
+        DetachMapViewTarget();
+    }
+
+    private void AttachScrollTarget(ScrollViewer? scrollTarget)
+    {
+        if (scrollTarget == null || ReferenceEquals(_attachedScrollTarget, scrollTarget))
+            return;
+
+        if (_attachedScrollTarget != null)
+            DetachScrollTarget();
+
+        _attachedScrollTarget = scrollTarget;
+        scrollTarget.ScrollChanged += OnTargetScrollChanged;
+    }
+
+    private void DetachScrollTarget()
+    {
+        if (_attachedScrollTarget == null) return;
+        _attachedScrollTarget.ScrollChanged -= OnTargetScrollChanged;
+        _attachedScrollTarget = null;
+    }
+
+    private void AttachMapViewTarget(MapView? mapView)
+    {
+        if (mapView == null || ReferenceEquals(_attachedMapViewTarget, mapView))
+            return;
+
+        if (_attachedMapViewTarget != null)
+            DetachMapViewTarget();
+
+        _attachedMapViewTarget = mapView;
+        mapView.ViewChanged += OnTargetViewChanged;
+    }
+
+    private void DetachMapViewTarget()
+    {
+        if (_attachedMapViewTarget == null) return;
+        _attachedMapViewTarget.ViewChanged -= OnTargetViewChanged;
+        _attachedMapViewTarget = null;
+    }
+
+    private void OnTargetScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        InvalidateVisual();
+    }
+
+    private void OnTargetViewChanged(object? sender, MapViewChangedEventArgs e)
+    {
+        InvalidateVisual();
     }
 
     #endregion

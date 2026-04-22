@@ -42,6 +42,24 @@ public abstract class TextBoxBase : Control
     /// </summary>
     protected bool HasContentHost => _textBoxContentHost != null;
 
+    /// <summary>
+    /// Invalidates the measure of the inner text-rendering element (the
+    /// <c>TextBoxContentHost</c> inserted into <c>PART_ContentHost</c>).
+    /// WPF's layout cache keys off each element's own <c>IsMeasureValid</c>
+    /// flag, so calling <c>InvalidateMeasure</c> on this control only marks
+    /// the outer chrome dirty — the host child stays "valid" and its
+    /// <c>MeasureOverride</c> is skipped on the next pass. That means the
+    /// ScrollViewer above the host keeps using a stale DesiredSize (often
+    /// from when Text was empty), so its extent under-reports the real
+    /// content height and the scrollbar can't reach the end of long text.
+    /// Subclasses call this whenever Text / TextWrapping / FontSize / any
+    /// other property that changes the text-layout size changes.
+    /// </summary>
+    protected void InvalidateTextContentMeasure()
+    {
+        _textBoxContentHost?.InvalidateMeasure();
+    }
+
     #endregion
 
     #region Fields
@@ -95,6 +113,18 @@ public abstract class TextBoxBase : Control
     /// Timer that drives caret blinking/fading without forcing full-frame rendering.
     /// </summary>
     private DispatcherTimer? _caretTimer;
+
+    /// <summary>
+    /// The local-space caret rectangle that was last rendered.  Subclasses
+    /// should update this at the end of their DrawCaret path so caret blink
+    /// ticks can invalidate ONLY this rect instead of the entire control —
+    /// a multi-line TextBox 600 px wide would otherwise mark its whole
+    /// visual bounds dirty 2 × per blink cycle, which quickly compounds past
+    /// the 50 % partial-to-full promotion threshold.
+    /// Empty when the caret has not been rendered yet (first frame) — the
+    /// blink tick then falls back to whole-element invalidation.
+    /// </summary>
+    protected Rect _lastRenderedCaretRect = Rect.Empty;
 
     /// <summary>
     /// Tick interval during fade phases (ms). Hold phases use longer dynamic intervals.
@@ -631,6 +661,22 @@ public abstract class TextBoxBase : Control
         }
 
         return new Size(availableSize.Width, Math.Min(textHeight, availableSize.Height));
+    }
+
+    /// <summary>
+    /// Gets the vertical extent used by the built-in mouse-wheel scroller.
+    /// </summary>
+    protected virtual double GetVerticalScrollExtentHeight(double lineHeight)
+    {
+        return Math.Max(1, GetLineCount()) * lineHeight;
+    }
+
+    /// <summary>
+    /// Gets the vertical viewport used by the built-in mouse-wheel scroller.
+    /// </summary>
+    protected virtual double GetVerticalScrollViewportHeight()
+    {
+        return RenderSize.Height;
     }
 
     /// <summary>
@@ -1584,12 +1630,17 @@ public abstract class TextBoxBase : Control
         // Round line height for consistent scrolling
         var lineHeight = Math.Round(GetLineHeight());
         var delta = e.Delta > 0 ? -3 : 3;
-        VerticalOffset += delta * lineHeight;
 
-        // Clamp
-        var maxOffset = Math.Max(0, GetLineCount() * lineHeight - RenderSize.Height);
-        VerticalOffset = Math.Min(VerticalOffset, maxOffset);
+        var maxOffset = Math.Max(0, GetVerticalScrollExtentHeight(lineHeight) - GetVerticalScrollViewportHeight());
+        if (maxOffset <= 0)
+            return;
 
+        var oldOffset = VerticalOffset;
+        var newOffset = Math.Clamp(oldOffset + delta * lineHeight, 0, maxOffset);
+        if (Math.Abs(newOffset - oldOffset) <= 0.001)
+            return;
+
+        VerticalOffset = newOffset;
         e.Handled = true;
     }
 
@@ -1654,7 +1705,17 @@ public abstract class TextBoxBase : Control
             return;
         }
 
-        InvalidateVisual();
+        // Invalidate ONLY the caret rect when a subclass has published one.
+        // Fallback to whole-element invalidation on the first frame (before
+        // DrawCaret has run once) and when the cached rect is empty.
+        if (!_lastRenderedCaretRect.IsEmpty)
+        {
+            InvalidateVisual(_lastRenderedCaretRect);
+        }
+        else
+        {
+            InvalidateVisual();
+        }
         ScheduleNextCaretTick(DateTime.Now);
     }
 

@@ -298,4 +298,12 @@ JALIUM_API JaliumRenderingEngine jalium_context_get_default_engine(JaliumContext
     return reinterpret_cast<jalium::Context*>(ctx)->GetDefaultEngine();
 }
 
+JALIUM_API JaliumResult jalium_render_target_query_gpu_stats(
+    JaliumRenderTarget* rt,
+    JaliumGpuStats* out)
+{
+    if (!rt || !out) return JALIUM_ERROR_INVALID_ARGUMENT;
+    return reinterpret_cast<jalium::RenderTarget*>(rt)->QueryGpuStats(out);
+}
+
 } // extern "C"

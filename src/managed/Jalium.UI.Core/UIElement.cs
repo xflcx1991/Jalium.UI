@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using Jalium.UI.Diagnostics;
 using Jalium.UI.Input;
 using Jalium.UI.Input.StylusPlugIns;
 
@@ -230,6 +232,9 @@ public abstract partial class UIElement : Visual, IInputElement
                 RaiseEventTunnel(e);
                 break;
         }
+
+        if (RoutedEventDiagnostics.IsRecording)
+            RoutedEventDiagnostics.NotifyRaised(e);
     }
 
     private void RaiseEventDirect(RoutedEventArgs e)
@@ -974,6 +979,35 @@ public abstract partial class UIElement : Visual, IInputElement
     }
 
     /// <summary>
+    /// Returns whether a point in this element's local coordinate space falls inside
+    /// the layout clip that would be pushed during rendering. Hit-testing relies on this
+    /// to ensure clicks do not fall through to content that is visually clipped away
+    /// (e.g. an input control scrolled out of a ScrollViewer viewport whose VisualBounds
+    /// still extend past the viewport edge).
+    ///
+    /// The default implementation handles Rect clips. Subclasses whose GetLayoutClip
+    /// returns a Media.Geometry (e.g. ScrollViewer) override to honor the exact shape.
+    /// </summary>
+    internal virtual bool IsPointInsideLayoutClip(Point localPoint)
+    {
+        var clip = GetLayoutClip();
+        if (clip == null)
+        {
+            return true;
+        }
+
+        if (clip is Rect rect)
+        {
+            return rect.Contains(localPoint);
+        }
+
+        // Non-Rect clip (Geometry) — let Media-aware subclasses interpret the exact
+        // shape. Returning true here keeps the behavior permissive for the base case so
+        // we never block a hit that the renderer would actually display.
+        return true;
+    }
+
+    /// <summary>
     /// Gets a value indicating whether the measure pass is valid.
     /// </summary>
     public bool IsMeasureValid => _isMeasureValid;
@@ -1036,6 +1070,9 @@ public abstract partial class UIElement : Visual, IInputElement
             layoutManager?.InvalidateMeasure(this);
             GetWindowHost()?.InvalidateWindow();
         }
+
+        if (LayoutDiagnostics.IsRecording)
+            LayoutDiagnostics.NotifyInvalidation(this, LayoutDiagnostics.InvalidationKind.Measure);
     }
 
     /// <summary>
@@ -1060,6 +1097,9 @@ public abstract partial class UIElement : Visual, IInputElement
             layoutManager?.InvalidateArrange(this);
             GetWindowHost()?.InvalidateWindow();
         }
+
+        if (LayoutDiagnostics.IsRecording)
+            LayoutDiagnostics.NotifyInvalidation(this, LayoutDiagnostics.InvalidationKind.Arrange);
     }
 
     /// <summary>
@@ -1068,11 +1108,20 @@ public abstract partial class UIElement : Visual, IInputElement
     /// so dirty rects for individual elements are unreliable.
     /// Marks this element dirty so its region is repainted.
     /// </summary>
+    /// <remarks>
+    /// Must also flip <see cref="Visual.SetRenderDirty"/> — otherwise the
+    /// retained-mode drawing cache (<see cref="Visual.RenderCacheHost"/>)
+    /// will replay the stale captured command list and the dirty rect gets
+    /// painted with last frame's content. Layout invalidations always imply
+    /// visual invalidations (size/position/content shifted), so they share
+    /// the same render-cache-invalidation semantics as InvalidateVisual.
+    /// </remarks>
     private void InvalidateLayoutVisual()
     {
         var windowHost = GetWindowHost();
         if (windowHost == null) return;
 
+        SetRenderDirty();
         windowHost.AddDirtyElement(this);
         windowHost.InvalidateWindow();
     }
@@ -1091,6 +1140,42 @@ public abstract partial class UIElement : Visual, IInputElement
             windowHost.AddDirtyElement(this);
             windowHost.InvalidateWindow();
         }
+
+        if (LayoutDiagnostics.IsRecording)
+            LayoutDiagnostics.NotifyInvalidation(this, LayoutDiagnostics.InvalidationKind.Visual);
+    }
+
+    /// <summary>
+    /// Invalidates a specific sub-rectangle (in this element's local coordinate space)
+    /// for partial redraw. Enables precise dirty tracking for animations that affect
+    /// only a small part of the element — caret blink, focus rings, hover glyphs,
+    /// progress bar fill — so a 400-px-wide TextBox caret doesn't mark the whole
+    /// control dirty just to flash 2×20 pixels.
+    /// </summary>
+    /// <param name="localDirtyRect">
+    /// Dirty rectangle in local coordinates (0,0 = this element's top-left).
+    /// An empty rect is ignored. A rect that extends past the element's bounds
+    /// is clipped by the window layer.
+    /// </param>
+    public void InvalidateVisual(Rect localDirtyRect)
+    {
+        if (localDirtyRect.IsEmpty)
+        {
+            InvalidateVisual();
+            return;
+        }
+
+        SetRenderDirty();
+
+        var windowHost = GetWindowHost();
+        if (windowHost != null)
+        {
+            windowHost.AddDirtyElement(this, localDirtyRect);
+            windowHost.InvalidateWindow();
+        }
+
+        if (LayoutDiagnostics.IsRecording)
+            LayoutDiagnostics.NotifyInvalidation(this, LayoutDiagnostics.InvalidationKind.Visual);
     }
 
     /// <summary>
@@ -1220,8 +1305,16 @@ public abstract partial class UIElement : Visual, IInputElement
 
         var oldDesiredSize = _desiredSize;
         _previousAvailableSize = availableSize;
+
+        bool trace = LayoutDiagnostics.IsRecording;
+        long startTicks = trace ? Stopwatch.GetTimestamp() : 0;
         _desiredSize = MeasureCore(availableSize);
         _isMeasureValid = true;
+        if (trace)
+        {
+            double us = (Stopwatch.GetTimestamp() - startTicks) * 1_000_000.0 / Stopwatch.Frequency;
+            LayoutDiagnostics.NotifyMeasure(this, us);
+        }
 
         // If desired size changed, parent needs to re-arrange (mark parent dirty)
         if (_desiredSize != oldDesiredSize)
@@ -1253,8 +1346,16 @@ public abstract partial class UIElement : Visual, IInputElement
         var oldRenderSize = _renderSize;
         _previousFinalRect = finalRect;
         InvalidateScreenOffsetCacheRecursive();
+
+        bool trace = LayoutDiagnostics.IsRecording;
+        long startTicks = trace ? Stopwatch.GetTimestamp() : 0;
         _renderSize = ArrangeCore(finalRect);
         _isArrangeValid = true;
+        if (trace)
+        {
+            double us = (Stopwatch.GetTimestamp() - startTicks) * 1_000_000.0 / Stopwatch.Frequency;
+            LayoutDiagnostics.NotifyArrange(this, us);
+        }
 
         // If render size changed, mark this element as needing re-render
         if (_renderSize != oldRenderSize)
@@ -3627,9 +3728,26 @@ public interface IWindowHost
     void InvalidateWindow();
 
     /// <summary>
-    /// Adds a dirty element for partial rendering.
+    /// Adds a dirty element for partial rendering. The element's full screen bounds
+    /// are used as the dirty region.
     /// </summary>
     void AddDirtyElement(UIElement element);
+
+    /// <summary>
+    /// Adds a dirty element with a precise sub-rectangle (in the element's local
+    /// coordinate space). Allows callers — e.g. TextBox caret blink — to mark only
+    /// the affected pixels dirty instead of the whole control.
+    /// Default implementation falls back to the full-element overload.
+    /// </summary>
+    void AddDirtyElement(UIElement element, Rect localDirtyRect)
+        => AddDirtyElement(element);
+
+    /// <summary>
+    /// Adds a free-floating dirty rectangle in window (screen) coordinates. Used
+    /// by animation / compositor systems that don't own a single <see cref="UIElement"/>
+    /// but still know what pixels changed. Default implementation is a no-op.
+    /// </summary>
+    void AddDirtyRect(Rect screenRect) { }
 
     /// <summary>
     /// Requests a full invalidation (entire window redraw).

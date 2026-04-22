@@ -120,6 +120,32 @@ public:
     bool NeedsReset() const { return needsReset_; }
     void ClearResetFlag() { needsReset_ = false; }
 
+    // ── Diagnostics accessors (used by DevTools Perf tab via RenderTarget::QueryGpuStats) ──
+
+    /// Number of glyph entries currently resident in the cache.
+    int32_t GetCacheEntryCount() const {
+        return static_cast<int32_t>(cache_.size());
+    }
+
+    /// Approximate slot capacity at average glyph size (16×16). Purely display-
+    /// side — the packer itself has no slot grid.
+    int32_t GetEstimatedCapacity() const {
+        return (kAtlasWidth * kAtlasHeight) / (16 * 16);
+    }
+
+    /// Bytes of atlas texture memory currently packed (approximate: rows packed
+    /// + current row partial column).
+    int64_t GetPackedBytes() const {
+        int64_t wholeRows = static_cast<int64_t>(packY_) * kAtlasWidth;
+        int64_t currentRowPartial = static_cast<int64_t>(packX_) * rowHeight_;
+        return (wholeRows + currentRowPartial) * 4;  // RGBA8
+    }
+
+    /// Total GPU bytes reserved for the atlas texture (static allocation).
+    int64_t GetTotalBytes() const {
+        return static_cast<int64_t>(kAtlasWidth) * kAtlasHeight * 4;
+    }
+
 private:
     bool RasterizeGlyph(const GlyphKey& key, GlyphEntry& entry);
     bool AllocateAtlasRect(uint16_t w, uint16_t h, uint16_t& outX, uint16_t& outY);

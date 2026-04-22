@@ -72,6 +72,14 @@ public class RichTextBox : Control, IImeSupport
     private const int CaretAnimationTickMs = 33;
 
     /// <summary>
+    /// Caret rect in local coordinates, published by <see cref="RenderCaret"/> so
+    /// the blink timer can invalidate only this region instead of the entire
+    /// RichTextBox — crucial because RichTextBox typically has a large visual
+    /// surface (document body) that would otherwise be redrawn every 530ms.
+    /// </summary>
+    private Rect _lastRenderedCaretRect = Rect.Empty;
+
+    /// <summary>
     /// Whether the user is currently selecting text.
     /// </summary>
     private bool _isSelecting;
@@ -1377,6 +1385,12 @@ public class RichTextBox : Control, IImeSupport
 
         dc.DrawRectangle(caretBrush, null,
             new Rect(caretPos.Value.X, caretPos.Value.Y, 2, lineHeight));
+
+        // Publish caret rect (local coords) so the blink timer can invalidate
+        // only this region instead of the whole RichTextBox.
+        _lastRenderedCaretRect = new Rect(
+            caretPos.Value.X - 2, caretPos.Value.Y - 1,
+            6, lineHeight + 2);
     }
 
     private void RenderImeComposition(DrawingContext dc, Rect contentBounds)
@@ -2265,7 +2279,14 @@ public class RichTextBox : Control, IImeSupport
             return;
         }
 
-        InvalidateVisual();
+        if (!_lastRenderedCaretRect.IsEmpty)
+        {
+            InvalidateVisual(_lastRenderedCaretRect);
+        }
+        else
+        {
+            InvalidateVisual();
+        }
         ScheduleNextCaretTick(DateTime.Now);
     }
 

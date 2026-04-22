@@ -340,13 +340,52 @@ bool D3D12GlyphAtlas::RasterizeGlyph(const GlyphKey& key, GlyphEntry& entry)
         // sub-pixel offset so each cached variant matches a specific position.
         float subpixelOffset = key.subpixelX / 4.0f;
 
+        // Ask the font face which rendering mode and grid-fit policy is right
+        // for this em size.  Hard-coding GRID_FIT_MODE_ENABLED forces every
+        // horizontal stem onto the pixel grid; in Bold weights at typical UI
+        // sizes that snaps the middle bar of an 'e' onto the same row as the
+        // top/bottom curves, so the bar disappears and the glyph reads as a
+        // 'c'.  Solid block characters lose their interior fill the same way.
+        // The font's gasp table knows when grid fitting is safe per size.
+        DWRITE_RENDERING_MODE1 renderingMode = DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC;
+        DWRITE_GRID_FIT_MODE gridFitMode = DWRITE_GRID_FIT_MODE_DEFAULT;
+        bool useGdiFallback = false;
+
+        ComPtr<IDWriteFontFace3> fontFace3;
+        if (SUCCEEDED(key.fontFace->QueryInterface(IID_PPV_ARGS(&fontFace3))) && fontFace3) {
+            DWRITE_RENDERING_MODE1 recMode = DWRITE_RENDERING_MODE1_DEFAULT;
+            DWRITE_GRID_FIT_MODE recGridFit = DWRITE_GRID_FIT_MODE_DEFAULT;
+            HRESULT recHr = fontFace3->GetRecommendedRenderingMode(
+                (float)key.fontSize,
+                96.0f, 96.0f,                         // pixelsPerDip = 1.0
+                nullptr,                              // no transform
+                FALSE,                                // not sideways
+                DWRITE_OUTLINE_THRESHOLD_ANTIALIASED,
+                DWRITE_MEASURING_MODE_NATURAL,
+                renderingParams_.Get(),
+                &recMode,
+                &recGridFit);
+            if (SUCCEEDED(recHr)) {
+                // CreateGlyphRunAnalysis cannot consume DEFAULT, ALIASED, or
+                // OUTLINE — those have to be drawn through the GDI path.
+                if (recMode == DWRITE_RENDERING_MODE1_OUTLINE ||
+                    recMode == DWRITE_RENDERING_MODE1_ALIASED ||
+                    recMode == DWRITE_RENDERING_MODE1_DEFAULT) {
+                    useGdiFallback = true;
+                } else {
+                    renderingMode = recMode;
+                    gridFitMode = recGridFit;
+                }
+            }
+        }
+
         ComPtr<IDWriteGlyphRunAnalysis> analysis;
-        HRESULT hr = dwriteFactory3_->CreateGlyphRunAnalysis(
+        HRESULT hr = useGdiFallback ? E_FAIL : dwriteFactory3_->CreateGlyphRunAnalysis(
             &glyphRun,
             nullptr,  // no transform
-            DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC,
+            renderingMode,
             DWRITE_MEASURING_MODE_NATURAL,
-            DWRITE_GRID_FIT_MODE_ENABLED,   // snap horizontal strokes to pixel rows
+            gridFitMode,
             DWRITE_TEXT_ANTIALIAS_MODE_CLEARTYPE,
             subpixelOffset, 0.0f,  // sub-pixel X offset baked into bounds
             &analysis);
@@ -497,6 +536,16 @@ uint32_t D3D12GlyphAtlas::GenerateGlyphs(
     std::vector<TextDecorationRect>* outDecorations)
 {
     if (!layout || !initialized_) return 0;
+
+    // Atlas overflow recycling happens at the real frame boundary inside
+    // D3D12DirectRenderer::BeginFrame (see NeedsReset/ClearResetFlag pair).
+    // Never reset here — AllocateAtlasRect's contract is that this flag is
+    // consumed between frames.  Resetting mid-frame would invalidate the
+    // UV coordinates of every GlyphQuadInstance already emitted earlier in
+    // this same frame, so those glyphs would sample atlas slots that have
+    // since been rewritten by later glyphs in this call — the visible
+    // symptom is characters displaying as random other characters or
+    // overlapping ghosts wherever text appears.
 
     // Extract glyph runs from the text layout.
     // Pixel snapping is disabled in the collector — DirectWrite reports exact

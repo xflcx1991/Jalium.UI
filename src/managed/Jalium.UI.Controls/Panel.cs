@@ -304,6 +304,7 @@ public sealed class UIElementCollection : IList<UIElement>
             if (oldItem != value)
             {
                 _parent.RemoveVisualChildInternal(oldItem);
+                PrepareIncomingChild(value);
                 _items[index] = value;
                 if (IsBatchUpdating)
                     _parent.AddVisualChildBatch(value);
@@ -320,6 +321,7 @@ public sealed class UIElementCollection : IList<UIElement>
     public void Add(UIElement item)
     {
         ArgumentNullException.ThrowIfNull(item);
+        if (!PrepareIncomingChild(item)) return; // already our child — idempotent no-op
         _items.Add(item);
 
         if (IsBatchUpdating)
@@ -331,6 +333,41 @@ public sealed class UIElementCollection : IList<UIElement>
             _parent.AddVisualChildInternal(item);
             _parent.InvalidateMeasure();
         }
+    }
+
+    /// <summary>
+    /// Ensures <paramref name="item"/> is safe to add as a child of the owning
+    /// panel. Handles two concurrency hazards that have hit the realization
+    /// pipelines in practice:
+    ///
+    /// 1. <em>Idempotent add</em> — if the element is already a visual child of
+    ///    this panel, we simply ensure the backing <c>_items</c> list contains it
+    ///    and tell the caller to skip. Guards against double-population paths
+    ///    (VSP realize + synchronous RefreshItems in the same layout pass).
+    ///
+    /// 2. <em>Automatic reparent</em> — if the element is parented to a
+    ///    different panel, detach it first. This mirrors WPF's logical-tree
+    ///    reparent semantics and keeps transient container handoffs between
+    ///    virtualizing panels from throwing "Visual already has a parent".
+    ///
+    /// Returns <c>true</c> when the caller should proceed to add; <c>false</c>
+    /// when the collection already contains the element.
+    /// </summary>
+    private bool PrepareIncomingChild(UIElement item)
+    {
+        var currentParent = item.VisualParent;
+        if (ReferenceEquals(currentParent, _parent))
+        {
+            // Already our child. Resynchronise _items if it somehow lost the
+            // entry and tell the caller this call is a no-op.
+            if (!_items.Contains(item)) _items.Add(item);
+            return false;
+        }
+        if (currentParent != null)
+        {
+            item.DetachFromVisualParent();
+        }
+        return true;
     }
 
     /// <summary>
@@ -373,15 +410,21 @@ public sealed class UIElementCollection : IList<UIElement>
             return;
         }
 
+        int added = 0;
         for (int i = 0; i < items.Count; i++)
         {
             var item = items[i];
+            if (!PrepareIncomingChild(item)) continue; // already a child — skip
             _items.Add(item);
             _parent.AddVisualChildBatch(item);
+            added++;
         }
 
-        _parent.EndVisualChildBatch();
-        _parent.InvalidateMeasure();
+        if (added > 0)
+        {
+            _parent.EndVisualChildBatch();
+            _parent.InvalidateMeasure();
+        }
     }
 
     /// <summary>
@@ -395,6 +438,7 @@ public sealed class UIElementCollection : IList<UIElement>
     public void Insert(int index, UIElement item)
     {
         ArgumentNullException.ThrowIfNull(item);
+        if (!PrepareIncomingChild(item)) return; // already our child — idempotent no-op
         _items.Insert(index, item);
 
         if (IsBatchUpdating)

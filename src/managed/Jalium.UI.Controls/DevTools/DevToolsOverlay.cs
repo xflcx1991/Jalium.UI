@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Jalium.UI.Diagnostics;
 using Jalium.UI.Interop;
 using Jalium.UI.Media;
 using Jalium.UI.Threading;
@@ -248,6 +249,9 @@ internal sealed class DevToolsOverlay
     /// <param name="dc">The drawing context.</param>
     public void DrawOverlay(DrawingContext dc)
     {
+        DrawRenderDiagnosticsOverlay(dc);
+        DrawRulerOverlay(dc);
+
         if (_highlightedElement == null)
         {
             return;
@@ -478,5 +482,252 @@ internal sealed class DevToolsOverlay
         StopAnimation();
         _targetWindow.RequestFullInvalidation();
         _targetWindow.InvalidateWindow();
+    }
+
+    private void DrawRenderDiagnosticsOverlay(DrawingContext dc)
+    {
+        switch (RenderDiagnostics.Mode)
+        {
+            case RenderDiagnostics.OverlayMode.Overdraw:
+                DrawOverdrawOverlay(dc);
+                break;
+            case RenderDiagnostics.OverlayMode.DirtyRegions:
+                DrawDirtyRegionOverlay(dc);
+                break;
+        }
+    }
+
+    private void DrawOverdrawOverlay(DrawingContext dc)
+    {
+        var cells = RenderDiagnostics.SnapshotOverdraw();
+        foreach (var cell in cells)
+        {
+            byte alpha = cell.DrawCount switch
+            {
+                <= 1 => 60,
+                2 => 90,
+                3 => 120,
+                4 => 160,
+                _ => 200,
+            };
+            Color color = cell.DrawCount switch
+            {
+                <= 1 => Color.FromArgb(alpha, 0, 255, 0),
+                2 => Color.FromArgb(alpha, 255, 255, 0),
+                3 => Color.FromArgb(alpha, 255, 160, 0),
+                4 => Color.FromArgb(alpha, 255, 80, 0),
+                _ => Color.FromArgb(alpha, 255, 0, 0),
+            };
+            dc.DrawRectangle(new SolidColorBrush(color), null, new Rect(cell.X, cell.Y, cell.Width, cell.Height));
+        }
+    }
+
+    private void DrawDirtyRegionOverlay(DrawingContext dc)
+    {
+        var history = RenderDiagnostics.SnapshotDirtyHistory();
+        int idx = history.Count - 1;
+        for (int i = 0; i < Math.Min(history.Count, 16); i++)
+        {
+            var entry = history[idx - i];
+            byte alpha = (byte)Math.Max(30, 180 - i * 12);
+            var brush = new SolidColorBrush(Color.FromArgb((byte)(alpha / 5), 255, 120, 60));
+            var pen = new Pen(new SolidColorBrush(Color.FromArgb(alpha, 255, 120, 60)), 1);
+            dc.DrawRectangle(brush, pen, entry.Region);
+        }
+    }
+
+    // ── Ruler ─────────────────────────────────────────────────────────────
+
+    internal bool IsRulerActive { get; private set; }
+    internal Point? RulerStart { get; private set; }
+    internal Point? RulerEnd { get; private set; }
+    internal bool RulerEndCommitted { get; private set; }
+
+    internal void BeginRuler()
+    {
+        IsRulerActive = true;
+        RulerStart = null;
+        RulerEnd = null;
+        RulerEndCommitted = false;
+        RequestRedraw();
+    }
+
+    internal void EndRuler()
+    {
+        IsRulerActive = false;
+        RulerStart = null;
+        RulerEnd = null;
+        RulerEndCommitted = false;
+        RequestRedraw();
+    }
+
+    internal void SetRulerStart(Point p)
+    {
+        RulerStart = p;
+        RulerEnd = null;
+        RulerEndCommitted = false;
+        RequestRedraw();
+    }
+
+    /// <summary>Live preview position — overwritten on mouse-move until the user clicks.</summary>
+    internal void SetRulerPreviewEnd(Point p)
+    {
+        if (!IsRulerActive || RulerStart == null || RulerEndCommitted) return;
+        RulerEnd = p;
+        RequestRedraw();
+    }
+
+    internal void CommitRulerEnd(Point p)
+    {
+        RulerEnd = p;
+        RulerEndCommitted = true;
+        RequestRedraw();
+    }
+
+    private void RequestRedraw()
+    {
+        _targetWindow.RequestFullInvalidation();
+        _targetWindow.InvalidateWindow();
+    }
+
+    // Ruler palette — a cool cyan/blue with pop.
+    private static readonly Color RulerColor         = Color.FromRgb(0x3A, 0x9D, 0xFF);
+    private static readonly Color RulerColorLight    = Color.FromRgb(0x8F, 0xC9, 0xFF);
+    private static readonly Color RulerShadow        = Color.FromArgb(0x60, 0x00, 0x00, 0x00);
+
+    private void DrawRulerOverlay(DrawingContext dc)
+    {
+        if (!IsRulerActive || RulerStart == null) return;
+        var start = RulerStart.Value;
+
+        // Pen for guide axes (dashed look is faked with short segments).
+        var axisPen = new Pen(new SolidColorBrush(Color.FromArgb(0x80, RulerColor.R, RulerColor.G, RulerColor.B)), 1);
+        var linePenGlow = new Pen(new SolidColorBrush(Color.FromArgb(0x40, RulerColor.R, RulerColor.G, RulerColor.B)), 6);
+        var linePen = new Pen(new SolidColorBrush(RulerColor), 2);
+        var shadowBrush = new SolidColorBrush(RulerShadow);
+        var dotFill = new SolidColorBrush(RulerColorLight);
+        var dotStroke = new Pen(new SolidColorBrush(RulerColor), 2);
+
+        // Draw the start endpoint first (pulsing ring when we have no end yet).
+        DrawEndpoint(dc, start, dotFill, dotStroke, shadowBrush);
+
+        if (RulerEnd is not { } end)
+        {
+            // Only the start point — draw cross-hair axes anchored there so the
+            // user gets a visible reference before placing the second point.
+            DrawCrossAxes(dc, start, axisPen);
+            return;
+        }
+
+        // Draw the dashed right-triangle (Δx / Δy) guides first so the main line
+        // stays visually on top.
+        DrawDashedLine(dc, new Point(start.X, start.Y), new Point(end.X, start.Y), axisPen);
+        DrawDashedLine(dc, new Point(end.X, start.Y), new Point(end.X, end.Y),   axisPen);
+
+        // Glow underlay + sharp main line.
+        dc.DrawLine(linePenGlow, start, end);
+        dc.DrawLine(linePen, start, end);
+
+        // End dot + a callout at the midpoint with the distance.
+        DrawEndpoint(dc, end, dotFill, dotStroke, shadowBrush);
+
+        double dx = end.X - start.X;
+        double dy = end.Y - start.Y;
+        double dist = Math.Sqrt(dx * dx + dy * dy);
+
+        DrawCallout(dc,
+            text: $"{dist:F1} px",
+            anchor: new Point((start.X + end.X) / 2, (start.Y + end.Y) / 2),
+            accent: RulerColor);
+
+        // Small dx / dy chips on the axis midpoints when segments are long enough to be readable.
+        if (Math.Abs(dx) > 40)
+        {
+            DrawInlineChip(dc, $"Δx {dx:F0}", new Point((start.X + end.X) / 2, start.Y - 10), RulerColorLight);
+        }
+        if (Math.Abs(dy) > 40)
+        {
+            DrawInlineChip(dc, $"Δy {dy:F0}", new Point(end.X + 10, (start.Y + end.Y) / 2), RulerColorLight);
+        }
+    }
+
+    private static void DrawEndpoint(DrawingContext dc, Point p, Brush fill, Pen stroke, Brush shadow)
+    {
+        // Soft shadow drop.
+        dc.DrawEllipse(shadow, null, new Point(p.X + 0.5, p.Y + 1.5), 6, 6);
+        // Solid fill + ring.
+        dc.DrawEllipse(fill, stroke, p, 5, 5);
+        // Inner dark center.
+        dc.DrawEllipse(new SolidColorBrush(Color.FromRgb(0x10, 0x22, 0x35)), null, p, 2, 2);
+    }
+
+    private static void DrawCrossAxes(DrawingContext dc, Point p, Pen pen)
+    {
+        const double reach = 14;
+        dc.DrawLine(pen, new Point(p.X - reach, p.Y), new Point(p.X - 6, p.Y));
+        dc.DrawLine(pen, new Point(p.X + 6, p.Y), new Point(p.X + reach, p.Y));
+        dc.DrawLine(pen, new Point(p.X, p.Y - reach), new Point(p.X, p.Y - 6));
+        dc.DrawLine(pen, new Point(p.X, p.Y + 6), new Point(p.X, p.Y + reach));
+    }
+
+    private static void DrawDashedLine(DrawingContext dc, Point a, Point b, Pen pen)
+    {
+        double dx = b.X - a.X;
+        double dy = b.Y - a.Y;
+        double len = Math.Sqrt(dx * dx + dy * dy);
+        if (len < 1) return;
+        double nx = dx / len;
+        double ny = dy / len;
+        const double dashLen = 6;
+        const double gapLen = 4;
+        double t = 0;
+        while (t < len)
+        {
+            double segEnd = Math.Min(t + dashLen, len);
+            dc.DrawLine(pen,
+                new Point(a.X + nx * t, a.Y + ny * t),
+                new Point(a.X + nx * segEnd, a.Y + ny * segEnd));
+            t = segEnd + gapLen;
+        }
+    }
+
+    private static void DrawCallout(DrawingContext dc, string text, Point anchor, Color accent)
+    {
+        var ft = new FormattedText(text, FrameworkElement.DefaultFontFamilyName, 11)
+        {
+            Foreground = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xF5)),
+        };
+        TextMeasurement.MeasureText(ft);
+        double w = ft.Width + 14;
+        double h = ft.Height + 6;
+        var rect = new Rect(anchor.X - w / 2, anchor.Y - h / 2 - 16, w, h);
+
+        // Drop shadow.
+        dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(0x60, 0, 0, 0)), null,
+            new Rect(rect.X + 1, rect.Y + 2, rect.Width, rect.Height), 6, 6);
+        // Background with accent border.
+        dc.DrawRoundedRectangle(
+            new SolidColorBrush(Color.FromRgb(0x18, 0x20, 0x2C)),
+            new Pen(new SolidColorBrush(accent), 1),
+            rect, 6, 6);
+        // Text.
+        dc.DrawText(ft, new Point(rect.X + 7, rect.Y + 3));
+    }
+
+    private static void DrawInlineChip(DrawingContext dc, string text, Point anchor, Color accent)
+    {
+        var ft = new FormattedText(text, FrameworkElement.DefaultFontFamilyName, 10)
+        {
+            Foreground = new SolidColorBrush(accent),
+        };
+        TextMeasurement.MeasureText(ft);
+        double w = ft.Width + 10;
+        double h = ft.Height + 4;
+        var rect = new Rect(anchor.X - w / 2, anchor.Y - h / 2, w, h);
+        dc.DrawRoundedRectangle(
+            new SolidColorBrush(Color.FromArgb(0xB0, 0x10, 0x18, 0x24)),
+            null,
+            rect, 4, 4);
+        dc.DrawText(ft, new Point(rect.X + 5, rect.Y + 2));
     }
 }

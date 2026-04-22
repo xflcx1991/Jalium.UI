@@ -61,7 +61,7 @@ internal sealed class DebugHudOverlay : Border
         };
         _pathText = new TextBlock
         {
-            Text = "Full [D3D12]",
+            Text = "Full [D3D12 · Impeller]",
             FontFamily = new FontFamily(FrameworkElement.DefaultFontFamilyName),
             FontSize = 10,
             Foreground = new SolidColorBrush(dimColor),
@@ -176,16 +176,18 @@ internal sealed class DebugHudOverlay : Border
     public void Update(
         double fps, double worstMs,
         double layoutMs, double renderMs, double presentMs, double totalMs,
-        string renderPath, string backend,
+        string renderPath, string backend, string engine,
         int fullFrames, int partialFrames, int skippedFrames, int beginFails,
         int dirtyElements, string dirtyRegion,
         int windowW, int windowH, float dpiScale,
-        long gcBytes, int gen0, int gen1, int gen2)
+        long gcBytes, int gen0, int gen1, int gen2,
+        int promotedFrames = 0, int capacityExceeded = 0,
+        int dirtyRectCount = 0, double dirtyCoverageRatio = 0)
     {
         // FPS header
         _fpsText.Text = $"{fps:F0}";
         _fpsText.Foreground = fps >= 55 ? FpsGreen : fps >= 30 ? FpsYellow : FpsRed;
-        _pathText.Text = $"{renderPath}  [{backend}]";
+        _pathText.Text = $"{renderPath}  [{backend} · {engine}]";
         _worstText.Text = $"worst {worstMs:F1}ms";
         _worstText.Foreground = worstMs > 16 ? WarnBrush : DimBrush;
 
@@ -204,10 +206,17 @@ internal sealed class DebugHudOverlay : Border
         _barRender.Width = rW;
         _barPresent.Width = pW;
 
-        // Pipeline
-        _framesText.Text = $"Frames  Full={fullFrames}  Partial={partialFrames}  Skip={skippedFrames}  Fail={beginFails}";
-        _framesText.Foreground = beginFails > 0 ? WarnBrush : _dirtyText.Foreground;
-        _dirtyText.Text = $"Dirty   {dirtyElements} elements   {dirtyRegion}";
+        // Pipeline — now split into two lines so promote / capacity / partial hit
+        // are visible at a glance. The original "Frames" line keeps its legacy
+        // Full / Partial / Skip / Fail layout; a second line surfaces the new
+        // partial-redraw diagnostics.
+        int partialAttempts = partialFrames + promotedFrames;
+        double partialHitRatio = partialAttempts > 0
+            ? (double)partialFrames / partialAttempts
+            : 0;
+        _framesText.Text = $"Frames  Full={fullFrames}  Partial={partialFrames}  Promoted={promotedFrames}  Skip={skippedFrames}  Fail={beginFails}";
+        _framesText.Foreground = beginFails > 0 ? WarnBrush : DimBrush;
+        _dirtyText.Text = $"Dirty   {dirtyElements}el  rects={dirtyRectCount}  cov={dirtyCoverageRatio * 100:F1}%  hit={partialHitRatio * 100:F0}%  cap+={capacityExceeded}   {dirtyRegion}";
 
         // System
         _windowText.Text = $"Window  {windowW}x{windowH}   DPI {dpiScale * 96:F0} ({dpiScale:F2}x)";

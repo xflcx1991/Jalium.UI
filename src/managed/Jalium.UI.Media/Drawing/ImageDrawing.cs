@@ -34,6 +34,12 @@ public sealed class ImageDrawing : Drawing
     /// </summary>
     public Rect Rect { get; set; }
 
+    /// <summary>
+    /// Gets or sets the algorithm used to scale the bitmap when its source pixel size
+    /// differs from <see cref="Rect"/>.
+    /// </summary>
+    public BitmapScalingMode ScalingMode { get; set; } = BitmapScalingMode.Unspecified;
+
     /// <inheritdoc />
     public override Rect Bounds => Rect;
 
@@ -42,7 +48,7 @@ public sealed class ImageDrawing : Drawing
     {
         if (ImageSource != null && !Rect.IsEmpty)
         {
-            context.DrawImage(ImageSource, Rect);
+            context.DrawImage(ImageSource, Rect, ScalingMode);
         }
     }
 }

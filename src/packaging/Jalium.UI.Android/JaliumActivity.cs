@@ -9,8 +9,9 @@ namespace Jalium.UI;
 /// <summary>
 /// Base <see cref="Activity"/> that bootstraps the Jalium.UI framework on Android.
 /// Handles SurfaceView creation, native window lifecycle, touch/key input forwarding,
-/// and Android lifecycle events. Subclasses override <see cref="CreateApplication"/>
-/// to provide the Jalium.UI <see cref="Application"/> with views, styles, and business logic.
+/// and Android lifecycle events. Subclasses override <see cref="CreateHostedApp"/>
+/// to build the Jalium.UI <see cref="JaliumApp"/> (host + application) with views,
+/// services, styles, and business logic.
 /// </summary>
 public abstract class JaliumActivity : Activity, ISurfaceHolderCallback
 {
@@ -20,12 +21,12 @@ public abstract class JaliumActivity : Activity, ISurfaceHolderCallback
     private static volatile bool s_appStarted;
 
     /// <summary>
-    /// Creates and configures the Jalium.UI <see cref="Application"/> instance.
-    /// Override this to set <see cref="Application.MainWindow"/>, resources, and startup logic.
-    /// This is called on the Jalium UI thread, not the Android main thread.
+    /// Builds the <see cref="JaliumApp"/> that drives this activity. Typically this
+    /// invokes <see cref="AppBuilder.CreateBuilder()"/>, registers services, sets
+    /// <see cref="AppBuilder.MainWindow"/>, and returns <see cref="AppBuilder.Build"/>.
+    /// Called on the dedicated Jalium UI thread, not the Android main thread.
     /// </summary>
-    /// <returns>A configured <see cref="Application"/> ready to run.</returns>
-    protected abstract Application CreateApplication();
+    protected abstract JaliumApp CreateHostedApp();
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
@@ -87,12 +88,12 @@ public abstract class JaliumActivity : Activity, ISurfaceHolderCallback
     {
         try
         {
-            var app = CreateApplication();
+            using var app = CreateHostedApp();
             app.Run();
         }
         catch (Exception ex)
         {
-            Android.Util.Log.Error("JaliumUI", $"Application.Run FATAL: {ex}");
+            Android.Util.Log.Error("JaliumUI", $"JaliumApp.Run FATAL: {ex}");
         }
     }
 

@@ -40,7 +40,6 @@ public class ToggleMenuFlyoutItem : MenuFlyoutItem
     /// </summary>
     public ToggleMenuFlyoutItem()
     {
-        AddHandler(MouseDownEvent, new Input.MouseButtonEventHandler(OnToggleMouseDown));
     }
 
     /// <inheritdoc />
@@ -54,7 +53,7 @@ public class ToggleMenuFlyoutItem : MenuFlyoutItem
         {
             var checkBrush = ResolveCheckGlyphBrush();
             var checkText = new Jalium.UI.Media.FormattedText(
-                "\u2713", FontFamily, 14) { Foreground = checkBrush }; // 鉁?
+                "\u2713", FontFamily, 14) { Foreground = checkBrush };
             dc.DrawText(checkText, new Point(8, (RenderSize.Height - 14) / 2));
         }
     }
@@ -71,10 +70,9 @@ public class ToggleMenuFlyoutItem : MenuFlyoutItem
             ?? s_defaultCheckGlyphBrush;
     }
 
-    private void OnToggleMouseDown(object sender, Input.MouseButtonEventArgs e)
+    /// <inheritdoc />
+    protected override void OnItemInvoking()
     {
-        if (!IsEnabled) return;
         IsChecked = !IsChecked;
-        // Note: the base MenuFlyoutItem.OnMouseDownHandler will raise Click and execute Command
     }
 }

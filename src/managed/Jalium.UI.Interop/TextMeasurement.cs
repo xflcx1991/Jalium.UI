@@ -165,6 +165,39 @@ public static class TextMeasurement
     }
 
     /// <summary>
+    /// Wrap-aware variant of <see cref="HitTestPoint"/>. Pass the same
+    /// <paramref name="maxWidth"/> the renderer uses so (pointX, pointY) is
+    /// interpreted inside the wrapped layout — this is what makes mouse drag
+    /// selection land on the character the user actually clicked when the
+    /// paragraph has wrapped to multiple visual rows.
+    /// </summary>
+    public static bool HitTestPointWrapped(
+        string text,
+        string fontFamily,
+        double fontSize,
+        int fontWeight,
+        int fontStyle,
+        float maxWidth,
+        float pointX,
+        float pointY,
+        out TextHitTestResult result)
+    {
+        result = default;
+        if (string.IsNullOrEmpty(text))
+            return false;
+
+        var context = RenderContext.Current;
+        if (context == null || !context.IsValid)
+            return false;
+
+        var format = GetOrCreateFormat(context, fontFamily, (float)fontSize, fontWeight, fontStyle);
+        if (format == null || !format.IsValid)
+            return false;
+
+        return format.HitTestPoint(text, maxWidth, 100000f, pointX, pointY, out result);
+    }
+
+    /// <summary>
     /// Gets the caret X position for a given character index within a text layout.
     /// Uses DirectWrite's native hit testing for pixel-accurate results.
     /// </summary>
@@ -190,6 +223,41 @@ public static class TextMeasurement
             return false;
 
         return format.HitTestTextPosition(text, 100000f, 100000f, textPosition, isTrailingHit, out result);
+    }
+
+    /// <summary>
+    /// Wrap-aware variant of <see cref="HitTestTextPosition"/>. Passing the
+    /// same <paramref name="maxWidth"/> the renderer uses gives back the
+    /// caret (x, y) inside the wrapped layout, so callers can paint per-row
+    /// selection / caret rectangles that line up with the glyphs as the user
+    /// actually sees them.
+    /// </summary>
+    public static bool HitTestTextPositionWrapped(
+        string text,
+        string fontFamily,
+        double fontSize,
+        int fontWeight,
+        int fontStyle,
+        float maxWidth,
+        uint textPosition,
+        bool isTrailingHit,
+        out TextHitTestResult result)
+    {
+        result = default;
+        if (string.IsNullOrEmpty(text))
+            return false;
+
+        var context = RenderContext.Current;
+        if (context == null || !context.IsValid)
+            return false;
+
+        var format = GetOrCreateFormat(context, fontFamily, (float)fontSize, fontWeight, fontStyle);
+        if (format == null || !format.IsValid)
+            return false;
+
+        // Height is intentionally unbounded — we only care about horizontal
+        // wrapping; height clipping would truncate the y of later rows.
+        return format.HitTestTextPosition(text, maxWidth, 100000f, textPosition, isTrailingHit, out result);
     }
 
     /// <summary>

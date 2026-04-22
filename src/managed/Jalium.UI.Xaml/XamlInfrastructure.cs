@@ -562,3 +562,4 @@ public interface IComponentConnector
     /// </summary>
     void InitializeComponent();
 }
+

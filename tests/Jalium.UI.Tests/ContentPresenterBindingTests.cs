@@ -113,13 +113,13 @@ public class ContentPresenterBindingTests
     private void FindContentPresenter(Visual visual, ref ContentPresenter? result)
     {
         if (result != null) return;
-        
+
         if (visual is ContentPresenter cp)
         {
             result = cp;
             return;
         }
-        
+
         for (int i = 0; i < visual.VisualChildrenCount; i++)
         {
             var child = visual.GetVisualChild(i);
@@ -129,4 +129,63 @@ public class ContentPresenterBindingTests
             }
         }
     }
+
+    private void FindHeaderContentPresenter(Visual visual, ref ContentPresenter? result)
+    {
+        if (result != null) return;
+
+        if (visual is ContentPresenter cp && cp.Name == "PART_HeaderContent")
+        {
+            result = cp;
+            return;
+        }
+
+        for (int i = 0; i < visual.VisualChildrenCount; i++)
+        {
+            var child = visual.GetVisualChild(i);
+            if (child != null)
+            {
+                FindHeaderContentPresenter(child, ref result);
+            }
+        }
+    }
+
+    [Fact]
+    public void PropertyGridCategoryExpander_HeaderContentPresenter_ShouldFillGridColumn()
+    {
+        ResetApplicationState();
+        var app = new Application();
+
+        try
+        {
+            // Real PropertyGrid path: the header ContentPresenter sits in a Grid star column
+            // and must stretch to fill it (so long header text or a custom header container
+            // has room to render) while still centering vertically.
+            var window = new Window { Width = 1000, Height = 500 };
+            var propertyGrid = new PropertyGrid { Width = 1000, Height = 400 };
+            window.Content = propertyGrid;
+
+            propertyGrid.SelectedObject = new Button
+            {
+                Width = 100,
+                Height = 30,
+                Content = "Test"
+            };
+
+            window.Measure(new Size(1000, 500));
+            window.Arrange(new Rect(0, 0, 1000, 500));
+
+            ContentPresenter? presenter = null;
+            FindHeaderContentPresenter(propertyGrid, ref presenter);
+            Assert.NotNull(presenter);
+
+            Assert.Equal(HorizontalAlignment.Stretch, presenter.HorizontalAlignment);
+            Assert.Equal(VerticalAlignment.Center, presenter.VerticalAlignment);
+        }
+        finally
+        {
+            ResetApplicationState();
+        }
+    }
+
 }

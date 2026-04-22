@@ -31,6 +31,22 @@ public class UniformGrid : Panel
         DependencyProperty.Register(nameof(FirstColumn), typeof(int), typeof(UniformGrid),
             new PropertyMetadata(0, OnLayoutPropertyChanged));
 
+    /// <summary>
+    /// Identifies the RowSpacing dependency property.
+    /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
+    public static readonly DependencyProperty RowSpacingProperty =
+        DependencyProperty.Register(nameof(RowSpacing), typeof(double), typeof(UniformGrid),
+            new PropertyMetadata(0.0, OnLayoutPropertyChanged));
+
+    /// <summary>
+    /// Identifies the ColumnSpacing dependency property.
+    /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
+    public static readonly DependencyProperty ColumnSpacingProperty =
+        DependencyProperty.Register(nameof(ColumnSpacing), typeof(double), typeof(UniformGrid),
+            new PropertyMetadata(0.0, OnLayoutPropertyChanged));
+
     #endregion
 
     #region CLR Properties
@@ -67,6 +83,29 @@ public class UniformGrid : Panel
         set => SetValue(FirstColumnProperty, value);
     }
 
+    /// <summary>
+    /// Gets or sets the spacing, in device-independent pixels, between rows.
+    /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
+    public double RowSpacing
+    {
+        get => (double)GetValue(RowSpacingProperty)!;
+        set => SetValue(RowSpacingProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the spacing, in device-independent pixels, between columns.
+    /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
+    public double ColumnSpacing
+    {
+        get => (double)GetValue(ColumnSpacingProperty)!;
+        set => SetValue(ColumnSpacingProperty, value);
+    }
+
+    private static double SanitizeSpacing(double value) =>
+        (double.IsNaN(value) || double.IsInfinity(value) || value < 0) ? 0 : value;
+
     #endregion
 
     #region Private Fields
@@ -86,9 +125,19 @@ public class UniformGrid : Panel
         if (_computedRows == 0 || _computedColumns == 0)
             return Size.Empty;
 
-        var childAvailableSize = new Size(
-            availableSize.Width / _computedColumns,
-            availableSize.Height / _computedRows);
+        var columnSpacing = SanitizeSpacing(ColumnSpacing);
+        var rowSpacing = SanitizeSpacing(RowSpacing);
+        var totalColumnSpacing = Math.Max(0, _computedColumns - 1) * columnSpacing;
+        var totalRowSpacing = Math.Max(0, _computedRows - 1) * rowSpacing;
+
+        var cellAvailableWidth = double.IsInfinity(availableSize.Width)
+            ? double.PositiveInfinity
+            : Math.Max(0, availableSize.Width - totalColumnSpacing) / _computedColumns;
+        var cellAvailableHeight = double.IsInfinity(availableSize.Height)
+            ? double.PositiveInfinity
+            : Math.Max(0, availableSize.Height - totalRowSpacing) / _computedRows;
+
+        var childAvailableSize = new Size(cellAvailableWidth, cellAvailableHeight);
 
         var maxChildWidth = 0.0;
         var maxChildHeight = 0.0;
@@ -101,8 +150,8 @@ public class UniformGrid : Panel
         }
 
         return new Size(
-            maxChildWidth * _computedColumns,
-            maxChildHeight * _computedRows);
+            maxChildWidth * _computedColumns + totalColumnSpacing,
+            maxChildHeight * _computedRows + totalRowSpacing);
     }
 
     /// <inheritdoc />
@@ -113,8 +162,13 @@ public class UniformGrid : Panel
         if (_computedRows == 0 || _computedColumns == 0)
             return finalSize;
 
-        var cellWidth = finalSize.Width / _computedColumns;
-        var cellHeight = finalSize.Height / _computedRows;
+        var columnSpacing = SanitizeSpacing(ColumnSpacing);
+        var rowSpacing = SanitizeSpacing(RowSpacing);
+        var totalColumnSpacing = Math.Max(0, _computedColumns - 1) * columnSpacing;
+        var totalRowSpacing = Math.Max(0, _computedRows - 1) * rowSpacing;
+
+        var cellWidth = Math.Max(0, finalSize.Width - totalColumnSpacing) / _computedColumns;
+        var cellHeight = Math.Max(0, finalSize.Height - totalRowSpacing) / _computedRows;
 
         var row = 0;
         var column = FirstColumn;
@@ -128,8 +182,8 @@ public class UniformGrid : Panel
                 row++;
             }
 
-            var x = column * cellWidth;
-            var y = row * cellHeight;
+            var x = column * (cellWidth + columnSpacing);
+            var y = row * (cellHeight + rowSpacing);
 
             child.Arrange(new Rect(x, y, cellWidth, cellHeight));
 

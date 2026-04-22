@@ -55,7 +55,15 @@ public class DockPanel : Panel
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Other)]
     public static readonly DependencyProperty LastChildFillProperty =
         DependencyProperty.Register(nameof(LastChildFill), typeof(bool), typeof(DockPanel),
-            new PropertyMetadata(true, OnLastChildFillChanged));
+            new PropertyMetadata(true, OnLayoutPropertyChanged));
+
+    /// <summary>
+    /// Identifies the Spacing dependency property.
+    /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
+    public static readonly DependencyProperty SpacingProperty =
+        DependencyProperty.Register(nameof(Spacing), typeof(double), typeof(DockPanel),
+            new PropertyMetadata(0.0, OnLayoutPropertyChanged));
 
     #endregion
 
@@ -71,9 +79,29 @@ public class DockPanel : Panel
         set => SetValue(LastChildFillProperty, value);
     }
 
+    /// <summary>
+    /// Gets or sets the uniform gap, in device-independent pixels, inserted between adjacent
+    /// docked children along the axis of the preceding child's <see cref="Dock"/> direction.
+    /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
+    public double Spacing
+    {
+        get => (double)GetValue(SpacingProperty)!;
+        set => SetValue(SpacingProperty, value);
+    }
+
+    private double EffectiveSpacing
+    {
+        get
+        {
+            var value = Spacing;
+            return (double.IsNaN(value) || double.IsInfinity(value) || value < 0) ? 0 : value;
+        }
+    }
+
     #endregion
 
-    private static void OnLastChildFillChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static void OnLayoutPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is DockPanel panel)
         {
@@ -89,11 +117,30 @@ public class DockPanel : Panel
         double accumulatedHeight = 0;
 
         var children = Children;
+        var spacing = EffectiveSpacing;
+        Dock? previousDock = null;
 
         for (int i = 0; i < children.Count; i++)
         {
             if (children[i] is not FrameworkElement child)
                 continue;
+
+            // Inject spacing along the axis of the preceding docked sibling so the next
+            // child's constraint already accounts for the gap we will insert in Arrange.
+            if (previousDock is Dock prev)
+            {
+                switch (prev)
+                {
+                    case Dock.Left:
+                    case Dock.Right:
+                        accumulatedWidth += spacing;
+                        break;
+                    case Dock.Top:
+                    case Dock.Bottom:
+                        accumulatedHeight += spacing;
+                        break;
+                }
+            }
 
             var childConstraint = new Size(
                 Math.Max(0, availableSize.Width - accumulatedWidth),
@@ -101,8 +148,9 @@ public class DockPanel : Panel
 
             child.Measure(childConstraint);
             var childDesiredSize = child.DesiredSize;
+            var childDock = GetDock(child);
 
-            switch (GetDock(child))
+            switch (childDock)
             {
                 case Dock.Left:
                 case Dock.Right:
@@ -115,6 +163,8 @@ public class DockPanel : Panel
                     accumulatedHeight += childDesiredSize.Height;
                     break;
             }
+
+            previousDock = childDock;
         }
 
         parentWidth = Math.Max(parentWidth, accumulatedWidth);
@@ -132,6 +182,7 @@ public class DockPanel : Panel
 
         var children = Children;
         bool lastChildFill = LastChildFill;
+        var spacing = EffectiveSpacing;
 
         // Find the true last FrameworkElement index for LastChildFill
         int lastFeIndex = -1;
@@ -147,16 +198,41 @@ public class DockPanel : Panel
             }
         }
 
+        Dock? previousDock = null;
+
         for (int i = 0; i < children.Count; i++)
         {
             if (children[i] is not FrameworkElement fe)
                 continue;
 
+            // Consume spacing from the slot on the side of the previously docked sibling
+            // so the current child (whether docked or LastChildFill) sits past the gap.
+            if (previousDock is Dock prev && spacing > 0)
+            {
+                switch (prev)
+                {
+                    case Dock.Left:
+                        leftOffset += spacing;
+                        rightRemaining -= spacing;
+                        break;
+                    case Dock.Right:
+                        rightRemaining -= spacing;
+                        break;
+                    case Dock.Top:
+                        topOffset += spacing;
+                        bottomRemaining -= spacing;
+                        break;
+                    case Dock.Bottom:
+                        bottomRemaining -= spacing;
+                        break;
+                }
+            }
+
             Rect childRect;
 
             if (i == lastFeIndex)
             {
-                // Last child fills remaining space
+                // Last child fills remaining space (already offset by any prior spacing).
                 childRect = new Rect(
                     leftOffset,
                     topOffset,
@@ -165,7 +241,8 @@ public class DockPanel : Panel
             }
             else
             {
-                switch (GetDock(fe))
+                var dock = GetDock(fe);
+                switch (dock)
                 {
                     case Dock.Left:
                         childRect = new Rect(
@@ -209,6 +286,7 @@ public class DockPanel : Panel
                         childRect = new Rect(leftOffset, topOffset, fe.DesiredSize.Width, fe.DesiredSize.Height);
                         break;
                 }
+                previousDock = dock;
             }
 
             fe.Arrange(childRect);

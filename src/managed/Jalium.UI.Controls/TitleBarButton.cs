@@ -88,7 +88,21 @@ public class TitleBarButton : ButtonBase
     protected override Size MeasureOverride(Size availableSize)
     {
         double width = !double.IsNaN(Width) && Width > 0 ? Width : 46;
-        double height = !double.IsNaN(Height) && Height > 0 ? Height : 32;
+
+        double height;
+        if (!double.IsNaN(Height) && Height > 0)
+        {
+            height = Height;
+        }
+        else if (!double.IsInfinity(availableSize.Height) && availableSize.Height > 0)
+        {
+            height = availableSize.Height;
+        }
+        else
+        {
+            height = 32;
+        }
+
         if (!double.IsInfinity(availableSize.Width))
             width = Math.Min(width, Math.Max(0, availableSize.Width));
         if (!double.IsInfinity(availableSize.Height))

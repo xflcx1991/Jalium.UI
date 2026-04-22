@@ -425,6 +425,8 @@ public:
     VkDeviceMemory uploadImageMemory = VK_NULL_HANDLE;
     VkImageView uploadImageView = VK_NULL_HANDLE;
     VkSampler frameSampler = VK_NULL_HANDLE;
+    bool anisotropySupported = false;
+    float deviceMaxAnisotropy = 1.0f;
     VkDescriptorSetLayout frameDescriptorSetLayout = VK_NULL_HANDLE;
     VkDescriptorPool frameDescriptorPool = VK_NULL_HANDLE;
     VkDescriptorSet frameDescriptorSet = VK_NULL_HANDLE;
@@ -562,6 +564,51 @@ VulkanRenderTarget::~VulkanRenderTarget() = default;
 bool VulkanRenderTarget::IsInitialized() const
 {
     return impl_ && impl_->initialized;
+}
+
+JaliumResult VulkanRenderTarget::QueryGpuStats(JaliumGpuStats* out) const
+{
+    if (!out) return JALIUM_ERROR_INVALID_ARGUMENT;
+    *out = JaliumGpuStats{};
+
+#ifndef _WIN32
+    // On non-Windows the Vulkan backend owns a cross-platform TextEngine
+    // + GlyphAtlas (FreeType / HarfBuzz). Windows uses per-frame GDI text
+    // rasterization with a bounded textCache_ — see #else branch.
+    if (backend_) {
+        if (auto* textEngine = backend_->GetTextEngine()) {
+            if (auto* atlas = textEngine->GetGlyphAtlas()) {
+                out->glyphSlotsUsed = atlas->GetCacheEntryCount();
+                out->glyphSlotsTotal = atlas->GetEstimatedCapacity();
+                out->glyphBytes = atlas->GetPackedBytes();
+                out->textureCount = 1;
+                out->textureBytes = atlas->GetTotalBytes();
+            }
+        }
+    }
+#else
+    // Windows Vulkan path uses a GDI-rendered bitmap text cache instead of a
+    // glyph atlas. Expose the cache size so the Perf tab still surfaces text
+    // working-set info — slot/byte totals approximate since entry sizes vary.
+    out->glyphSlotsUsed = static_cast<int32_t>(textCache_.size());
+    out->glyphSlotsTotal = static_cast<int32_t>(kMaxTextCacheEntries);
+    // Pixel bytes across every cached bitmap (RGBA8).
+    int64_t bytes = 0;
+    for (const auto& kvp : textCache_) {
+        bytes += static_cast<int64_t>(kvp.second.width) * kvp.second.height * 4;
+    }
+    out->glyphBytes = bytes;
+    out->textureBytes = bytes;
+    out->textureCount = static_cast<int32_t>(textCache_.size());
+#endif
+
+    // Path cache — Impeller tessellates per-frame; Vello is compute-based.
+    // We only surface the count if the Impeller engine is alive.
+    if (impellerEngine_) {
+        out->pathEntries = static_cast<int32_t>(impellerEngine_->GetEncodedPathCount());
+    }
+
+    return JALIUM_OK;
 }
 
 JaliumResult VulkanRenderTarget::Resize(int32_t width, int32_t height)
@@ -837,6 +884,26 @@ bool VulkanRenderTarget::Impl::Initialize(const JaliumSurfaceDescriptor& surface
         return false;
     }
 
+    // Probe device capabilities so we can opt the bitmap sampler into
+    // anisotropic filtering when the GPU supports it. Without this opt-in
+    // VK_TRUE on samplerAnisotropy in pEnabledFeatures, the validation
+    // layers reject any sampler with anisotropyEnable=VK_TRUE.
+    auto getPhysicalDeviceFeatures = LoadInstanceProc<PFN_vkGetPhysicalDeviceFeatures>(getInstanceProcAddr, instance, "vkGetPhysicalDeviceFeatures");
+    auto getPhysicalDeviceProperties = LoadInstanceProc<PFN_vkGetPhysicalDeviceProperties>(getInstanceProcAddr, instance, "vkGetPhysicalDeviceProperties");
+    VkPhysicalDeviceFeatures supportedFeatures {};
+    if (getPhysicalDeviceFeatures) {
+        getPhysicalDeviceFeatures(physicalDevice, &supportedFeatures);
+    }
+    VkPhysicalDeviceProperties physProps {};
+    if (getPhysicalDeviceProperties) {
+        getPhysicalDeviceProperties(physicalDevice, &physProps);
+    }
+    anisotropySupported = supportedFeatures.samplerAnisotropy == VK_TRUE;
+    deviceMaxAnisotropy = anisotropySupported ? physProps.limits.maxSamplerAnisotropy : 1.0f;
+
+    VkPhysicalDeviceFeatures enabledFeatures {};
+    enabledFeatures.samplerAnisotropy = anisotropySupported ? VK_TRUE : VK_FALSE;
+
     const float queuePriority = 1.0f;
     VkDeviceQueueCreateInfo queueInfo {};
     queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -851,6 +918,7 @@ bool VulkanRenderTarget::Impl::Initialize(const JaliumSurfaceDescriptor& surface
     deviceInfo.pQueueCreateInfos = &queueInfo;
     deviceInfo.enabledExtensionCount = 1;
     deviceInfo.ppEnabledExtensionNames = deviceExtensions;
+    deviceInfo.pEnabledFeatures = &enabledFeatures;
     if (createDevice(physicalDevice, &deviceInfo, nullptr, &device) != VK_SUCCESS || device == VK_NULL_HANDLE) {
         VK_LOG("[Vulkan] Initialize failed: vkCreateDevice returned failure\n");
         return false;
@@ -1383,6 +1451,15 @@ bool VulkanRenderTarget::Impl::EnsureGraphicsResources()
     }
 
     if (frameSampler == VK_NULL_HANDLE) {
+        // Bitmap-quad path uses a single shared sampler bound through the
+        // frame descriptor set. Default to "high quality": linear min/mag,
+        // trilinear mipmap, and 16x anisotropic when the device exposes it.
+        // The Vulkan upload path currently uploads only mip 0, so the
+        // mipmapMode setting is a no-op for now — but this leaves the door
+        // open for a future mip-chain blit pass without re-plumbing the
+        // sampler. Anisotropic still helps minified UI sprites even
+        // without a mip chain because the driver chooses a smarter
+        // taps schedule than plain bilinear.
         VkSamplerCreateInfo samplerInfo {};
         samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
         samplerInfo.magFilter = VK_FILTER_LINEAR;
@@ -1391,7 +1468,11 @@ bool VulkanRenderTarget::Impl::EnsureGraphicsResources()
         samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        samplerInfo.maxLod = 1.0f;
+        samplerInfo.minLod = 0.0f;
+        samplerInfo.maxLod = VK_LOD_CLAMP_NONE;
+        samplerInfo.anisotropyEnable = anisotropySupported ? VK_TRUE : VK_FALSE;
+        samplerInfo.maxAnisotropy = anisotropySupported ? deviceMaxAnisotropy : 1.0f;
+        samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
         if (createSampler(device, &samplerInfo, nullptr, &frameSampler) != VK_SUCCESS || frameSampler == VK_NULL_HANDLE) {
             VK_LOG("[Vulkan] EnsureGraphicsResources: createSampler failed");
             return false;
@@ -7517,9 +7598,120 @@ void VulkanRenderTarget::PopOpacity()
 void VulkanRenderTarget::SetShapeType(int /*type*/, float /*n*/) {}
 void VulkanRenderTarget::SetVSyncEnabled(bool enabled) { vsyncEnabled_ = enabled; }
 void VulkanRenderTarget::SetDpi(float dpiX, float dpiY) { dpiX_ = dpiX; dpiY_ = dpiY; }
-void VulkanRenderTarget::AddDirtyRect(float x, float y, float w, float h) { dirtyRects_.push_back(JaliumRect { x, y, w, h }); }
-void VulkanRenderTarget::SetFullInvalidation() { fullInvalidation_ = true; }
+// ── Dirty-rect aggregation helpers ───────────────────────────────────────────
+namespace {
+
+constexpr size_t kVulkanMaxDirtyRects = 32;
+constexpr float kVulkanDirtyAdjacencyEpsilon = 1.0f;
+constexpr float kVulkanDirtyMergeWasteRatio = 0.3f;
+
+inline bool RectContains(const JaliumRect& outer, const JaliumRect& inner) {
+    return outer.x <= inner.x
+        && outer.y <= inner.y
+        && outer.x + outer.width >= inner.x + inner.width
+        && outer.y + outer.height >= inner.y + inner.height;
+}
+
+inline bool RectsIntersect(const JaliumRect& a, const JaliumRect& b) {
+    return a.x < b.x + b.width
+        && b.x < a.x + a.width
+        && a.y < b.y + b.height
+        && b.y < a.y + a.height;
+}
+
+inline JaliumRect RectUnion(const JaliumRect& a, const JaliumRect& b) {
+    float x0 = (std::min)(a.x, b.x);
+    float y0 = (std::min)(a.y, b.y);
+    float x1 = (std::max)(a.x + a.width, b.x + b.width);
+    float y1 = (std::max)(a.y + a.height, b.y + b.height);
+    return JaliumRect{ x0, y0, x1 - x0, y1 - y0 };
+}
+
+inline bool ShouldMergeVkRects(const JaliumRect& a, const JaliumRect& b) {
+    if (RectsIntersect(a, b)) return true;
+
+    bool xClose = a.x + a.width + kVulkanDirtyAdjacencyEpsilon >= b.x
+        && b.x + b.width + kVulkanDirtyAdjacencyEpsilon >= a.x;
+    bool yClose = a.y + a.height + kVulkanDirtyAdjacencyEpsilon >= b.y
+        && b.y + b.height + kVulkanDirtyAdjacencyEpsilon >= a.y;
+    if (xClose && yClose) return true;
+
+    float aArea = a.width * a.height;
+    float bArea = b.width * b.height;
+    auto u = RectUnion(a, b);
+    float uArea = u.width * u.height;
+    float waste = uArea - (aArea + bArea);
+    float larger = (std::max)(aArea, bArea);
+    if (larger <= 0.0f) return false;
+    return waste / larger <= kVulkanDirtyMergeWasteRatio;
+}
+
+} // namespace
+
+void VulkanRenderTarget::AddDirtyRect(float x, float y, float w, float h)
+{
+    if (fullInvalidation_) return;
+    if (w <= 0.0f || h <= 0.0f) return;
+
+    JaliumRect r{ x, y, w, h };
+
+    // 1. Absorption.
+    for (const auto& existing : dirtyRects_) {
+        if (RectContains(existing, r)) return;
+    }
+
+    // 2. Replacement — drop rects that r fully swallows.
+    for (size_t i = dirtyRects_.size(); i-- > 0; ) {
+        if (RectContains(r, dirtyRects_[i])) {
+            dirtyRects_.erase(dirtyRects_.begin() + i);
+        }
+    }
+
+    // 3. Beneficial merge to a fixed point.
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (size_t i = 0; i < dirtyRects_.size(); i++) {
+            if (ShouldMergeVkRects(dirtyRects_[i], r)) {
+                r = RectUnion(dirtyRects_[i], r);
+                dirtyRects_.erase(dirtyRects_.begin() + i);
+                changed = true;
+                break;
+            }
+        }
+    }
+
+    dirtyRects_.push_back(r);
+
+    // 4. Capacity — minimum-waste forced merges. No more "give up → full".
+    while (dirtyRects_.size() > kVulkanMaxDirtyRects) {
+        size_t bestI = 0, bestJ = 1;
+        float bestExtra = std::numeric_limits<float>::max();
+        for (size_t i = 0; i < dirtyRects_.size(); i++) {
+            float ai = dirtyRects_[i].width * dirtyRects_[i].height;
+            for (size_t j = i + 1; j < dirtyRects_.size(); j++) {
+                auto u = RectUnion(dirtyRects_[i], dirtyRects_[j]);
+                float extra = u.width * u.height - ai - dirtyRects_[j].width * dirtyRects_[j].height;
+                if (extra < bestExtra) {
+                    bestExtra = extra;
+                    bestI = i;
+                    bestJ = j;
+                }
+            }
+        }
+        auto merged = RectUnion(dirtyRects_[bestI], dirtyRects_[bestJ]);
+        dirtyRects_.erase(dirtyRects_.begin() + bestJ);
+        dirtyRects_.erase(dirtyRects_.begin() + bestI);
+        dirtyRects_.push_back(merged);
+    }
+}
+void VulkanRenderTarget::SetFullInvalidation() { fullInvalidation_ = true; dirtyRects_.clear(); }
 void VulkanRenderTarget::DrawBitmap(Bitmap* bitmap, float x, float y, float w, float h, float opacity)
+{
+    DrawBitmap(bitmap, x, y, w, h, opacity, 0 /* JALIUM_BITMAP_SCALING_UNSPECIFIED */);
+}
+
+void VulkanRenderTarget::DrawBitmap(Bitmap* bitmap, float x, float y, float w, float h, float opacity, int scalingMode)
 {
     TouchFrame();
     if (!TryRecordGpuBitmapCommand(bitmap, x, y, w, h, opacity)) {
@@ -7569,6 +7761,17 @@ void VulkanRenderTarget::DrawBitmap(Bitmap* bitmap, float x, float y, float w, f
     const int destBottom = static_cast<int>(std::ceil(maxY));
     const uint8_t opacityByte = static_cast<uint8_t>(std::clamp(opacity, 0.0f, 1.0f) * 255.0f + 0.5f);
 
+    // Map JaliumBitmapScalingMode → CPU sampler kernel.
+    // NearestNeighbor (3) is the only mode that gets nearest sampling.
+    // Everything else (Unspecified, LowQuality, HighQuality, Linear, Fant)
+    // uses bilinear — bilinear is the right CPU-fallback default because
+    // the GPU path already gets anisotropic via frameSampler.
+    const bool useNearest = (scalingMode == 3 /* NearestNeighbor */);
+    const uint32_t srcW = sourceBitmap->GetWidth();
+    const uint32_t srcH = sourceBitmap->GetHeight();
+    const float invW = 1.0f / std::max(0.0001f, w);
+    const float invH = 1.0f / std::max(0.0001f, h);
+
     for (int destY = destTop; destY < destBottom; ++destY) {
         for (int destX = destLeft; destX < destRight; ++destX) {
             float localX = 0.0f;
@@ -7578,16 +7781,53 @@ void VulkanRenderTarget::DrawBitmap(Bitmap* bitmap, float x, float y, float w, f
                 continue;
             }
 
-            const float u = (localX - x) / std::max(0.0001f, w);
-            const float v = (localY - y) / std::max(0.0001f, h);
-            const uint32_t srcX = std::min<uint32_t>(sourceBitmap->GetWidth() - 1, static_cast<uint32_t>(u * sourceBitmap->GetWidth()));
-            const uint32_t srcY = std::min<uint32_t>(sourceBitmap->GetHeight() - 1, static_cast<uint32_t>(v * sourceBitmap->GetHeight()));
-            const size_t srcOffset = (static_cast<size_t>(srcY) * sourceBitmap->GetWidth() + static_cast<size_t>(srcX)) * 4u;
+            const float u = (localX - x) * invW;
+            const float v = (localY - y) * invH;
 
-            const uint8_t srcB = pixels[srcOffset + 0];
-            const uint8_t srcG = pixels[srcOffset + 1];
-            const uint8_t srcR = pixels[srcOffset + 2];
-            const uint8_t srcA = static_cast<uint8_t>((pixels[srcOffset + 3] * opacityByte) / 255u);
+            uint8_t srcB, srcG, srcR, srcA;
+            if (useNearest) {
+                const uint32_t sx = std::min<uint32_t>(srcW - 1, static_cast<uint32_t>(u * srcW));
+                const uint32_t sy = std::min<uint32_t>(srcH - 1, static_cast<uint32_t>(v * srcH));
+                const size_t off = (static_cast<size_t>(sy) * srcW + sx) * 4u;
+                srcB = pixels[off + 0];
+                srcG = pixels[off + 1];
+                srcR = pixels[off + 2];
+                srcA = pixels[off + 3];
+            } else {
+                // Bilinear sampling — sample four texels around the unit-pixel
+                // centre and blend by fractional position. Half-texel offset
+                // matches the GPU pixel-centre convention so a 1:1-mapped
+                // bitmap is byte-identical to its source.
+                const float fx = u * srcW - 0.5f;
+                const float fy = v * srcH - 0.5f;
+                const int ix0 = std::clamp(static_cast<int>(std::floor(fx)), 0, static_cast<int>(srcW) - 1);
+                const int iy0 = std::clamp(static_cast<int>(std::floor(fy)), 0, static_cast<int>(srcH) - 1);
+                const int ix1 = std::min<int>(ix0 + 1, static_cast<int>(srcW) - 1);
+                const int iy1 = std::min<int>(iy0 + 1, static_cast<int>(srcH) - 1);
+                const float wx = std::clamp(fx - std::floor(fx), 0.0f, 1.0f);
+                const float wy = std::clamp(fy - std::floor(fy), 0.0f, 1.0f);
+                const size_t o00 = (static_cast<size_t>(iy0) * srcW + ix0) * 4u;
+                const size_t o01 = (static_cast<size_t>(iy0) * srcW + ix1) * 4u;
+                const size_t o10 = (static_cast<size_t>(iy1) * srcW + ix0) * 4u;
+                const size_t o11 = (static_cast<size_t>(iy1) * srcW + ix1) * 4u;
+                const float w00 = (1.0f - wx) * (1.0f - wy);
+                const float w01 = wx * (1.0f - wy);
+                const float w10 = (1.0f - wx) * wy;
+                const float w11 = wx * wy;
+                auto blend = [&](size_t channel) -> uint8_t {
+                    const float v = pixels[o00 + channel] * w00
+                                  + pixels[o01 + channel] * w01
+                                  + pixels[o10 + channel] * w10
+                                  + pixels[o11 + channel] * w11;
+                    return static_cast<uint8_t>(std::clamp(v + 0.5f, 0.0f, 255.0f));
+                };
+                srcB = blend(0);
+                srcG = blend(1);
+                srcR = blend(2);
+                srcA = blend(3);
+            }
+
+            srcA = static_cast<uint8_t>((srcA * opacityByte) / 255u);
             BlendPixel(destX, destY, srcB, srcG, srcR, srcA);
         }
     }
@@ -7652,7 +7892,9 @@ void VulkanRenderTarget::RenderText(const wchar_t* text, uint32_t textLength, Te
         bitmapWidth,
         bitmapHeight,
         brushBgra,
-        static_cast<int>(drawFlags));
+        static_cast<int>(drawFlags),
+        textFormat->GetFontWeight(),
+        textFormat->GetFontStyle());
 
     std::shared_ptr<const std::vector<uint8_t>> pixelsForDraw;
     int drawWidth = bitmapWidth;
@@ -7688,6 +7930,13 @@ void VulkanRenderTarget::RenderText(const wchar_t* text, uint32_t textLength, Te
         }
 
         HGDIOBJ oldBitmap = SelectObject(memoryDc, dib);
+
+        // CreateDIBSection does not zero the backing memory.  Stale heap bytes
+        // would show up as random sub-pixel coverage and let GDI's ClearType
+        // blend against garbage, so wipe the DIB to fully transparent black
+        // before any text is drawn into it.
+        std::memset(dibPixels, 0, static_cast<size_t>(bitmapWidth) * static_cast<size_t>(bitmapHeight) * 4u);
+
         SetBkMode(memoryDc, TRANSPARENT);
         SetTextColor(memoryDc, RGB(255, 255, 255));
 
@@ -7710,6 +7959,14 @@ void VulkanRenderTarget::RenderText(const wchar_t* text, uint32_t textLength, Te
 
         RECT rect { 0, 0, bitmapWidth, bitmapHeight };
         DrawTextW(memoryDc, text, static_cast<int>(textLength), &rect, drawFlags);
+
+        // GDI batches drawing commands and does not commit them to a DIB
+        // section's memory until the batch is flushed (or the DC is released).
+        // Reading dibPixels before GdiFlush yields partially-written glyphs
+        // — the visible symptom is filled letter interiors disappearing, so a
+        // bold 'e' loses its crossbar and reads as 'c', and a solid block
+        // glyph degenerates into a hollow outline.
+        ::GdiFlush();
 
         auto* source = static_cast<uint8_t*>(dibPixels);
         std::vector<uint8_t> textPixels(static_cast<size_t>(bitmapWidth) * static_cast<size_t>(bitmapHeight) * 4u, 0);

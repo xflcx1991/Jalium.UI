@@ -174,38 +174,13 @@ public class Path : Shape
 
         var pen = GetOrCreatePen();
 
-        if (RenderTransform is Transform renderXform)
-        {
-            var matrix = renderXform.Value;
-            if (!matrix.IsIdentity && _definingGeometry != null)
-            {
-                var origin = RenderTransformOrigin;
-                var cx = origin.X * width;
-                var cy = origin.Y * height;
-                var centeredRotate = MatrixHelper.CreateCenteredMatrix(matrix, cx, cy);
-
-                // Compose: stretch first (raw→local), then rotate (in local space).
-                // Draw _definingGeometry (raw) with combined transform to avoid
-                // separate native push ordering issues.
-                Matrix combined;
-                if (_hasStretchMatrix && !_stretchMatrix.IsIdentity)
-                    combined = Matrix.Multiply(_stretchMatrix, centeredRotate);
-                else
-                    combined = centeredRotate;
-
-                dc.PushTransform(new MatrixTransform(combined));
-                try
-                {
-                    dc.DrawGeometry(Fill, pen, _definingGeometry);
-                }
-                finally
-                {
-                    dc.Pop();
-                }
-                return;
-            }
-        }
-
+        // RenderTransform (rotate/skew/etc.) is now pushed generically by
+        // Visual.RenderDirect around this element's draw pass. Path's only
+        // job is to emit the already-stretched geometry; the framework-pushed
+        // transform will rotate it around RenderTransformOrigin correctly.
+        // Applying it again here would double-transform the path (the symptom
+        // was TreeView chevrons appearing at 45° / off-center after a 90°
+        // RotateTransform).
         dc.DrawGeometry(Fill, pen, _renderedGeometry);
     }
 
@@ -242,7 +217,12 @@ public class Path : Shape
     }
 
     /// <summary>
-    /// Ensures _renderedGeometry is built with the stretch transform applied via Geometry.Transform.
+    /// Ensures _renderedGeometry is built with the stretch transform baked into
+    /// every point of every figure. We deliberately do NOT set it via
+    /// Geometry.Transform — that gets pushed inside DrawGeometry, which would
+    /// order it AFTER any RenderTransform pushed by the framework and invert
+    /// the correct "stretch first, then rotate" composition, skewing the
+    /// rotation anchor off-center.
     /// </summary>
     private void EnsureRenderedGeometry()
     {
@@ -258,19 +238,17 @@ public class Path : Shape
             return;
         }
 
-        // Clone the geometry and set the stretch matrix as its Transform
-        _renderedGeometry = ClonePathGeometry(_definingGeometry);
-
         var existingTransform = _definingGeometry.Transform;
-        if (existingTransform == null || existingTransform.Value.IsIdentity)
+        Matrix bake = _stretchMatrix;
+        if (existingTransform != null && !existingTransform.Value.IsIdentity)
         {
-            _renderedGeometry.Transform = new MatrixTransform(_stretchMatrix);
+            // Preserve an explicit Geometry.Transform set on the source by
+            // pre-multiplying it into the bake: raw -> existing -> stretch.
+            bake = Matrix.Multiply(existingTransform.Value, _stretchMatrix);
         }
-        else
-        {
-            _renderedGeometry.Transform = new MatrixTransform(
-                Matrix.Multiply(existingTransform.Value, _stretchMatrix));
-        }
+
+        _renderedGeometry = ClonePathGeometry(_definingGeometry, bake);
+        _renderedGeometry.Transform = null;
     }
 
     #endregion
@@ -360,14 +338,28 @@ public class Path : Shape
     }
 
     private static PathGeometry ClonePathGeometry(PathGeometry source)
+        => ClonePathGeometry(source, Matrix.Identity);
+
+    /// <summary>
+    /// Clones <paramref name="source"/>, optionally baking <paramref name="bake"/>
+    /// into every control point so the returned geometry can be drawn without
+    /// relying on its <see cref="Geometry.Transform"/> (which would otherwise
+    /// be pushed inside <c>DrawGeometry</c> and sort after an outer
+    /// RenderTransform — breaking the "local first, then render-transform"
+    /// composition order).
+    /// </summary>
+    private static PathGeometry ClonePathGeometry(PathGeometry source, Matrix bake)
     {
         var clone = new PathGeometry { FillRule = source.FillRule };
+        var identity = bake.IsIdentity;
+
+        Point T(Point p) => identity ? p : bake.Transform(p);
 
         foreach (var figure in source.Figures)
         {
             var newFigure = new PathFigure
             {
-                StartPoint = figure.StartPoint,
+                StartPoint = T(figure.StartPoint),
                 IsClosed = figure.IsClosed,
                 IsFilled = figure.IsFilled,
             };
@@ -377,42 +369,51 @@ public class Path : Shape
                 switch (segment)
                 {
                     case LineSegment line:
-                        newFigure.Segments.Add(new LineSegment(line.Point, line.IsStroked));
+                        newFigure.Segments.Add(new LineSegment(T(line.Point), line.IsStroked));
                         break;
                     case PolyLineSegment polyLine:
                     {
                         var s = new PolyLineSegment { IsStroked = polyLine.IsStroked };
-                        foreach (var p in polyLine.Points) s.Points.Add(p);
+                        foreach (var p in polyLine.Points) s.Points.Add(T(p));
                         newFigure.Segments.Add(s);
                         break;
                     }
                     case BezierSegment bezier:
                         newFigure.Segments.Add(new BezierSegment(
-                            bezier.Point1, bezier.Point2, bezier.Point3, bezier.IsStroked));
+                            T(bezier.Point1), T(bezier.Point2), T(bezier.Point3), bezier.IsStroked));
                         break;
                     case PolyBezierSegment polyBezier:
                     {
                         var s = new PolyBezierSegment { IsStroked = polyBezier.IsStroked };
-                        foreach (var p in polyBezier.Points) s.Points.Add(p);
+                        foreach (var p in polyBezier.Points) s.Points.Add(T(p));
                         newFigure.Segments.Add(s);
                         break;
                     }
                     case QuadraticBezierSegment quad:
                         newFigure.Segments.Add(new QuadraticBezierSegment(
-                            quad.Point1, quad.Point2, quad.IsStroked));
+                            T(quad.Point1), T(quad.Point2), quad.IsStroked));
                         break;
                     case PolyQuadraticBezierSegment polyQuad:
                     {
                         var s = new PolyQuadraticBezierSegment { IsStroked = polyQuad.IsStroked };
-                        foreach (var p in polyQuad.Points) s.Points.Add(p);
+                        foreach (var p in polyQuad.Points) s.Points.Add(T(p));
                         newFigure.Segments.Add(s);
                         break;
                     }
                     case ArcSegment arc:
+                    {
+                        // Path's stretch matrix is always pure scale+translate
+                        // (no rotation/skew component — see ArrangeOverride),
+                        // so the arc's radii just need the same scale factors
+                        // applied componentwise; rotation/flags stay valid.
+                        var arcSize = identity
+                            ? arc.Size
+                            : new Size(arc.Size.Width * bake.M11, arc.Size.Height * bake.M22);
                         newFigure.Segments.Add(new ArcSegment(
-                            arc.Point, arc.Size, arc.RotationAngle,
+                            T(arc.Point), arcSize, arc.RotationAngle,
                             arc.IsLargeArc, arc.SweepDirection, arc.IsStroked));
                         break;
+                    }
                 }
             }
 

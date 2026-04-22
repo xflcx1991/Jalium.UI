@@ -149,7 +149,7 @@
 		<Setter Property="MinHeight" Value="28" />
 		<Setter Property="Template">
 			<ControlTemplate TargetType="ComboBoxItem">
-				<Border Name="BackgroundBorder"
+				<Border Name="PART_BackgroundBorder"
                         Background="{TemplateBinding Background}"
                         CornerRadius="4"
                         Padding="{TemplateBinding Padding}">
@@ -168,12 +168,6 @@
 				</Border>
 			</ControlTemplate>
 		</Setter>
-
-		<Style.Triggers>
-			<PropertyTrigger Property="IsMouseOver" Value="True">
-				<Setter Property="Background" Value="{DynamicResource HighlightBackground}" />
-			</PropertyTrigger>
-		</Style.Triggers>
 	</Style>
 
 	<!-- ============================================== -->

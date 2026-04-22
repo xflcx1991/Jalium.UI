@@ -593,11 +593,9 @@ bool ImpellerD3D12Engine::Initialize() {
     if (initialized_) return true;
 
     if (!CreateRootSignature()) {
-        OutputDebugStringA("[Impeller] Initialize: CreateRootSignature FAILED\n");
         return false;
     }
     if (!CreatePipelines()) {
-        OutputDebugStringA("[Impeller] Initialize: CreatePipelines FAILED\n");
         return false;
     }
 
@@ -606,15 +604,9 @@ bool ImpellerD3D12Engine::Initialize() {
     rtvDesc.NumDescriptors = 1;
     rtvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
     if (FAILED(device_->CreateDescriptorHeap(&rtvDesc, IID_PPV_ARGS(&rtvHeap_)))) {
-        OutputDebugStringA("[Impeller] Initialize: CreateDescriptorHeap FAILED\n");
         return false;
     }
 
-    {
-        char buf[128];
-        sprintf_s(buf, "[Impeller] Initialize: SUCCESS — PSO ready, RTVFormat=%u\n", (unsigned)rtvFormat_);
-        OutputDebugStringA(buf);
-    }
     initialized_ = true;
     return true;
 }
@@ -1806,67 +1798,12 @@ bool ImpellerD3D12Engine::EncodeFillPath(
     // Fixed pixel-space tolerance — independent of source scale.
     float adaptiveTolerance = flattenTolerance_;
 
-    auto flattenStart = std::chrono::high_resolution_clock::now();
-
     std::vector<Contour> contours = FlattenPathToContours(
         pxStartX, pxStartY, pxCommands.data(), (uint32_t)pxCommands.size(),
         adaptiveTolerance);
 
-    auto flattenEnd = std::chrono::high_resolution_clock::now();
-
     if (contours.empty()) {
-        static int emptyCount = 0;
-        if (emptyCount++ < 5) {
-            char buf[128];
-            sprintf_s(buf, "[Impeller] EncodeFillPath: FlattenPathToContours returned empty, cmdLen=%u\n", commandLength);
-            OutputDebugStringA(buf);
-        }
         return false;
-    }
-
-    {
-        // ── SVG Perf: log every call for first batch, then summary ──
-        static int encodeCount = 0;
-        static double totalFlattenUs = 0;
-        static double totalTessUs = 0;
-        static double totalCallUs = 0;
-        static uint32_t totalPathPts = 0;
-        static int batchCallCount = 0;
-
-        uint32_t totalPts = 0;
-        for (auto& c : contours) totalPts += c.VertexCount();
-
-        double flattenUs = std::chrono::duration<double, std::micro>(flattenEnd - flattenStart).count();
-        totalFlattenUs += flattenUs;
-        totalPathPts += totalPts;
-        batchCallCount++;
-
-        if (encodeCount < 20) {
-            char buf[320];
-            sprintf_s(buf, "[Impeller FillPath #%d] flatten=%.1fus, %zu contours, %u pts, "
-                "cmdLen=%u, tol=%.3f, scale=%.2f\n",
-                encodeCount, flattenUs, contours.size(), totalPts,
-                commandLength, adaptiveTolerance, maxScale);
-            OutputDebugStringA(buf);
-        }
-        // Summary every 700 calls (approx one SVG tiger frame)
-        if (batchCallCount >= 700 || (encodeCount > 0 && encodeCount % 700 == 0)) {
-            char buf[320];
-            sprintf_s(buf, "[Impeller FillPath SUMMARY] %d calls, flatten=%.1fms, "
-                "tess=%.1fms, total=%.1fms, totalPts=%u\n",
-                batchCallCount,
-                totalFlattenUs / 1000.0,
-                totalTessUs / 1000.0,
-                totalCallUs / 1000.0,
-                totalPathPts);
-            OutputDebugStringA(buf);
-            totalFlattenUs = 0;
-            totalTessUs = 0;
-            totalCallUs = 0;
-            totalPathPts = 0;
-            batchCallCount = 0;
-        }
-        encodeCount++;
     }
 
     // Contours are already in pixel space (transformed pre-flatten above).
@@ -2005,16 +1942,6 @@ bool ImpellerD3D12Engine::EncodeFillPath(
     // loses inter-contour winding (holes) but renders something visible for
     // shapes the primary triangulator rejects.
     {
-        static int warnCount = 0;
-        if (warnCount++ < 20) {
-            uint32_t totalPts = 0;
-            for (auto& c : contours) totalPts += c.VertexCount();
-            char buf[256];
-            sprintf_s(buf, "[Impeller] primary triangulation failed, per-contour fallback: "
-                "%zu contours, %u pts\n", contours.size(), totalPts);
-            OutputDebugStringA(buf);
-        }
-
         bool anyEmitted = false;
         for (auto& c : contours) {
             uint32_t vc = c.VertexCount();
@@ -2049,8 +1976,6 @@ bool ImpellerD3D12Engine::EncodeStrokePath(
     const float* dashPattern, uint32_t dashCount, float dashOffset,
     const EngineTransform& transform)
 {
-    auto strokeEntryTime = std::chrono::high_resolution_clock::now();
-
     // ------------------------------------------------------------------
     // Pixel-space flattening — mirrors the fix EncodeFillPath already
     // applied (see L1640-1658 for the full rationale). Transforming the
@@ -2161,29 +2086,6 @@ bool ImpellerD3D12Engine::EncodeStrokePath(
     std::vector<Contour> contours = FlattenPathToContours(
         pxStartX, pxStartY, pxCommands.data(), (uint32_t)pxCommands.size(),
         adaptiveTolerance);
-
-    {
-        static int s_strokeCount = 0;
-        static double s_totalStrokeUs = 0;
-        auto strokeFlattenEnd = std::chrono::high_resolution_clock::now();
-        double us = std::chrono::duration<double, std::micro>(strokeFlattenEnd - strokeEntryTime).count();
-        s_totalStrokeUs += us;
-        s_strokeCount++;
-        if (s_strokeCount <= 20 || s_strokeCount % 700 == 0) {
-            char buf[256];
-            sprintf_s(buf, "[Impeller StrokePath #%d] flatten=%.1fus, %zu contours, cmdLen=%u, strokeW=%.1f\n",
-                s_strokeCount, us, contours.size(), commandLength, strokeWidth);
-            OutputDebugStringA(buf);
-        }
-        if (s_strokeCount % 700 == 0) {
-            char buf[192];
-            sprintf_s(buf, "[Impeller StrokePath SUMMARY] %d calls, total=%.1fms\n",
-                s_strokeCount, s_totalStrokeUs / 1000.0);
-            OutputDebugStringA(buf);
-            s_totalStrokeUs = 0;
-            s_strokeCount = 0;
-        }
-    }
 
     if (contours.empty()) return false;
 
@@ -2884,21 +2786,6 @@ bool ImpellerD3D12Engine::ExecuteOnCommandList(
 {
     if (batches_.empty()) return true;
 
-    {
-        static int execCount = 0;
-        if (execCount++ < 10) {
-            uint32_t solidCount = 0, stencilCount = 0;
-            for (auto& b : batches_) {
-                if (b.pipelineType == 1) stencilCount++;
-                else solidCount++;
-            }
-            char buf[256];
-            sprintf_s(buf, "[Impeller] Execute: vp=%ux%u batches=%zu (solid=%u stencil=%u)\n",
-                viewportW, viewportH, batches_.size(), solidCount, stencilCount);
-            OutputDebugStringA(buf);
-        }
-    }
-
     // Separate solid batches from stencil batches
     bool hasSolidBatches = false;
     bool hasStencilBatches = false;
@@ -2978,9 +2865,6 @@ bool ImpellerD3D12Engine::ExecuteOnCommandList(
     // Default scissor (full viewport)
     D3D12_RECT defaultScissor = scissor;
 
-    // Tile coverage culling stats (Flutter Impeller-style)
-    uint32_t culledByCoverage = 0;
-
     // Draw each batch
     size_t vbDrawOffset = 0;
     size_t ibDrawOffset = 0;
@@ -3013,7 +2897,6 @@ bool ImpellerD3D12Engine::ExecuteOnCommandList(
 
         // Cull empty intersection — batch contributes no pixels.
         if (effective.right <= effective.left || effective.bottom <= effective.top) {
-            culledByCoverage++;
             if (batch.pipelineType != 1) {
                 vbDrawOffset += batch.vertices.size() * sizeof(ImpellerVertex);
                 ibDrawOffset += batch.indices.size() * sizeof(uint32_t);
@@ -3065,16 +2948,6 @@ bool ImpellerD3D12Engine::ExecuteOnCommandList(
 
         vbDrawOffset += batch.vertices.size() * sizeof(ImpellerVertex);
         ibDrawOffset += batch.indices.size() * sizeof(uint32_t);
-    }
-
-    {
-        static int cullLog = 0;
-        if (culledByCoverage > 0 && cullLog++ < 10) {
-            char buf[160];
-            sprintf_s(buf, "[Impeller] tile-coverage culled %u/%zu batches\n",
-                      culledByCoverage, batches_.size());
-            OutputDebugStringA(buf);
-        }
     }
 
     batches_.clear();

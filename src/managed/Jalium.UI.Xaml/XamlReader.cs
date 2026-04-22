@@ -979,6 +979,8 @@ public static class XamlReader
 
     [UnconditionalSuppressMessage("AOT", "IL2070:Target method argument",
         Justification = "Types are registered in XamlTypeRegistry with DynamicallyAccessedMembers")]
+    [UnconditionalSuppressMessage("AOT", "IL2075:Target method argument",
+        Justification = "Types are registered in XamlTypeRegistry with DynamicallyAccessedMembers")]
     private static void ParsePropertyElement(XmlReader reader, object instance, XamlParserContext context)
     {
         var parts = reader.LocalName.Split('.');
@@ -991,11 +993,27 @@ public static class XamlReader
         var propertyName = parts[1];
         var depth = reader.Depth;
         var isEmpty = reader.IsEmptyElement;
+        var namespaceUri = reader.NamespaceURI;
 
-        // Get the property
         var type = instance.GetType();
-        var property = type.GetProperty(propertyName);
 
+        // Distinguish between property element syntax (owner type == instance type or base)
+        // and attached property element syntax (owner type is a different type exposing the attached DP).
+        // Example: <Border.Child>…</Border.Child> uses Border's own Child property,
+        // whereas <ContextMenuService.ContextMenu>…</ContextMenuService.ContextMenu> attaches a value to the Border.
+        var ownerMatchesInstance = OwnerTypeMatchesInstance(type, ownerTypeName);
+        if (!ownerMatchesInstance)
+        {
+            var attachedOwnerType = context.ResolveType(namespaceUri, ownerTypeName) ?? FindTypeByName(ownerTypeName);
+            if (attachedOwnerType != null && attachedOwnerType != type)
+            {
+                ParseAttachedPropertyElement(reader, instance, attachedOwnerType, propertyName, depth, isEmpty, context);
+                return;
+            }
+        }
+
+        // Regular property element syntax
+        var property = type.GetProperty(propertyName);
         if (property == null)
         {
             throw new XamlParseException($"Property '{propertyName}' not found on type '{type.Name}'");
@@ -1060,6 +1078,130 @@ public static class XamlReader
 
                 context.ClearCurrentResourceKey();
             }
+        }
+    }
+
+    private static bool OwnerTypeMatchesInstance(Type instanceType, string ownerTypeName)
+    {
+        for (var t = instanceType; t != null; t = t.BaseType)
+        {
+            if (string.Equals(t.Name, ownerTypeName, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    [UnconditionalSuppressMessage("AOT", "IL2070:Target method argument",
+        Justification = "Attached property owner types are registered with PublicMethods/PublicFields so Set{Name} and {Name}Property stay reachable")]
+    [UnconditionalSuppressMessage("AOT", "IL2075:Target method argument",
+        Justification = "Attached property owner types are registered with PublicMethods/PublicFields so Set{Name} and {Name}Property stay reachable")]
+    private static void ParseAttachedPropertyElement(
+        XmlReader reader,
+        object instance,
+        Type ownerType,
+        string propertyName,
+        int depth,
+        bool isEmpty,
+        XamlParserContext context)
+    {
+        if (isEmpty)
+        {
+            return;
+        }
+
+        // Resolve once up-front. Prefer the static Set{PropertyName} helper (canonical
+        // attached-property pattern); fall back to the {PropertyName}Property DP so attached
+        // properties declared without a setter helper still work.
+        var setMethod = ownerType.GetMethod(
+            $"Set{propertyName}",
+            BindingFlags.Public | BindingFlags.Static);
+
+        DependencyProperty? attachedDp = null;
+        Type? targetType = null;
+        if (setMethod != null)
+        {
+            var methodParameters = setMethod.GetParameters();
+            if (methodParameters.Length == 2)
+            {
+                targetType = methodParameters[1].ParameterType;
+            }
+            else
+            {
+                setMethod = null;
+            }
+        }
+
+        if (setMethod == null)
+        {
+            var dpField = ownerType.GetField($"{propertyName}Property", BindingFlags.Public | BindingFlags.Static);
+            if (dpField?.GetValue(null) is DependencyProperty dp)
+            {
+                attachedDp = dp;
+                targetType = dp.PropertyType;
+            }
+        }
+
+        if (setMethod == null && attachedDp == null)
+        {
+            throw new XamlParseException(
+                $"Cannot find attached property setter for: {ownerType.Name}.{propertyName}");
+        }
+
+        object? assignedValue = null;
+        var hasValue = false;
+
+        while (reader.Read())
+        {
+            if (reader.NodeType == XmlNodeType.EndElement && reader.Depth == depth)
+            {
+                break;
+            }
+
+            if (reader.NodeType != XmlNodeType.Element)
+            {
+                continue;
+            }
+
+            var explicitKey = TryGetXKey(reader);
+            context.ClearCurrentResourceKey();
+            var childValue = ParseElement(reader, context);
+            _ = context.GetCurrentResourceKey() ?? explicitKey;
+            context.ClearCurrentResourceKey();
+
+            childValue = ResolveMarkupExtensionValueIfNeeded(childValue, instance, targetProperty: null, context);
+
+            if (childValue == null)
+            {
+                continue;
+            }
+
+            if (targetType != null &&
+                !targetType.IsInstanceOfType(childValue) &&
+                childValue is string stringValue)
+            {
+                childValue = TypeConverterRegistry.ConvertValue(stringValue, targetType);
+            }
+
+            assignedValue = childValue;
+            hasValue = true;
+        }
+
+        if (!hasValue)
+        {
+            return;
+        }
+
+        if (setMethod != null)
+        {
+            setMethod.Invoke(null, [instance, assignedValue]);
+            return;
+        }
+
+        if (attachedDp != null && instance is DependencyObject depObj)
+        {
+            depObj.SetValue(attachedDp, assignedValue);
         }
     }
 
@@ -1755,8 +1897,14 @@ public static class XamlReader
 
                 if (instance is PropertyTrigger || instance is Condition)
                 {
-                    throw CreateUnresolvedDependencyPropertyException(
-                        instance, propertyName, stringValue, context, reader);
+                    // The enclosing Style's TargetType may not yet be known at the moment this
+                    // child element is being parsed (for example when the Style is declared inside
+                    // a ResourceDictionary whose parent chain hasn't been fully established). In
+                    // that case the trigger/condition would be rejected here even though the XAML
+                    // is well-formed. Leave Property unset — the trigger/condition Attach path
+                    // performs an early-return when Property is null, so the trigger simply does
+                    // not fire rather than aborting the whole dictionary parse.
+                    return instance;
                 }
 
                 throw CreateUnresolvedDependencyPropertyException(
@@ -2062,11 +2210,11 @@ public static class XamlReader
     {
         if (trigger.Property == null)
         {
-            throw CreateTriggerValidationException(
-                "PropertyTrigger.Property is required and must resolve to a DependencyProperty.",
-                context,
-                lineNumber,
-                linePosition);
+            // Property could not be resolved during parse (typically because the enclosing
+            // Style's TargetType was not yet available). Leave the trigger dormant — Attach
+            // performs an early-return when Property is null, so the dictionary continues
+            // to load and the surrounding theme/resources remain usable.
+            return;
         }
 
         // If Value is a string and Property is set, convert Value to the correct type
@@ -2142,11 +2290,11 @@ public static class XamlReader
 
             if (condition.Property == null)
             {
-                throw CreateTriggerValidationException(
-                    $"MultiTrigger condition at index {i} is missing Property or references an unresolved DependencyProperty.",
-                    context,
-                    lineNumber,
-                    linePosition);
+                // Same rationale as PostProcessPropertyTrigger — tolerate unresolved
+                // Property so the enclosing dictionary can finish loading. The MultiTrigger
+                // evaluates conditions conjunctively and a null Property keeps the
+                // condition in a never-true state, which is the safe default.
+                continue;
             }
 
             if (condition.Value is not string stringValue)
@@ -2374,14 +2522,21 @@ public static class XamlReader
 /// </summary>
 internal sealed class XamlParserContext : IAmbientResourceProvider
 {
-    private readonly Dictionary<string, string> _defaultNamespaces = new()
+    // Bootstrap fallback: a handful of well-known XML namespace → CLR namespace pairs used
+    // when XmlnsDefinitionRegistry has not yet observed an assembly-level declaration (for
+    // example because the type lives in an assembly the scan has not reached, or because a
+    // third-party library omits the attribute). Authoritative mappings come from
+    // XmlnsDefinitionAttribute; this list is only consulted after the registry misses.
+    private static readonly IReadOnlyList<string> _fallbackClrNamespaces = new[]
     {
-        ["http://schemas.microsoft.com/winfx/2006/xaml/presentation"] = "Jalium.UI.Controls",
-        ["http://schemas.microsoft.com/winfx/2006/xaml"] = "System",
-        ["http://schemas.jalium.ui/2024"] = "Jalium.UI.Controls", // Jalium UI namespace
-        ["https://schemas.jalium.dev/jalxaml"] = "Jalium.UI.Controls", // Jalium.dev namespace
-        ["http://schemas.jalium.com/jalxaml"] = "Jalium.UI.Controls", // Jalium.com namespace
-        [""] = "Jalium.UI.Controls" // Default namespace
+        "Jalium.UI.Controls",
+        "Jalium.UI.Controls.Primitives",
+        "Jalium.UI.Controls.Shapes",
+        "Jalium.UI",
+        "Jalium.UI.Media",
+        "Jalium.UI.Documents",
+        "Jalium.UI.Interactivity",
+        "Jalium.UI.Data",
     };
 
     private readonly Dictionary<string, Type> _typeCache = new();
@@ -2604,7 +2759,7 @@ internal sealed class XamlParserContext : IAmbientResourceProvider
             return cachedType;
         }
 
-        // Try CLR namespace from the URI
+        // 1) clr-namespace:Foo;assembly=Bar — an explicit CLR namespace reference.
         if (namespaceUri.StartsWith("clr-namespace:", StringComparison.Ordinal))
         {
             var type = ResolveClrNamespaceType(namespaceUri, typeName);
@@ -2615,8 +2770,36 @@ internal sealed class XamlParserContext : IAmbientResourceProvider
             }
         }
 
-        // Try default namespace mappings
-        if (_defaultNamespaces.TryGetValue(namespaceUri, out var clrNamespace))
+        // 2) Look up assembly-level XmlnsDefinition mappings. The registry is populated by
+        //    scanning XmlnsDefinitionAttribute on every loaded assembly, so user assemblies
+        //    can opt into a shared XML namespace simply by declaring the attribute.
+        var mappings = XmlnsDefinitionRegistry.GetMappings(namespaceUri);
+        if (!mappings.IsDefaultOrEmpty)
+        {
+            foreach (var mapping in mappings)
+            {
+                var type = ResolveTypeInNamespace(mapping.ClrNamespace, typeName, mapping.Assembly);
+                if (type != null)
+                {
+                    _typeCache[cacheKey] = type;
+                    return type;
+                }
+            }
+        }
+
+        // 3) Fall back to the AOT-friendly static type registry by simple name. This catches
+        //    the bootstrap window before XmlnsDefinition scanning has seen the framework
+        //    assemblies, and also handles the empty default namespace (xmlns="") case.
+        var registryType = XamlTypeRegistry.GetType(typeName);
+        if (registryType != null)
+        {
+            _typeCache[cacheKey] = registryType;
+            return registryType;
+        }
+
+        // 4) Scan the framework CLR namespaces by convention. This covers third-party assemblies
+        //    that ship types in these namespaces without declaring XmlnsDefinitionAttribute.
+        foreach (var clrNamespace in _fallbackClrNamespaces)
         {
             var type = ResolveTypeInNamespace(clrNamespace, typeName);
             if (type != null)
@@ -2626,24 +2809,7 @@ internal sealed class XamlParserContext : IAmbientResourceProvider
             }
         }
 
-        // Try multiple known namespaces
-        var namespaces = new[]
-        {
-            "Jalium.UI.Controls",
-            "Jalium.UI",
-            "Jalium.UI.Media"
-        };
-
-        foreach (var ns in namespaces)
-        {
-            var type = ResolveTypeInNamespace(ns, typeName);
-            if (type != null)
-            {
-                _typeCache[cacheKey] = type;
-                return type;
-            }
-        }
-
+        // 5) Markup extension convention: "Foo" resolves to "FooExtension".
         var extensionType = XamlTypeRegistry.GetType(typeName + "Extension");
         if (extensionType != null)
         {
@@ -2672,7 +2838,22 @@ internal sealed class XamlParserContext : IAmbientResourceProvider
             }
         }
 
-        return ResolveTypeInNamespace(ns, typeName, assemblyName);
+        var assembly = assemblyName != null ? FindAssemblyBySimpleName(assemblyName) : null;
+        return ResolveTypeInNamespace(ns, typeName, assembly);
+    }
+
+    [UnconditionalSuppressMessage("AOT", "IL2026:RequiresUnreferencedCode",
+        Justification = "Assembly names are matched by simple name; we never load new assemblies here.")]
+    private static Assembly? FindAssemblyBySimpleName(string assemblyName)
+    {
+        foreach (var candidate in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            if (string.Equals(candidate.GetName().Name, assemblyName, StringComparison.OrdinalIgnoreCase))
+            {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     [return: DynamicallyAccessedMembers(
@@ -2681,44 +2862,41 @@ internal sealed class XamlParserContext : IAmbientResourceProvider
         DynamicallyAccessedMemberTypes.PublicFields |
         DynamicallyAccessedMemberTypes.PublicMethods |
         DynamicallyAccessedMemberTypes.NonPublicFields)]
-    private Type? ResolveTypeInNamespace(string clrNamespace, string typeName, string? assemblyName = null)
+    private Type? ResolveTypeInNamespace(string clrNamespace, string typeName, Assembly? preferredAssembly = null)
     {
-        // Try the AOT-friendly static type registry first
+        // Try the AOT-friendly static type registry first. It's keyed by simple name and is
+        // populated with every framework type that can appear in XAML.
         var registryType = XamlTypeRegistry.GetType(typeName);
         if (registryType != null)
             return registryType;
 
-        // Fall back to assembly-based resolution for user-defined types
-        // This supports clr-namespace: references to types not in the static registry
+        // Fall back to assembly-based resolution for user-defined types. The preferred assembly
+        // (from XmlnsDefinition scanning or clr-namespace;assembly=) is searched first so
+        // user intent is respected when the same simple name is reused.
         var fullName = $"{clrNamespace}.{typeName}";
 
-        if (assemblyName != null)
+        if (preferredAssembly != null)
         {
-            var assembly = AppDomain.CurrentDomain.GetAssemblies()
-                .FirstOrDefault(a => string.Equals(a.GetName().Name, assemblyName, StringComparison.OrdinalIgnoreCase));
-            if (assembly != null)
+            var type = preferredAssembly.GetType(fullName);
+            if (type != null)
             {
-                var type = assembly.GetType(fullName);
-                if (type != null)
-                {
-                    // Cache in registry for future lookups
-                    XamlTypeRegistry.RegisterType(typeName, type);
-                    return type;
-                }
+                XamlTypeRegistry.RegisterType(typeName, type);
+                return type;
             }
         }
 
-        // Search the source assembly first, then all loaded assemblies
         var searchAssemblies = SourceAssembly != null
             ? new[] { SourceAssembly }.Concat(AppDomain.CurrentDomain.GetAssemblies())
             : AppDomain.CurrentDomain.GetAssemblies().AsEnumerable();
 
         foreach (var asm in searchAssemblies)
         {
+            if (ReferenceEquals(asm, preferredAssembly))
+                continue; // already searched
+
             var type = asm.GetType(fullName);
             if (type != null)
             {
-                // Cache in registry for future lookups
                 XamlTypeRegistry.RegisterType(typeName, type);
                 return type;
             }
@@ -2946,6 +3124,20 @@ public static class XamlTypeRegistry
         Register<ToolBarPanel>(types);
         Register<UniformGrid>(types);
         Register<VirtualizingStackPanel>(types);
+
+        // Static service classes used as attached-property owners
+        RegisterStaticOwner(types, typeof(ContextMenuService));
+    }
+
+    [UnconditionalSuppressMessage("AOT", "IL2111:Method with parameters or return value with DynamicallyAccessedMembersAttribute",
+        Justification = "Attached property owner types expose public static Set/Get methods discovered at runtime; trimming is handled by explicit descriptors or by the owning assembly's linker configuration.")]
+    private static void RegisterStaticOwner(
+        Dictionary<string, Type> types,
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicMethods |
+            DynamicallyAccessedMemberTypes.PublicFields)] Type ownerType)
+    {
+        types[ownerType.Name] = ownerType;
     }
 
     private static void RegisterMediaTypes(Dictionary<string, Type> types)

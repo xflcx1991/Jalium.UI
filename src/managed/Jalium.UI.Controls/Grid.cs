@@ -99,6 +99,34 @@ public class Grid : Panel
 
     #endregion
 
+    #region Dependency Properties
+
+    /// <summary>
+    /// Identifies the RowSpacing dependency property.
+    /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
+    public static readonly DependencyProperty RowSpacingProperty =
+        DependencyProperty.Register(nameof(RowSpacing), typeof(double), typeof(Grid),
+            new PropertyMetadata(0.0, OnLayoutPropertyChanged));
+
+    /// <summary>
+    /// Identifies the ColumnSpacing dependency property.
+    /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
+    public static readonly DependencyProperty ColumnSpacingProperty =
+        DependencyProperty.Register(nameof(ColumnSpacing), typeof(double), typeof(Grid),
+            new PropertyMetadata(0.0, OnLayoutPropertyChanged));
+
+    private static void OnLayoutPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is Grid grid)
+        {
+            grid.InvalidateMeasure();
+        }
+    }
+
+    #endregion
+
     #region Properties
 
     /// <summary>
@@ -111,6 +139,30 @@ public class Grid : Panel
     /// </summary>
     public ColumnDefinitionCollection ColumnDefinitions { get; } = new();
 
+    /// <summary>
+    /// Gets or sets the uniform distance in device-independent pixels between adjacent rows.
+    /// Spacing is inserted between rows only and never leads, trails, or inflates spanned cells.
+    /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
+    public double RowSpacing
+    {
+        get => (double)GetValue(RowSpacingProperty)!;
+        set => SetValue(RowSpacingProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the uniform distance in device-independent pixels between adjacent columns.
+    /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
+    public double ColumnSpacing
+    {
+        get => (double)GetValue(ColumnSpacingProperty)!;
+        set => SetValue(ColumnSpacingProperty, value);
+    }
+
+    private static double SanitizeSpacing(double value) =>
+        (double.IsNaN(value) || double.IsInfinity(value) || value < 0) ? 0 : value;
+
     #endregion
 
     #region Layout
@@ -121,6 +173,11 @@ public class Grid : Panel
         // Ensure at least one row and column
         var rowCount = Math.Max(1, RowDefinitions.Count);
         var columnCount = Math.Max(1, ColumnDefinitions.Count);
+
+        var rowSpacing = SanitizeSpacing(RowSpacing);
+        var columnSpacing = SanitizeSpacing(ColumnSpacing);
+        var totalRowSpacing = Math.Max(0, rowCount - 1) * rowSpacing;
+        var totalColumnSpacing = Math.Max(0, columnCount - 1) * columnSpacing;
 
         // Initialize row and column sizes
         var rowHeights = new double[rowCount];
@@ -188,7 +245,9 @@ public class Grid : Panel
                     inAutoColumn ? double.PositiveInfinity : availableSize.Width,
                     inAutoRow ? double.PositiveInfinity : availableSize.Height));
 
-                // Update auto sizes
+                // Update auto sizes. For single-cell items the desired size feeds the auto row/col directly.
+                // For spanned auto items the internal spacing belongs to the child, so subtract it out
+                // before distributing the remaining desired size across the spanned auto tracks.
                 if (inAutoRow && rowSpan == 1)
                 {
                     var def = rowDefs[row];
@@ -211,14 +270,18 @@ public class Grid : Panel
             }
         }
 
-        // Calculate remaining space for star sizing
+        // Calculate remaining space for star sizing (spacing lives between rows/columns, not inside tracks)
         double fixedRowHeight = rowHeights.Sum();
         double fixedColumnWidth = columnWidths.Sum();
         double totalRowStars = rowStarValues.Sum();
         double totalColumnStars = columnStarValues.Sum();
 
-        double availableRowSpace = Math.Max(0, availableSize.Height - fixedRowHeight);
-        double availableColumnSpace = Math.Max(0, availableSize.Width - fixedColumnWidth);
+        double availableRowSpace = double.IsPositiveInfinity(availableSize.Height)
+            ? double.PositiveInfinity
+            : Math.Max(0, availableSize.Height - fixedRowHeight - totalRowSpacing);
+        double availableColumnSpace = double.IsPositiveInfinity(availableSize.Width)
+            ? double.PositiveInfinity
+            : Math.Max(0, availableSize.Width - fixedColumnWidth - totalColumnSpacing);
 
         // Distribute star space
         // When available size is infinite (e.g. inside ScrollViewer), treat star as Auto (WPF behavior)
@@ -307,7 +370,9 @@ public class Grid : Panel
         var treatStarRowsAsAuto = totalRowStars > 0 && double.IsPositiveInfinity(availableRowSpace);
         var treatStarColumnsAsAuto = totalColumnStars > 0 && double.IsPositiveInfinity(availableColumnSpace);
 
-        // Measure all children with their final available sizes
+        // Measure all children with their final available sizes.
+        // A spanned cell owns the spacing between the tracks it crosses, so the available
+        // size includes (span - 1) gap(s) along each axis.
         foreach (var child in Children)
         {
             if (child is not FrameworkElement fe) continue;
@@ -324,6 +389,9 @@ public class Grid : Panel
                 cellWidth += columnWidths[i];
             for (int i = row; i < row + rowSpan; i++)
                 cellHeight += rowHeights[i];
+
+            cellWidth += Math.Max(0, columnSpan - 1) * columnSpacing;
+            cellHeight += Math.Max(0, rowSpan - 1) * rowSpacing;
 
             fe.Measure(new Size(cellWidth, cellHeight));
 
@@ -364,8 +432,8 @@ public class Grid : Panel
                 columnDefs[i].ActualWidth = columnWidths[i];
         }
 
-        // Return the total size
-        return new Size(columnWidths.Sum(), rowHeights.Sum());
+        // Return the total size (spacing contributes to the grid's outer bounds)
+        return new Size(columnWidths.Sum() + totalColumnSpacing, rowHeights.Sum() + totalRowSpacing);
     }
 
     /// <inheritdoc />
@@ -373,6 +441,11 @@ public class Grid : Panel
     {
         var rowCount = Math.Max(1, RowDefinitions.Count);
         var columnCount = Math.Max(1, ColumnDefinitions.Count);
+
+        var rowSpacing = SanitizeSpacing(RowSpacing);
+        var columnSpacing = SanitizeSpacing(ColumnSpacing);
+        var totalRowSpacing = Math.Max(0, rowCount - 1) * rowSpacing;
+        var totalColumnSpacing = Math.Max(0, columnCount - 1) * columnSpacing;
 
         // Get definitions
         var rowDefs = GetEffectiveRowDefinitions(rowCount);
@@ -431,9 +504,9 @@ public class Grid : Panel
             }
         }
 
-        // Distribute star space
-        double availableRowSpace = Math.Max(0, finalSize.Height - fixedRowHeight);
-        double availableColumnSpace = Math.Max(0, finalSize.Width - fixedColumnWidth);
+        // Distribute star space (reserve inter-track spacing before handing remainder to stars)
+        double availableRowSpace = Math.Max(0, finalSize.Height - fixedRowHeight - totalRowSpacing);
+        double availableColumnSpace = Math.Max(0, finalSize.Width - fixedColumnWidth - totalColumnSpacing);
 
         if (totalRowStars > 0)
         {
@@ -513,22 +586,30 @@ public class Grid : Panel
             }
         }
 
-        // Calculate offsets
-        var rowOffsets = new double[rowCount + 1];
-        var columnOffsets = new double[columnCount + 1];
+        // Calculate track starts. rowStarts[i] is the Y of the i-th row's top edge including
+        // the cumulative spacing between rows 0..i-1. Same for columns. A spanned cell uses
+        // rightEdge(lastCol) - leftEdge(firstCol) so it naturally includes the internal gaps.
+        var rowStarts = new double[rowCount];
+        var columnStarts = new double[columnCount];
 
+        double rowCursor = 0;
         for (int i = 0; i < rowCount; i++)
         {
-            rowOffsets[i + 1] = rowOffsets[i] + rowHeights[i];
+            rowStarts[i] = rowCursor;
             rowDefs[i].ActualHeight = rowHeights[i];
-            rowDefs[i].Offset = rowOffsets[i];
+            rowDefs[i].Offset = rowCursor;
+            rowCursor += rowHeights[i];
+            if (i < rowCount - 1) rowCursor += rowSpacing;
         }
 
+        double columnCursor = 0;
         for (int i = 0; i < columnCount; i++)
         {
-            columnOffsets[i + 1] = columnOffsets[i] + columnWidths[i];
+            columnStarts[i] = columnCursor;
             columnDefs[i].ActualWidth = columnWidths[i];
-            columnDefs[i].Offset = columnOffsets[i];
+            columnDefs[i].Offset = columnCursor;
+            columnCursor += columnWidths[i];
+            if (i < columnCount - 1) columnCursor += columnSpacing;
         }
 
         // Arrange children
@@ -541,10 +622,13 @@ public class Grid : Panel
             var rowSpan = Math.Clamp(GetRowSpan(child), 1, rowCount - row);
             var columnSpan = Math.Clamp(GetColumnSpan(child), 1, columnCount - column);
 
-            double x = columnOffsets[column];
-            double y = rowOffsets[row];
-            double width = columnOffsets[column + columnSpan] - x;
-            double height = rowOffsets[row + rowSpan] - y;
+            var lastRow = row + rowSpan - 1;
+            var lastColumn = column + columnSpan - 1;
+
+            double x = columnStarts[column];
+            double y = rowStarts[row];
+            double width = columnStarts[lastColumn] + columnWidths[lastColumn] - x;
+            double height = rowStarts[lastRow] + rowHeights[lastRow] - y;
 
             var cellRect = new Rect(x, y, width, height);
             fe.Arrange(cellRect);

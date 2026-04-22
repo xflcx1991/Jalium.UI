@@ -1,7 +1,9 @@
 using Jalium.UI;
 using Jalium.UI.Controls;
+using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Input;
 using Jalium.UI.Media;
+using System.Reflection;
 
 namespace Jalium.UI.Tests;
 
@@ -305,6 +307,125 @@ public class TextBoxTests
     }
 
     [Fact]
+    public void TextBox_MouseWheel_WithWrapping_ShouldScrollToVisualContentEnd()
+    {
+        // Arrange
+        var textBox = new TextBox
+        {
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            Padding = new Thickness(0),
+            BorderThickness = new Thickness(0),
+            FontSize = 12,
+            Text = string.Join('\n', Enumerable.Range(0, 100)
+                .Select(i => $"Line {i:D3} " + new string('W', 80)))
+        };
+
+        var viewport = new Size(160, 120);
+        textBox.Measure(viewport);
+        textBox.Arrange(new Rect(0, 0, viewport.Width, viewport.Height));
+
+        var wrappedContentSize = textBox.MeasureTextContent(new Size(viewport.Width, double.PositiveInfinity));
+        var logicalOnlyMaxOffset = Math.Max(0, textBox.LineCount * Math.Round(textBox.FontSize) - viewport.Height);
+        var expectedMaxOffset = Math.Max(0, wrappedContentSize.Height - viewport.Height);
+
+        // Verify the fixture really exercises wrapped visual rows, not just logical lines.
+        Assert.True(expectedMaxOffset > logicalOnlyMaxOffset);
+
+        // Act
+        for (int i = 0; i < 500; i++)
+        {
+            textBox.RaiseEvent(CreateMouseWheel(new Point(10, 10), -120));
+        }
+
+        // Assert
+        Assert.Equal(expectedMaxOffset, textBox.VerticalOffset, precision: 3);
+    }
+
+    [Fact]
+    public void TextBox_MouseWheel_WithMultilineTextAndAcceptsReturnFalse_ShouldStillScroll()
+    {
+        // Arrange
+        var textBox = new TextBox
+        {
+            AcceptsReturn = false,
+            TextWrapping = TextWrapping.Wrap,
+            Padding = new Thickness(0),
+            BorderThickness = new Thickness(0),
+            FontSize = 12,
+            Text = string.Join('\n', Enumerable.Range(0, 100)
+                .Select(i => $"Line {i:D3} " + new string('W', 80)))
+        };
+
+        var viewport = new Size(160, 120);
+        textBox.Measure(viewport);
+        textBox.Arrange(new Rect(0, 0, viewport.Width, viewport.Height));
+
+        // Act
+        textBox.RaiseEvent(CreateMouseWheel(new Point(10, 10), -120));
+
+        // Assert
+        Assert.True(textBox.VerticalOffset > 0);
+    }
+
+    [Fact]
+    public void TextBox_MouseWheel_WithWrappingAndFullHeightContentHost_ShouldNotResetToTop()
+    {
+        // Arrange
+        var textBox = new TextBox
+        {
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            Padding = new Thickness(0),
+            BorderThickness = new Thickness(0),
+            FontSize = 12,
+            Text = string.Join('\n', Enumerable.Range(0, 100)
+                .Select(i => $"Line {i:D3} " + new string('W', 80)))
+        };
+
+        var viewport = new Size(160, 120);
+        textBox.Measure(viewport);
+        textBox.Arrange(new Rect(0, 0, viewport.Width, viewport.Height));
+
+        var wrappedContentSize = textBox.MeasureTextContent(new Size(viewport.Width, double.PositiveInfinity));
+        var host = new TextBoxContentHost(textBox);
+        typeof(TextBoxBase)
+            .GetField("_textBoxContentHost", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(textBox, host);
+        textBox.ArrangeTextContent(new Size(viewport.Width, wrappedContentSize.Height));
+        textBox.VerticalOffset = 100;
+
+        // Act
+        textBox.RaiseEvent(CreateMouseWheel(new Point(10, 10), -120));
+
+        // Assert
+        Assert.True(textBox.VerticalOffset > 100);
+    }
+
+    [Fact]
+    public void TextBox_MouseWheel_WhenTextBoxCannotScroll_ShouldLetEventBubble()
+    {
+        // Arrange
+        var textBox = new TextBox
+        {
+            Padding = new Thickness(0),
+            BorderThickness = new Thickness(0),
+            Text = "One line"
+        };
+        textBox.Measure(new Size(160, 120));
+        textBox.Arrange(new Rect(0, 0, 160, 120));
+
+        var wheel = CreateMouseWheel(new Point(10, 10), -120);
+
+        // Act
+        textBox.RaiseEvent(wheel);
+
+        // Assert
+        Assert.False(wheel.Handled);
+        Assert.Equal(0, textBox.VerticalOffset);
+    }
+
+    [Fact]
     public void TextBox_SpellCheck_ShouldBeSettable()
     {
         // Arrange
@@ -386,5 +507,20 @@ public class TextBoxTests
 
         // Assert
         Assert.Equal("Hello World", textBox.Text);
+    }
+
+    private static MouseWheelEventArgs CreateMouseWheel(Point position, int delta)
+    {
+        return new MouseWheelEventArgs(
+            UIElement.MouseWheelEvent,
+            position,
+            delta,
+            leftButton: MouseButtonState.Released,
+            middleButton: MouseButtonState.Released,
+            rightButton: MouseButtonState.Released,
+            xButton1: MouseButtonState.Released,
+            xButton2: MouseButtonState.Released,
+            modifiers: ModifierKeys.None,
+            timestamp: 0);
     }
 }

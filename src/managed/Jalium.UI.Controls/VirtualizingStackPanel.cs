@@ -19,6 +19,14 @@ public class VirtualizingStackPanel : VirtualizingPanel, IScrollInfo
         DependencyProperty.Register(nameof(Orientation), typeof(Orientation), typeof(VirtualizingStackPanel),
             new PropertyMetadata(Orientation.Vertical, OnLayoutPropertyChanged));
 
+    /// <summary>
+    /// Identifies the Spacing dependency property.
+    /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
+    public static readonly DependencyProperty SpacingProperty =
+        DependencyProperty.Register(nameof(Spacing), typeof(double), typeof(VirtualizingStackPanel),
+            new PropertyMetadata(0.0, OnLayoutPropertyChanged));
+
     #endregion
 
     #region CLR Properties
@@ -31,6 +39,80 @@ public class VirtualizingStackPanel : VirtualizingPanel, IScrollInfo
     {
         get => (Orientation)GetValue(OrientationProperty)!;
         set => SetValue(OrientationProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the uniform distance, in device-independent pixels, inserted between
+    /// adjacent realized items along the stacking axis. Spacing is accounted for when
+    /// sizing the extent, resolving scroll offsets, and laying out realized containers.
+    /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
+    public double Spacing
+    {
+        get => (double)GetValue(SpacingProperty)!;
+        set => SetValue(SpacingProperty, value);
+    }
+
+    private double EffectiveSpacing
+    {
+        get
+        {
+            var value = Spacing;
+            return (double.IsNaN(value) || double.IsInfinity(value) || value < 0) ? 0 : value;
+        }
+    }
+
+    /// <summary>
+    /// Returns the scroll-axis offset (including cumulative spacing) for the start of
+    /// the item at <paramref name="index"/>.
+    /// </summary>
+    private double GetSpacedOffset(int index)
+    {
+        var baseOffset = _heightIndex.GetOffsetForIndex(index);
+        var spacing = EffectiveSpacing;
+        if (spacing <= 0 || index <= 0) return baseOffset;
+        return baseOffset + index * spacing;
+    }
+
+    /// <summary>
+    /// Returns the total scroll-axis extent including inter-item spacing.
+    /// </summary>
+    private double GetSpacedExtent()
+    {
+        var count = _heightIndex.Count;
+        if (count <= 0) return 0;
+        var spacing = EffectiveSpacing;
+        return _heightIndex.TotalHeight + Math.Max(0, count - 1) * spacing;
+    }
+
+    /// <summary>
+    /// Binary-search the item index whose visual band contains the given spaced offset.
+    /// The inter-item gap (spacing band) after item i is attributed to item i.
+    /// </summary>
+    private int GetIndexAtSpacedOffset(double spacedOffset)
+    {
+        var spacing = EffectiveSpacing;
+        if (spacing <= 0) return _heightIndex.GetIndexAtOffset(spacedOffset);
+
+        var count = _heightIndex.Count;
+        if (count <= 0) return -1;
+        if (spacedOffset <= 0) return 0;
+        if (spacedOffset >= GetSpacedExtent()) return count - 1;
+
+        int lo = 0;
+        int hi = count - 1;
+        while (lo < hi)
+        {
+            int mid = (lo + hi) >> 1;
+            double midStart = _heightIndex.GetOffsetForIndex(mid) + mid * spacing;
+            double nextStart = midStart + _heightIndex.GetHeightAt(mid);
+            if (mid < count - 1) nextStart += spacing;
+
+            if (spacedOffset < midStart) hi = mid - 1;
+            else if (spacedOffset >= nextStart) lo = mid + 1;
+            else return mid;
+        }
+        return Math.Clamp(lo, 0, count - 1);
     }
 
     /// <summary>
@@ -295,9 +377,9 @@ public class VirtualizingStackPanel : VirtualizingPanel, IScrollInfo
         var windowStartOffset = Math.Max(0, _scrollOffset - cacheBefore);
         var windowEndOffset = _scrollOffset + viewportAxisSize + cacheAfter;
 
-        var startIndex = Math.Max(0, _heightIndex.GetIndexAtOffset(windowStartOffset));
+        var startIndex = Math.Max(0, GetIndexAtSpacedOffset(windowStartOffset));
         var endIndex = Math.Min(itemCount - 1,
-            Math.Max(startIndex, _heightIndex.GetIndexAtOffset(windowEndOffset)));
+            Math.Max(startIndex, GetIndexAtSpacedOffset(windowEndOffset)));
 
         var newWindow = endIndex >= startIndex
             ? new RealizationWindow(startIndex, endIndex)
@@ -369,7 +451,7 @@ public class VirtualizingStackPanel : VirtualizingPanel, IScrollInfo
         {
             var index = _realizedContainers.Keys[i];
             var child = _realizedContainers.Values[i];
-            var itemOffset = _heightIndex.GetOffsetForIndex(index) - _scrollOffset;
+            var itemOffset = GetSpacedOffset(index) - _scrollOffset;
             var itemExtent = _heightIndex.GetHeightAt(index);
 
             if (Orientation == Orientation.Vertical)
@@ -398,13 +480,23 @@ public class VirtualizingStackPanel : VirtualizingPanel, IScrollInfo
         }
 
         var localPoint = new Point(point.X - bounds.X, point.Y - bounds.Y);
+
+        // Respect the layout clip the renderer applies — realized containers may
+        // have VisualBounds that extend past the panel viewport along the scroll
+        // axis, so a permissive hit-test would otherwise select an item that was
+        // clipped away.
+        if (!IsPointInsideLayoutClip(localPoint))
+        {
+            return null;
+        }
+
         if (_realizedContainers.Count > 0)
         {
             var axisOffset = Orientation == Orientation.Vertical
                 ? localPoint.Y + _scrollOffset
                 : localPoint.X + _scrollOffset;
 
-            var estimatedIndex = _heightIndex.GetIndexAtOffset(axisOffset);
+            var estimatedIndex = GetIndexAtSpacedOffset(axisOffset);
             int neighborChecks = 0;
             if (estimatedIndex >= 0)
             {
@@ -446,7 +538,7 @@ public class VirtualizingStackPanel : VirtualizingPanel, IScrollInfo
             return;
         }
 
-        var itemStart = _heightIndex.GetOffsetForIndex(index);
+        var itemStart = GetSpacedOffset(index);
         var itemEnd = itemStart + _heightIndex.GetHeightAt(index);
         var viewportAxis = GetViewportAxisSize();
         if (viewportAxis <= 0)
@@ -521,7 +613,7 @@ public class VirtualizingStackPanel : VirtualizingPanel, IScrollInfo
         _maxCrossAxis = 0;
         var endIndex = startIndex - 1;
         var index = startIndex;
-        var currentOffset = _heightIndex.GetOffsetForIndex(startIndex);
+        var currentOffset = GetSpacedOffset(startIndex);
 
         while (index < _heightIndex.Count && currentOffset <= windowEndOffset)
         {
@@ -541,7 +633,7 @@ public class VirtualizingStackPanel : VirtualizingPanel, IScrollInfo
             _heightIndex.SetMeasuredHeight(index, axis);
             _maxCrossAxis = Math.Max(_maxCrossAxis, cross);
 
-            currentOffset = _heightIndex.GetOffsetForIndex(index + 1);
+            currentOffset = GetSpacedOffset(index + 1);
             endIndex = index;
             index++;
         }
@@ -700,9 +792,9 @@ public class VirtualizingStackPanel : VirtualizingPanel, IScrollInfo
             return;
         }
 
-        var current = _heightIndex.GetIndexAtOffset(_scrollOffset);
+        var current = GetIndexAtSpacedOffset(_scrollOffset);
         var target = Math.Clamp(current + direction, 0, Math.Max(0, _heightIndex.Count - 1));
-        SetOffset(_heightIndex.GetOffsetForIndex(target));
+        SetOffset(GetSpacedOffset(target));
     }
 
     private void SetOffset(double offset)
@@ -730,7 +822,7 @@ public class VirtualizingStackPanel : VirtualizingPanel, IScrollInfo
 
     private void UpdateExtent(int itemCount, Size availableSize)
     {
-        var axisExtent = itemCount <= 0 ? 0 : _heightIndex.TotalHeight;
+        var axisExtent = itemCount <= 0 ? 0 : GetSpacedExtent();
         var crossExtent = _maxCrossAxis;
         if (Orientation == Orientation.Vertical)
         {
@@ -816,14 +908,18 @@ public class VirtualizingStackPanel : VirtualizingPanel, IScrollInfo
 
     private Size MeasureNonVirtualized(Size availableSize)
     {
+        var spacing = EffectiveSpacing;
         double axis = 0;
         double cross = 0;
+        bool sawVisible = false;
         foreach (UIElement child in Children)
         {
             child.Visibility = Visibility.Visible;
             child.Measure(availableSize);
+            if (sawVisible) axis += spacing;
             axis += GetAxisSize(child.DesiredSize);
             cross = Math.Max(cross, GetCrossAxisSize(child.DesiredSize));
+            sawVisible = true;
         }
 
         if (Orientation == Orientation.Vertical)
@@ -840,9 +936,12 @@ public class VirtualizingStackPanel : VirtualizingPanel, IScrollInfo
 
     private Size ArrangeNonVirtualized(Size finalSize)
     {
+        var spacing = EffectiveSpacing;
         var offset = -_scrollOffset;
+        bool sawVisible = false;
         foreach (UIElement child in Children)
         {
+            if (sawVisible) offset += spacing;
             var axisExtent = GetAxisSize(child.DesiredSize);
             if (Orientation == Orientation.Vertical)
             {
@@ -854,6 +953,7 @@ public class VirtualizingStackPanel : VirtualizingPanel, IScrollInfo
             }
 
             offset += axisExtent;
+            sawVisible = true;
         }
 
         return finalSize;

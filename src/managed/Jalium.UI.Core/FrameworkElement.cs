@@ -1092,6 +1092,18 @@ public partial class FrameworkElement : UIElement
 
         // Transform point to local coordinates (relative to this element)
         var localPoint = new Point(point.X - _visualBounds.X, point.Y - _visualBounds.Y);
+
+        // Layout clip match: the renderer pushes GetLayoutClip() before drawing this
+        // element AND its children (see Visual.RenderDirect). Hit-testing must obey
+        // the same clip so input never lands on content that the user cannot see —
+        // e.g. a TextBox scrolled outside a ScrollViewer viewport whose VisualBounds
+        // still reach into a sibling title bar above. Without this the click would
+        // fall through to the invisible control and focus would jump unexpectedly.
+        if (!IsPointInsideLayoutClip(localPoint))
+        {
+            return null;
+        }
+
         int scannedChildren = 0;
 
         // Check children in reverse order (top to bottom in z-order)

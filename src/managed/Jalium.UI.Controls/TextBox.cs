@@ -30,6 +30,18 @@ public class TextBox : TextBoxBase, IImeSupport
     private List<TextLine> _lines = new();
     private bool _linesDirty = true;
 
+    // Visual line counts (logical lines may wrap to multiple visual rows when
+    // TextWrapping != NoWrap). Parallel to _lines. Invalidated whenever _lines
+    // changes or the wrap width / font metrics change.
+    private readonly List<int> _lineVisualCounts = new();
+    private double _cachedWrapWidth = double.NaN;
+    private TextWrapping _cachedWrapMode = TextWrapping.NoWrap;
+    private double _cachedVisualLineHeight = double.NaN;
+    private string? _cachedVisualFontFamily;
+    private double _cachedVisualFontSize = double.NaN;
+    private int _cachedVisualFontWeight;
+    private int _cachedVisualFontStyle;
+
     // Text width measurement cache for accurate selection/caret positioning
     private Dictionary<string, double> _textWidthCache = new();
     private string? _cachedFontFamily;
@@ -580,6 +592,283 @@ public class TextBox : TextBoxBase, IImeSupport
     }
 
     /// <inheritdoc />
+    protected override double GetVerticalScrollExtentHeight(double lineHeight)
+    {
+        EnsureLinesValid();
+        EnsureVisualLineCounts(GetCurrentTextContentWidth(), lineHeight);
+        return Math.Max(1, GetTotalVisualLineCount()) * lineHeight;
+    }
+
+    /// <inheritdoc />
+    protected override double GetVerticalScrollViewportHeight()
+    {
+        return GetCurrentTextContentHeight();
+    }
+
+    private double GetCurrentTextContentWidth()
+    {
+        var border = BorderThickness;
+        var padding = Padding;
+
+        double contentWidth = HasContentHost
+            ? _textContentSize.Width
+            : Math.Max(0, RenderSize.Width - border.Left - border.Right - padding.Left - padding.Right);
+
+        if (contentWidth <= 0 || double.IsNaN(contentWidth) || double.IsInfinity(contentWidth))
+        {
+            contentWidth = Math.Max(0, ActualWidth - border.Left - border.Right - padding.Left - padding.Right);
+        }
+
+        if ((contentWidth <= 0 || double.IsNaN(contentWidth) || double.IsInfinity(contentWidth))
+            && _cachedWrapWidth > 0
+            && !double.IsNaN(_cachedWrapWidth)
+            && !double.IsInfinity(_cachedWrapWidth))
+        {
+            contentWidth = _cachedWrapWidth;
+        }
+
+        return Math.Max(0, contentWidth);
+    }
+
+    private double GetCurrentTextContentHeight()
+    {
+        var border = BorderThickness;
+        var padding = Padding;
+
+        double contentHeight = Math.Max(0, RenderSize.Height - border.Top - border.Bottom - padding.Top - padding.Bottom);
+
+        if (contentHeight <= 0 || double.IsNaN(contentHeight) || double.IsInfinity(contentHeight))
+        {
+            contentHeight = Math.Max(0, ActualHeight - border.Top - border.Bottom - padding.Top - padding.Bottom);
+        }
+
+        if ((contentHeight <= 0 || double.IsNaN(contentHeight) || double.IsInfinity(contentHeight))
+            && _textContentSize.Height > 0
+            && !double.IsNaN(_textContentSize.Height)
+            && !double.IsInfinity(_textContentSize.Height))
+        {
+            contentHeight = _textContentSize.Height;
+        }
+
+        return Math.Max(0, contentHeight);
+    }
+
+    /// <summary>
+    /// Wrap-aware caret visibility. The base class computes the caret's x as
+    /// <c>GetCharacterXInLine(lineText, column)</c> — a single-line layout —
+    /// and then adjusts <see cref="TextBoxBase._horizontalOffset"/> so that x
+    /// fits inside the visible content width. On a wrapped paragraph that x
+    /// can be the end-of-paragraph position of a 400-character run rendered
+    /// as a single line (thousands of pixels), which snaps horizontalOffset
+    /// way past the content and scrolls every glyph off-screen — the user
+    /// reports "一选择就往右滚动视图,文字全没了".
+    ///
+    /// When <see cref="TextWrapping"/> is anything other than NoWrap the
+    /// paragraph never overflows horizontally, so horizontalOffset must stay
+    /// at 0. We only need vertical scrolling, and it has to be wrap-aware
+    /// too — walk the cumulative visual-row offset to the caret's logical
+    /// line, then ask DirectWrite for the caret's wrapped y within that
+    /// line. In NoWrap mode the base path is already correct.
+    /// </summary>
+    protected override void EnsureCaretVisible()
+    {
+        if (TextWrapping == TextWrapping.NoWrap)
+        {
+            base.EnsureCaretVisible();
+            return;
+        }
+
+        _horizontalOffset = 0;
+
+        var border = BorderThickness;
+        var padding = Padding;
+        var lineHeight = Math.Round(GetLineHeight());
+
+        double contentWidth = HasContentHost
+            ? _textContentSize.Width
+            : Math.Max(0, RenderSize.Width - border.Left - border.Right - padding.Left - padding.Right);
+        double contentHeight = HasContentHost
+            ? _textContentSize.Height
+            : Math.Max(0, RenderSize.Height - border.Top - border.Bottom - padding.Top - padding.Bottom);
+
+        if (contentWidth <= 0 || contentHeight <= 0)
+        {
+            _horizontalOffset = 0;
+            _verticalOffset = Math.Max(0, Math.Round(_verticalOffset));
+            return;
+        }
+
+        EnsureLinesValid();
+        EnsureVisualLineCounts(contentWidth, lineHeight);
+
+        var (lineIndex, columnIndex) = GetLineColumnFromCharIndex(_caretIndex);
+        if (lineIndex < 0) lineIndex = 0;
+        if (columnIndex < 0) columnIndex = 0;
+
+        var lineText = GetLineTextInternal(lineIndex);
+        var clampedColumn = Math.Clamp(columnIndex, 0, lineText.Length);
+
+        double logicalTop = GetVisualRowsBeforeLogicalLine(lineIndex) * lineHeight;
+        double caretTop = logicalTop;
+        double caretHeight = lineHeight;
+
+        if (lineText.Length > 0)
+        {
+            var fontFamily = FontFamily ?? FrameworkElement.DefaultFontFamilyName;
+            var fontSize = FontSize > 0 ? FontSize : 14;
+            var fontWeight = FontWeight.ToOpenTypeWeight();
+            var fontStyle = FontStyle.ToOpenTypeStyle();
+
+            if (TextMeasurement.HitTestTextPositionWrapped(
+                    lineText, fontFamily, fontSize, fontWeight, fontStyle,
+                    (float)contentWidth, (uint)clampedColumn, false, out var hit))
+            {
+                caretTop = logicalTop + hit.CaretY;
+                if (hit.CaretHeight > 0) caretHeight = hit.CaretHeight;
+            }
+        }
+
+        if (contentHeight >= caretHeight)
+        {
+            if (caretTop < _verticalOffset)
+                _verticalOffset = caretTop;
+            else if (caretTop + caretHeight > _verticalOffset + contentHeight)
+                _verticalOffset = caretTop + caretHeight - contentHeight;
+        }
+        else
+        {
+            _verticalOffset = 0;
+        }
+
+        _horizontalOffset = 0;
+        _verticalOffset = Math.Round(Math.Max(0, _verticalOffset));
+    }
+
+    /// <summary>
+    /// Wrap-aware mouse-to-caret mapping. The base implementation treats
+    /// contentY / lineHeight as a logical-line index and does a single-line
+    /// hit-test, which is wrong whenever a logical line wraps to multiple
+    /// visual rows: clicking anywhere in rows 2+ snaps to the wrong logical
+    /// line and the x-axis hit-test runs against a single-line layout whose
+    /// character positions don't match the wrapped glyphs. We walk the same
+    /// accumulated-visual-row offset DrawText uses to find the clicked
+    /// logical line, then hit-test inside the wrapped layout at (x, localY)
+    /// so the resulting caret index matches the glyph the user clicked on.
+    /// </summary>
+    protected override int GetCaretIndexFromPosition(Point position)
+    {
+        var border = BorderThickness;
+        var padding = Padding;
+        var lineHeight = Math.Round(GetLineHeight());
+
+        // Mouse event positions come from e.GetPosition(this) which is
+        // always relative to the TextBox itself — even when there's a
+        // PART_ContentHost in the template, that host is positioned inside
+        // the TextBox's border+padding, so we still have to subtract both
+        // to reach the content-area origin where DrawText paints (this
+        // matches the base class's GetCaretIndexFromPosition).
+        var contentX = position.X - border.Left - padding.Left + _horizontalOffset;
+        var contentY = position.Y - border.Top - padding.Top + _verticalOffset;
+
+        // The wrap width used during rendering is the content-area width.
+        // In PART_ContentHost mode that's the size the host was arranged to
+        // (stored in _textContentSize); in direct mode we derive it the same
+        // way OnRender does — RenderSize minus chrome. Using ActualWidth
+        // unconditionally (as an earlier revision did) overshoots in
+        // content-host mode, and if it happens to be 0 during first layout
+        // the hit-test degenerates, yanking _horizontalOffset off-screen.
+        double contentWidth = HasContentHost
+            ? _textContentSize.Width
+            : Math.Max(0, RenderSize.Width - border.Left - border.Right - padding.Left - padding.Right);
+        if (contentWidth <= 0) contentWidth = Math.Max(0, ActualWidth - border.Left - border.Right - padding.Left - padding.Right);
+
+        EnsureLinesValid();
+        EnsureVisualLineCounts(contentWidth, lineHeight);
+
+        // Mirror the render-side VerticalContentAlignment shift so clicks in
+        // the empty space above vertically-centered text still map to the
+        // first visible row rather than a non-existent row above the glyphs.
+        double contentHeightForShift = HasContentHost
+            ? _textContentSize.Height
+            : Math.Max(0, RenderSize.Height - border.Top - border.Bottom - padding.Top - padding.Bottom);
+        if (contentHeightForShift <= 0)
+            contentHeightForShift = Math.Max(0, ActualHeight - border.Top - border.Bottom - padding.Top - padding.Bottom);
+        var verticalContentShift = ComputeVerticalContentOffset(contentWidth, contentHeightForShift, lineHeight);
+        contentY -= verticalContentShift;
+
+        if (_lines.Count == 0)
+            return 0;
+
+        // Walk cumulative visual heights to find the logical line that owns
+        // contentY. Past the last line, clamp to the last one (targetLineTopY
+        // ends up pointing at that last line's top, not past it).
+        int targetLineIndex = 0;
+        double targetLineTopY = 0;
+        double accumulatedY = 0;
+        for (int i = 0; i < _lines.Count; i++)
+        {
+            int visualRows = i < _lineVisualCounts.Count ? _lineVisualCounts[i] : 1;
+            if (visualRows < 1) visualRows = 1;
+            double blockHeight = visualRows * lineHeight;
+
+            targetLineIndex = i;
+            targetLineTopY = accumulatedY;
+            if (contentY < accumulatedY + blockHeight)
+                break;
+            accumulatedY += blockHeight;
+        }
+
+        var targetLine = _lines[targetLineIndex];
+        if (targetLine.Length == 0)
+            return targetLine.StartIndex;
+
+        var lineText = Text.Substring(targetLine.StartIndex, targetLine.Length);
+        var localY = (float)Math.Max(0, contentY - targetLineTopY);
+
+        var fontFamily = FontFamily ?? FrameworkElement.DefaultFontFamilyName;
+        var fontSize = FontSize > 0 ? FontSize : 14;
+        var fontWeight = FontWeight.ToOpenTypeWeight();
+        var fontStyle = FontStyle.ToOpenTypeStyle();
+
+        // Use the wrap-aware hit-test. When the current TextWrapping is
+        // NoWrap the render path passes MaxTextWidth=infinity, so mirror that
+        // here: pass a very large maxWidth so DirectWrite doesn't wrap during
+        // the hit-test either, keeping hit-test and glyph positions aligned.
+        float hitMaxWidth = TextWrapping == TextWrapping.NoWrap
+            ? 100000f
+            : (float)Math.Max(1, contentWidth);
+
+        // Row-boundary tolerance: DirectWrite assigns every pixel strictly by
+        // line pitch (ascent+descent+lineGap). When the user clicks the
+        // visual "bottom" of a wrapped line — below the glyphs, inside the
+        // lineGap — DirectWrite technically lands that point in the NEXT
+        // row's top band (row boundary - 0 to +lineGap/2), which feels like
+        // the caret jumped a whole row down. Nudge pointY upward by half the
+        // line pitch minus the font em-height so that clicks in that gap
+        // still resolve to the intended row. In practice ~2 px for 12pt UI.
+        float nudge = 0f;
+        if (TextWrapping != TextWrapping.NoWrap)
+        {
+            double lineGapApprox = Math.Max(0, lineHeight - fontSize);
+            nudge = (float)Math.Min(lineGapApprox * 0.5, 3.0);
+        }
+        float hitPointY = Math.Max(0f, localY - nudge);
+
+        if (TextMeasurement.HitTestPointWrapped(
+                lineText, fontFamily, fontSize, fontWeight, fontStyle,
+                hitMaxWidth, (float)contentX, hitPointY, out var hit))
+        {
+            int column = (int)hit.TextPosition;
+            if (hit.IsTrailingHit != 0)
+                column++;
+            return targetLine.StartIndex + Math.Clamp(column, 0, targetLine.Length);
+        }
+
+        // Native failed — fall back to the base single-line path.
+        return base.GetCaretIndexFromPosition(position);
+    }
+
+    /// <inheritdoc />
     protected override string GetLineTextInternal(int lineIndex)
     {
         EnsureLinesValid();
@@ -649,7 +938,15 @@ public class TextBox : TextBoxBase, IImeSupport
 
         // Round line height for consistent scrolling
         var lineHeight = Math.Round(GetLineHeight());
-        VerticalOffset = lineIndex * lineHeight;
+        if (TextWrapping != TextWrapping.NoWrap)
+        {
+            EnsureVisualLineCounts(GetCurrentTextContentWidth(), lineHeight);
+            VerticalOffset = GetVisualRowsBeforeLogicalLine(lineIndex) * lineHeight;
+        }
+        else
+        {
+            VerticalOffset = lineIndex * lineHeight;
+        }
     }
 
     /// <summary>
@@ -685,6 +982,8 @@ public class TextBox : TextBoxBase, IImeSupport
             return;
 
         _lines.Clear();
+        _lineVisualCounts.Clear();
+        _cachedWrapWidth = double.NaN;
         var text = Text;
 
         if (string.IsNullOrEmpty(text))
@@ -724,6 +1023,141 @@ public class TextBox : TextBoxBase, IImeSupport
         _linesDirty = false;
     }
 
+    /// <summary>
+    /// Computes how many visual rows each logical line (as split by \n) actually
+    /// occupies when the current <see cref="TextWrapping"/> is applied at the
+    /// given wrap width. Results are cached until wrap width, wrap mode, or
+    /// font metrics change. Without this, each logical line is assumed to be
+    /// exactly one row tall, so a long wrap-enabled line gets DirectWrite to
+    /// wrap its glyphs into multiple rows but the next logical line is drawn
+    /// at y = index * lineHeight and paints over those extra wrapped rows.
+    /// </summary>
+    private void EnsureVisualLineCounts(double wrapWidth, double lineHeight)
+    {
+        EnsureLinesValid();
+
+        var wrapMode = TextWrapping;
+        var fontFamily = FontFamily ?? FrameworkElement.DefaultFontFamilyName;
+        var fontSize = FontSize > 0 ? FontSize : 14;
+        var fontWeight = FontWeight.ToOpenTypeWeight();
+        var fontStyle = FontStyle.ToOpenTypeStyle();
+
+        if (_lineVisualCounts.Count == _lines.Count
+            && _cachedWrapWidth == wrapWidth
+            && _cachedWrapMode == wrapMode
+            && _cachedVisualLineHeight == lineHeight
+            && string.Equals(_cachedVisualFontFamily, fontFamily, StringComparison.Ordinal)
+            && _cachedVisualFontSize == fontSize
+            && _cachedVisualFontWeight == fontWeight
+            && _cachedVisualFontStyle == fontStyle)
+        {
+            return;
+        }
+
+        _lineVisualCounts.Clear();
+        _cachedWrapWidth = wrapWidth;
+        _cachedWrapMode = wrapMode;
+        _cachedVisualLineHeight = lineHeight;
+        _cachedVisualFontFamily = fontFamily;
+        _cachedVisualFontSize = fontSize;
+        _cachedVisualFontWeight = fontWeight;
+        _cachedVisualFontStyle = fontStyle;
+
+        var text = Text;
+        bool canWrap = wrapMode != TextWrapping.NoWrap && wrapWidth > 0 && !double.IsInfinity(wrapWidth);
+
+        for (int i = 0; i < _lines.Count; i++)
+        {
+            int count = 1;
+            var line = _lines[i];
+            if (canWrap && line.Length > 0)
+            {
+                var lineText = text.Substring(line.StartIndex, line.Length);
+                // Always ask DirectWrite: a managed-width short-circuit
+                // ("if lineWidth > wrapWidth") can disagree with the real
+                // DirectWrite layout at the edge (trailing whitespace, wide
+                // CJK characters, kerning) and would mark a paragraph as
+                // 1-row when the renderer actually wraps to 2, making the
+                // next logical line paint over the wrapped tail.
+                var ft = new FormattedText(lineText, fontFamily, fontSize)
+                {
+                    MaxTextWidth = wrapWidth,
+                    MaxTextHeight = double.MaxValue,
+                    FontWeight = fontWeight,
+                    FontStyle = fontStyle,
+                };
+                if (TextMeasurement.MeasureText(ft) && ft.LineCount > 0)
+                {
+                    count = ft.LineCount;
+                }
+                else
+                {
+                    // Fallback: approximate with managed width measurement.
+                    var lineWidth = MeasureTextWidth(lineText);
+                    if (lineWidth > wrapWidth)
+                        count = Math.Max(2, (int)Math.Ceiling(lineWidth / wrapWidth));
+                }
+            }
+            _lineVisualCounts.Add(count);
+        }
+    }
+
+    /// <summary>
+    /// Returns the total visual-row count across all logical lines (including
+    /// wrapping). Call <see cref="EnsureVisualLineCounts"/> first to populate.
+    /// </summary>
+    private int GetTotalVisualLineCount()
+    {
+        int total = 0;
+        for (int i = 0; i < _lineVisualCounts.Count; i++)
+            total += _lineVisualCounts[i];
+        return total == 0 ? Math.Max(1, _lines.Count) : total;
+    }
+
+    /// <summary>
+    /// Returns how many visual rows precede the given logical line (the sum
+    /// of visual-row counts for lines [0..logicalLineIndex)). Used by caret /
+    /// selection / IME overlay code so their y-coordinate tracks wrapping in
+    /// earlier paragraphs. Call <see cref="EnsureVisualLineCounts"/> first.
+    /// </summary>
+    private int GetVisualRowsBeforeLogicalLine(int logicalLineIndex)
+    {
+        int sum = 0;
+        int limit = Math.Min(logicalLineIndex, _lineVisualCounts.Count);
+        for (int i = 0; i < limit; i++)
+            sum += _lineVisualCounts[i];
+        return sum;
+    }
+
+    /// <summary>
+    /// Returns how far the rendered text should be nudged downward inside the
+    /// content area so it honors <see cref="Control.VerticalContentAlignment"/>.
+    /// Returns 0 when the alignment is Top/Stretch or the text already fills
+    /// the content area (scrolling / multi-line cases must start at the top so
+    /// the ScrollViewer above this control can expose subsequent rows). Used
+    /// by both the render path and mouse-to-caret hit-testing so clicks land
+    /// on the glyph that is actually painted.
+    /// </summary>
+    private double ComputeVerticalContentOffset(double contentWidth, double contentHeight, double lineHeight)
+    {
+        var alignment = VerticalContentAlignment;
+        if (alignment == VerticalAlignment.Top || alignment == VerticalAlignment.Stretch)
+            return 0;
+        if (contentHeight <= 0 || lineHeight <= 0)
+            return 0;
+
+        EnsureLinesValid();
+        EnsureVisualLineCounts(Math.Max(0, contentWidth), lineHeight);
+        double totalTextHeight = Math.Max(1, GetTotalVisualLineCount()) * lineHeight;
+        if (totalTextHeight >= contentHeight)
+            return 0;
+
+        var slack = contentHeight - totalTextHeight;
+        return alignment == VerticalAlignment.Center
+            ? Math.Floor(slack / 2)
+            : Math.Floor(slack);
+    }
+
     #endregion
 
     #region Layout
@@ -745,12 +1179,17 @@ public class TextBox : TextBoxBase, IImeSupport
         var lineHeight = Math.Round(GetLineHeight());
 
         EnsureLinesValid();
+        var wrapWidth = Math.Max(0, availableSize.Width - padding.Left - padding.Right - border.Left - border.Right);
+        EnsureVisualLineCounts(wrapWidth, lineHeight);
 
         double textHeight;
         if (AcceptsReturn)
         {
-            // Multi-line: height based on line count
-            textHeight = Math.Max(1, _lines.Count) * lineHeight;
+            // Multi-line: height based on total visual rows (logical lines +
+            // any extra rows produced by wrapping). Without the wrap-aware
+            // count, wrapped content of one logical line bleeds into the row
+            // of the next logical line and paints on top of it.
+            textHeight = Math.Max(1, GetTotalVisualLineCount()) * lineHeight;
         }
         else
         {
@@ -777,17 +1216,49 @@ public class TextBox : TextBoxBase, IImeSupport
 
         var lineHeight = Math.Round(GetLineHeight());
 
+        // Pick the wrap width the renderer will actually use at Arrange time.
+        // If the measure pass gave us Infinity (e.g. ScrollViewer's overflow
+        // pass, a stack-panel, or any measure-with-unbounded-width caller),
+        // wrap-counting against Infinity reports the paragraph as "1 row"
+        // (canWrap=false) and DesiredSize.Height under-reports the real
+        // wrapped height — the enclosing ScrollViewer's extent ends up short
+        // and the user can't scroll past the first N pre-wrap rows. Fall
+        // back to the last arranged width so Measure and Draw wrap to the
+        // same width.
+        double wrapWidth = availableSize.Width;
+        if (double.IsInfinity(wrapWidth) || double.IsNaN(wrapWidth) || wrapWidth <= 0)
+        {
+            if (_textContentSize.Width > 0)
+                wrapWidth = _textContentSize.Width;
+        }
+
+        EnsureVisualLineCounts(wrapWidth, lineHeight);
+
         double textHeight;
         if (AcceptsReturn)
         {
-            textHeight = Math.Max(1, _lines.Count) * lineHeight;
+            textHeight = Math.Max(1, GetTotalVisualLineCount()) * lineHeight;
         }
         else
         {
             textHeight = lineHeight;
         }
 
-        return new Size(availableSize.Width, Math.Min(textHeight, availableSize.Height));
+        // Return the TRUE desired height, even when it exceeds availableSize.
+        // Clamping here would tell the enclosing ScrollViewer that the content
+        // fits in the viewport, so its extent would equal the viewport height
+        // and the vertical scrollbar would never expose the rows past the
+        // first page — exactly the "can only scroll partway" symptom users
+        // see on long readme / wrapped text. ScrollViewer is responsible for
+        // clipping; our job is to report the full content size.
+        //
+        // Width: use the ACTUAL wrap width we measured against (not the
+        // potentially-Infinity availableSize.Width) so the ScrollViewer
+        // extent isn't Infinity on the horizontal axis either.
+        double desiredWidth = (double.IsInfinity(availableSize.Width) || double.IsNaN(availableSize.Width) || availableSize.Width <= 0)
+            ? (wrapWidth > 0 ? wrapWidth : 0)
+            : availableSize.Width;
+        return new Size(desiredWidth, textHeight);
     }
 
     #endregion
@@ -866,8 +1337,20 @@ public class TextBox : TextBoxBase, IImeSupport
     /// </summary>
     private void RenderTextContentCore(DrawingContext dc, Rect contentRect, double lineHeight)
     {
-        // Clip to content area
+        // Clip to the original content area — VerticalContentAlignment only
+        // shifts where the text is painted inside that rectangle, it must not
+        // trim padding off the bottom (selection / caret reuse the same clip).
         dc.PushClip(new RectangleGeometry(contentRect));
+
+        // Offset the rendering rectangle so the text, caret, selection, IME
+        // overlay and placeholder all honor VerticalContentAlignment. Keep
+        // the original width/height so the horizontal wrap width and the
+        // visible-row cull test stay identical to pre-offset behavior.
+        var verticalContentShift = ComputeVerticalContentOffset(contentRect.Width, contentRect.Height, lineHeight);
+        if (verticalContentShift > 0)
+        {
+            contentRect = new Rect(contentRect.X, contentRect.Y + verticalContentShift, contentRect.Width, contentRect.Height);
+        }
 
         var text = Text;
 
@@ -943,26 +1426,51 @@ public class TextBox : TextBoxBase, IImeSupport
         var roundedVerticalOffset = Math.Round(_verticalOffset);
         var roundedHorizontalOffset = Math.Round(_horizontalOffset);
 
+        var wrapMode = TextWrapping;
+        // Wrap width for DirectWrite must match the width the wrap-count cache
+        // was measured against so our y accounting and DirectWrite's wrapping
+        // behavior stay in lockstep.
+        var wrapWidth = Math.Max(0, contentRect.Width);
+        EnsureVisualLineCounts(wrapWidth, lineHeight);
+
+        double accumulatedY = 0;
         for (int i = 0; i < _lines.Count; i++)
         {
             var line = _lines[i];
+            int visualRows = i < _lineVisualCounts.Count ? _lineVisualCounts[i] : 1;
+            if (visualRows < 1) visualRows = 1;
+            double lineBlockHeight = visualRows * lineHeight;
+
             // Round y position to prevent sub-pixel jittering from floating-point accumulation errors
-            var y = Math.Round(contentRect.Y + i * lineHeight - roundedVerticalOffset);
+            var y = Math.Round(contentRect.Y + accumulatedY - roundedVerticalOffset);
+            accumulatedY += lineBlockHeight;
 
             // Skip lines outside visible area
-            if (y + lineHeight < contentRect.Y || y > contentRect.Y + contentRect.Height)
+            if (y + lineBlockHeight < contentRect.Y || y > contentRect.Y + contentRect.Height)
                 continue;
 
             if (line.Length == 0)
                 continue;
 
             var lineText = text.Substring(line.StartIndex, line.Length);
+            // When wrap is disabled, let the line extend horizontally past the
+            // viewport and rely on the dirty-region clip to hide the overflow.
+            // If we instead hand DirectWrite a finite MaxTextWidth, it wraps
+            // the glyphs into additional visual rows that paint over the next
+            // logical line's y position and produce the "overlapping text"
+            // artifact users see in PropertyGrid inline editors.
+            double maxTextWidth = wrapMode == TextWrapping.NoWrap
+                ? double.MaxValue
+                : wrapWidth;
+
             var formattedText = new FormattedText(lineText, FontFamily ?? FrameworkElement.DefaultFontFamilyName, FontSize)
             {
                 Foreground = textBrush,
-                MaxTextWidth = Math.Max(0, contentRect.Width + roundedHorizontalOffset),
-                MaxTextHeight = lineHeight,
-                Trimming = TextTrimming
+                MaxTextWidth = maxTextWidth,
+                MaxTextHeight = lineBlockHeight,
+                Trimming = TextTrimming,
+                FontWeight = FontWeight.ToOpenTypeWeight(),
+                FontStyle = FontStyle.ToOpenTypeStyle(),
             };
 
             var x = contentRect.X - roundedHorizontalOffset;
@@ -991,19 +1499,24 @@ public class TextBox : TextBoxBase, IImeSupport
         // Round scroll offsets to prevent sub-pixel jittering
         var roundedVerticalOffset = Math.Round(_verticalOffset);
         var roundedHorizontalOffset = Math.Round(_horizontalOffset);
+        EnsureVisualLineCounts(Math.Max(0, contentRect.Width), lineHeight);
 
         foreach (var error in _spellingErrors)
         {
             // Find which line(s) this error spans
+            double accumulatedY = 0;
             for (int i = 0; i < _lines.Count; i++)
             {
                 var line = _lines[i];
                 var lineEnd = line.StartIndex + line.Length;
-                // Round y position to prevent sub-pixel jittering from floating-point accumulation errors
-                var y = Math.Round(contentRect.Y + i * lineHeight - roundedVerticalOffset);
+                int visualRows = i < _lineVisualCounts.Count ? _lineVisualCounts[i] : 1;
+                if (visualRows < 1) visualRows = 1;
+                double lineBlockHeight = visualRows * lineHeight;
+                var y = Math.Round(contentRect.Y + accumulatedY - roundedVerticalOffset);
+                accumulatedY += lineBlockHeight;
 
                 // Skip lines outside visible area
-                if (y + lineHeight < contentRect.Y || y > contentRect.Y + contentRect.Height)
+                if (y + lineBlockHeight < contentRect.Y || y > contentRect.Y + contentRect.Height)
                     continue;
 
                 // Check if error intersects this line
@@ -1063,15 +1576,24 @@ public class TextBox : TextBoxBase, IImeSupport
         var roundedVerticalOffset = Math.Round(_verticalOffset);
         var roundedHorizontalOffset = Math.Round(_horizontalOffset);
 
+        // Keep y-accounting aligned with DrawText when wrapping is on — each
+        // logical line may span multiple visual rows so we walk the same
+        // cumulative offset instead of i * lineHeight.
+        var wrapWidth = Math.Max(0, contentRect.Width);
+        EnsureVisualLineCounts(wrapWidth, lineHeight);
+        double accumulatedY = 0;
         for (int i = 0; i < _lines.Count; i++)
         {
             var line = _lines[i];
             var lineEnd = line.StartIndex + line.Length;
-            // Round y position to prevent sub-pixel jittering from floating-point accumulation errors
-            var y = Math.Round(contentRect.Y + i * lineHeight - roundedVerticalOffset);
+            int visualRows = i < _lineVisualCounts.Count ? _lineVisualCounts[i] : 1;
+            if (visualRows < 1) visualRows = 1;
+            double lineBlockHeight = visualRows * lineHeight;
+            var y = Math.Round(contentRect.Y + accumulatedY - roundedVerticalOffset);
+            accumulatedY += lineBlockHeight;
 
             // Skip lines outside visible area
-            if (y + lineHeight < contentRect.Y || y > contentRect.Y + contentRect.Height)
+            if (y + lineBlockHeight < contentRect.Y || y > contentRect.Y + contentRect.Height)
                 continue;
 
             // Check if selection intersects this line
@@ -1084,14 +1606,102 @@ public class TextBox : TextBoxBase, IImeSupport
                 {
                     var lineText = text.Substring(line.StartIndex, line.Length);
 
-                    // Use native hit testing for accurate selection positioning
-                    var startXOffset = GetCharacterXInLine(lineText, startInLine);
-                    var endXOffset = GetCharacterXInLine(lineText, endInLine);
-                    var startX = Math.Round(contentRect.X + startXOffset - roundedHorizontalOffset);
-                    var width = Math.Max(Math.Round(endXOffset - startXOffset), 1);
+                    if (visualRows > 1)
+                    {
+                        // Wrapped paragraph: ask DirectWrite for the real (x, y)
+                        // of both selection endpoints inside the wrapped layout,
+                        // then paint one rect per visual row — first row from
+                        // startCaret to the right edge, middle rows full width,
+                        // last row from the left edge to endCaret. This matches
+                        // the glyph extents exactly, so there is no trailing
+                        // whitespace tail on the final wrapped row.
+                        var fontFamily = FontFamily ?? FrameworkElement.DefaultFontFamilyName;
+                        var fontSize = FontSize > 0 ? FontSize : 14;
+                        var fontWeight = FontWeight.ToOpenTypeWeight();
+                        var fontStyle = FontStyle.ToOpenTypeStyle();
+                        float wrapWidthF = (float)wrapWidth;
 
-                    var selRect = new Rect(startX, y, width, lineHeight);
-                    dc.DrawRectangle(selectionBrush, null, selRect);
+                        bool gotStart = TextMeasurement.HitTestTextPositionWrapped(
+                            lineText, fontFamily, fontSize, fontWeight, fontStyle,
+                            wrapWidthF, (uint)startInLine, false, out var startHit);
+                        bool gotEnd = TextMeasurement.HitTestTextPositionWrapped(
+                            lineText, fontFamily, fontSize, fontWeight, fontStyle,
+                            wrapWidthF, (uint)Math.Max(0, endInLine - 1), true, out var endHit);
+
+                        if (gotStart && gotEnd)
+                        {
+                            double rowHeight = endHit.CaretHeight > 0 ? endHit.CaretHeight : lineHeight;
+                            double startRowTop = y + startHit.CaretY;
+                            double endRowTop = y + endHit.CaretY;
+                            double leftEdge = contentRect.X;
+                            double rightEdge = contentRect.X + contentRect.Width;
+
+                            if (Math.Abs(endHit.CaretY - startHit.CaretY) < 0.5)
+                            {
+                                // Selection stays on one wrapped row.
+                                double left = Math.Round(contentRect.X + startHit.CaretX - roundedHorizontalOffset);
+                                double right = Math.Round(contentRect.X + endHit.CaretX - roundedHorizontalOffset);
+                                if (right < left) (left, right) = (right, left);
+                                var selRect = new Rect(left, Math.Round(startRowTop), Math.Max(right - left, 1), rowHeight);
+                                dc.DrawRectangle(selectionBrush, null, selRect);
+                            }
+                            else
+                            {
+                                // First wrapped row: from start caret to right edge.
+                                double firstLeft = Math.Round(contentRect.X + startHit.CaretX - roundedHorizontalOffset);
+                                var firstRect = new Rect(
+                                    firstLeft,
+                                    Math.Round(startRowTop),
+                                    Math.Max(rightEdge - firstLeft, 1),
+                                    rowHeight);
+                                dc.DrawRectangle(selectionBrush, null, firstRect);
+
+                                // Middle rows: full content width. Step by
+                                // rowHeight between startRowTop and endRowTop.
+                                for (double rowTop = startRowTop + rowHeight; rowTop < endRowTop - 0.5; rowTop += rowHeight)
+                                {
+                                    var midRect = new Rect(
+                                        leftEdge,
+                                        Math.Round(rowTop),
+                                        Math.Max(rightEdge - leftEdge, 1),
+                                        rowHeight);
+                                    dc.DrawRectangle(selectionBrush, null, midRect);
+                                }
+
+                                // Last wrapped row: from left edge to end caret.
+                                double lastRight = Math.Round(contentRect.X + endHit.CaretX - roundedHorizontalOffset);
+                                if (lastRight > leftEdge)
+                                {
+                                    var lastRect = new Rect(
+                                        leftEdge,
+                                        Math.Round(endRowTop),
+                                        Math.Max(lastRight - leftEdge, 1),
+                                        rowHeight);
+                                    dc.DrawRectangle(selectionBrush, null, lastRect);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Native hit-test unavailable — fall back to a
+                            // block-fill covering the paragraph so the user
+                            // still sees selection, just without per-row
+                            // precision on the trailing edge.
+                            var selRect = new Rect(contentRect.X, y, contentRect.Width, lineBlockHeight);
+                            dc.DrawRectangle(selectionBrush, null, selRect);
+                        }
+                    }
+                    else
+                    {
+                        // Non-wrapped line: precise selection rectangle.
+                        var startXOffset = GetCharacterXInLine(lineText, startInLine);
+                        var endXOffset = GetCharacterXInLine(lineText, endInLine);
+                        var startX = Math.Round(contentRect.X + startXOffset - roundedHorizontalOffset);
+                        var width = Math.Max(Math.Round(endXOffset - startXOffset), 1);
+
+                        var selRect = new Rect(startX, y, width, lineHeight);
+                        dc.DrawRectangle(selectionBrush, null, selRect);
+                    }
                 }
 
                 // Selection extends past line end (include newline in selection visual)
@@ -1126,8 +1736,11 @@ public class TextBox : TextBoxBase, IImeSupport
         var roundedVerticalOffset = Math.Round(_verticalOffset);
 
         var x = Math.Round(contentRect.X + GetCharacterXInLine(lineText, clampedColumn) - roundedHorizontalOffset);
-        // Round y position to prevent sub-pixel jittering from floating-point accumulation errors
-        var y = Math.Round(contentRect.Y + lineIndex * lineHeight - roundedVerticalOffset);
+        // Use wrap-aware visual row offset so IME overlay stays on the same
+        // line as the text it is composing in.
+        EnsureVisualLineCounts(Math.Max(0, contentRect.Width), lineHeight);
+        var visualRowOffset = GetVisualRowsBeforeLogicalLine(lineIndex);
+        var y = Math.Round(contentRect.Y + visualRowOffset * lineHeight - roundedVerticalOffset);
 
         // Draw composition background
         var compositionWidth = MeasureTextWidth(_imeCompositionString);
@@ -1190,9 +1803,53 @@ public class TextBox : TextBoxBase, IImeSupport
         var roundedHorizontalOffset = Math.Round(_horizontalOffset);
         var roundedVerticalOffset = Math.Round(_verticalOffset);
 
-        var x = Math.Round(contentRect.X + GetCharacterXInLine(lineText, clampedColumn) - roundedHorizontalOffset);
-        // Round y position to prevent sub-pixel jittering from floating-point accumulation errors
-        var y = Math.Round(contentRect.Y + lineIndex * lineHeight - roundedVerticalOffset);
+        var wrapWidthForCaret = Math.Max(0, contentRect.Width);
+        EnsureVisualLineCounts(wrapWidthForCaret, lineHeight);
+        var visualRowOffset = GetVisualRowsBeforeLogicalLine(lineIndex);
+        var paragraphTop = contentRect.Y + visualRowOffset * lineHeight - roundedVerticalOffset;
+
+        double caretX;
+        double caretY;
+        double caretHeight = lineHeight;
+
+        int visualRowsForLine = lineIndex < _lineVisualCounts.Count ? _lineVisualCounts[lineIndex] : 1;
+        if (visualRowsForLine > 1 && lineText.Length > 0)
+        {
+            // Caret lives inside a wrapped paragraph — the base-class
+            // GetCharacterXInLine returns a single-line x that bears no
+            // relation to the wrapped glyph position, and anchoring y to the
+            // paragraph top makes the caret jump to the first wrapped row
+            // regardless of which wrap row the caret index actually belongs
+            // to. Use DirectWrite's wrapped hit-test to land on the exact
+            // (x, y) of the glyph the user clicked.
+            var fontFamily = FontFamily ?? FrameworkElement.DefaultFontFamilyName;
+            var fontSize = FontSize > 0 ? FontSize : 14;
+            var fontWeight = FontWeight.ToOpenTypeWeight();
+            var fontStyle = FontStyle.ToOpenTypeStyle();
+
+            if (TextMeasurement.HitTestTextPositionWrapped(
+                    lineText, fontFamily, fontSize, fontWeight, fontStyle,
+                    (float)wrapWidthForCaret, (uint)clampedColumn, false, out var caretHit))
+            {
+                caretX = Math.Round(contentRect.X + caretHit.CaretX - roundedHorizontalOffset);
+                caretY = Math.Round(paragraphTop + caretHit.CaretY);
+                if (caretHit.CaretHeight > 0) caretHeight = caretHit.CaretHeight;
+            }
+            else
+            {
+                caretX = Math.Round(contentRect.X + GetCharacterXInLine(lineText, clampedColumn) - roundedHorizontalOffset);
+                caretY = Math.Round(paragraphTop);
+            }
+        }
+        else
+        {
+            // Single-row line: base-class geometry is correct.
+            caretX = Math.Round(contentRect.X + GetCharacterXInLine(lineText, clampedColumn) - roundedHorizontalOffset);
+            caretY = Math.Round(paragraphTop);
+        }
+
+        var x = caretX;
+        var y = caretY;
 
         // Create a brush with the animated opacity
         Brush caretBrushWithOpacity;
@@ -1213,7 +1870,13 @@ public class TextBox : TextBoxBase, IImeSupport
             _caretPenBrush = caretBrushWithOpacity;
             _caretPenOpacity = caretOpacity;
         }
-        dc.DrawLine(_caretPen, new Point(x, y), new Point(x, y + lineHeight));
+        dc.DrawLine(_caretPen, new Point(x, y), new Point(x, y + caretHeight));
+
+        // Publish the caret rect (inflated for the 1.5-wide stroke + AA fringe)
+        // so the blink timer in TextBoxBase can invalidate only this region
+        // instead of the whole control. Rect is in LOCAL coordinates — exactly
+        // what InvalidateVisual(Rect) expects.
+        _lastRenderedCaretRect = new Rect(x - 2, y - 1, 5, caretHeight + 2);
     }
 
     #endregion
@@ -1279,6 +1942,7 @@ public class TextBox : TextBoxBase, IImeSupport
         {
             textBox._linesDirty = true;
             textBox.InvalidateMeasure();
+            textBox.InvalidateTextContentMeasure();
 
             var newText = (string)(e.NewValue ?? string.Empty);
 
@@ -1345,6 +2009,7 @@ public class TextBox : TextBoxBase, IImeSupport
         {
             textBox._linesDirty = true;
             textBox.InvalidateMeasure();
+            textBox.InvalidateTextContentMeasure();
         }
     }
 

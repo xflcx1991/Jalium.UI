@@ -496,9 +496,11 @@ bool D3D12DirectRenderer::CreateRootSignature()
     params[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
 
     // Static samplers
-    D3D12_STATIC_SAMPLER_DESC samplers[2] = {};
+    // s0 — bilinear clamp (Linear / LowQuality bitmap path; general texture sampling)
+    // s1 — point clamp (NearestNeighbor bitmap path AND pixel-exact ClearType text)
+    // s2 — anisotropic clamp + trilinear mipmap (HighQuality / Fant / Unspecified default)
+    D3D12_STATIC_SAMPLER_DESC samplers[3] = {};
 
-    // s0 — linear clamp (general texture sampling)
     samplers[0].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
     samplers[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
     samplers[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
@@ -506,7 +508,6 @@ bool D3D12DirectRenderer::CreateRootSignature()
     samplers[0].ShaderRegister = 0;
     samplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
-    // s1 — point clamp (pixel-exact ClearType text sampling)
     samplers[1].Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
     samplers[1].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
     samplers[1].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
@@ -514,10 +515,20 @@ bool D3D12DirectRenderer::CreateRootSignature()
     samplers[1].ShaderRegister = 1;
     samplers[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
+    samplers[2].Filter = D3D12_FILTER_ANISOTROPIC;
+    samplers[2].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    samplers[2].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    samplers[2].AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    samplers[2].MaxAnisotropy = 16;
+    samplers[2].MinLOD = 0.0f;
+    samplers[2].MaxLOD = D3D12_FLOAT32_MAX;
+    samplers[2].ShaderRegister = 2;
+    samplers[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
     D3D12_ROOT_SIGNATURE_DESC rootSigDesc = {};
     rootSigDesc.NumParameters = 3;
     rootSigDesc.pParameters = params;
-    rootSigDesc.NumStaticSamplers = 2;
+    rootSigDesc.NumStaticSamplers = 3;
     rootSigDesc.pStaticSamplers = samplers;
     // ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT is required for PSOs that use vertex input
     // layouts (e.g. triangle PSO). PSOs without input layouts are unaffected.
@@ -1084,7 +1095,8 @@ void D3D12DirectRenderer::AddText(IDWriteTextLayout* layout, float x, float y,
 
 void D3D12DirectRenderer::AddBitmap(float x, float y, float w, float h, float opacity,
                                      ID3D12Resource* textureResource, DXGI_FORMAT format,
-                                     float uvMaxX, float uvMaxY)
+                                     float uvMaxX, float uvMaxY,
+                                     int scalingMode)
 {
     if (!textureResource) return;
     if (bitmapInstances_.size() >= kMaxInstancesPerFrame) {
@@ -1095,12 +1107,27 @@ void D3D12DirectRenderer::AddBitmap(float x, float y, float w, float h, float op
         FlushGraphicsForCompute();
     }
 
+    // Map JaliumBitmapScalingMode → shader sampler slot (s0=linear, s1=point, s2=aniso).
+    // Unspecified, HighQuality, Fant default to anisotropic — UI icons get sharp scaling
+    // out of the box, matching the user's "default high quality" expectation.
+    float samplerIdx;
+    switch (scalingMode) {
+        case 1:  samplerIdx = 0.0f; break;  // LowQuality → linear
+        case 3:  samplerIdx = 1.0f; break;  // NearestNeighbor → point
+        case 4:  samplerIdx = 0.0f; break;  // Linear → linear
+        case 0:                              // Unspecified → high quality
+        case 2:                              // HighQuality
+        case 5:                              // Fant
+        default: samplerIdx = 2.0f; break;  // anisotropic
+    }
+
     BitmapQuadInstance inst = {};
     inst.posX = x; inst.posY = y;
     inst.sizeX = w; inst.sizeY = h;
     inst.uvMinX = 0.0f; inst.uvMinY = 0.0f;
     inst.uvMaxX = uvMaxX; inst.uvMaxY = uvMaxY;
     inst.opacity = opacity * currentOpacity_;
+    inst.samplerIdx = samplerIdx;
 
     // Apply current transform (CPU-side)
     const auto& t = transformStack_.top();

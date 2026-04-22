@@ -661,65 +661,24 @@ public sealed class GenerateJalxamlCodeBehindTask : Microsoft.Build.Utilities.Ta
             if (reader.NodeType != System.Xml.XmlNodeType.Element)
                 continue;
 
-            var elementName = reader.LocalName;
-
-            // 跳过属性元素 (e.g., Grid.RowDefinitions)
-            if (elementName.Contains('.'))
+            // 根元素理论上不会是属性元素,但出于健壮性仍递归其内容。
+            if (reader.LocalName.Contains('.'))
             {
                 if (!reader.IsEmptyElement)
-                    SkipElement(reader);
-                continue;
+                    ParseChildElements(reader, elements, reader.Depth);
+                return;
             }
 
-            var typeName = MapTypeName(elementName, reader.NamespaceURI);
-
-            // 查找 x:Name 属性
+            var typeName = MapTypeName(reader.LocalName, reader.NamespaceURI);
             var nameAttr = reader.GetAttribute("Name", "http://schemas.microsoft.com/winfx/2006/xaml")
                         ?? reader.GetAttribute("Name", "https://schemas.jalium.dev/jalxaml/markup")
                         ?? FindPrefixedNameAttribute(reader);
 
             if (!string.IsNullOrEmpty(nameAttr))
-            {
                 elements.Add((nameAttr!, typeName));
-            }
 
-            if (reader.IsEmptyElement)
-                continue;
-
-            // 子元素递归
-            var depth = reader.Depth;
-            while (reader.Read())
-            {
-                if (reader.NodeType == System.Xml.XmlNodeType.EndElement && reader.Depth == depth)
-                    break;
-
-                if (reader.NodeType == System.Xml.XmlNodeType.Element)
-                {
-                    if (reader.LocalName.Contains('.'))
-                    {
-                        if (!reader.IsEmptyElement)
-                            SkipElement(reader);
-                    }
-                    else
-                    {
-                        // 内联处理子元素（避免递归栈溢出风险），这里简化为重新进入
-                        var childName = reader.LocalName;
-                        var childType = MapTypeName(childName, reader.NamespaceURI);
-                        var childNameAttr = reader.GetAttribute("Name", "http://schemas.microsoft.com/winfx/2006/xaml")
-                                         ?? reader.GetAttribute("Name", "https://schemas.jalium.dev/jalxaml/markup")
-                                         ?? FindPrefixedNameAttribute(reader);
-
-                        if (!string.IsNullOrEmpty(childNameAttr))
-                            elements.Add((childNameAttr!, childType));
-
-                        if (!reader.IsEmptyElement)
-                        {
-                            var childDepth = reader.Depth;
-                            ParseChildElements(reader, elements, childDepth);
-                        }
-                    }
-                }
-            }
+            if (!reader.IsEmptyElement)
+                ParseChildElements(reader, elements, reader.Depth);
 
             return; // 根元素处理完毕
         }
@@ -735,10 +694,13 @@ public sealed class GenerateJalxamlCodeBehindTask : Microsoft.Build.Utilities.Ta
             if (reader.NodeType != System.Xml.XmlNodeType.Element)
                 continue;
 
+            // 属性元素本身不是控件 (e.g., NavigationView.PaneFooter),但其
+            // 内容可能包含 x:Name 命名的控件 (e.g. <TextBlock x:Name="..."/>),
+            // 必须继续递归扫描,否则 code-behind 字段会漏生成。
             if (reader.LocalName.Contains('.'))
             {
                 if (!reader.IsEmptyElement)
-                    SkipElement(reader);
+                    ParseChildElements(reader, elements, reader.Depth);
                 continue;
             }
 
@@ -752,17 +714,6 @@ public sealed class GenerateJalxamlCodeBehindTask : Microsoft.Build.Utilities.Ta
 
             if (!reader.IsEmptyElement)
                 ParseChildElements(reader, elements, reader.Depth);
-        }
-    }
-
-    private static void SkipElement(System.Xml.XmlReader reader)
-    {
-        if (reader.IsEmptyElement) return;
-        var depth = reader.Depth;
-        while (reader.Read())
-        {
-            if (reader.NodeType == System.Xml.XmlNodeType.EndElement && reader.Depth == depth)
-                break;
         }
     }
 

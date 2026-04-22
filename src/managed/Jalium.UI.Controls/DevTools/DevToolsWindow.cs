@@ -17,8 +17,10 @@ namespace Jalium.UI.Controls.DevTools;
 /// Developer tools window for inspecting the visual tree and element properties.
 /// Features: syntax-highlighted values, color swatches, inline editing, font preview,
 /// toolbar, element picker, search, breadcrumb, box model, grid/style/resource/binding inspectors.
+/// Top-level layout is a TabControl that pins every DevTools surface (Inspector, Logical, Layout,
+/// Events, Bindings, Resources, Perf, UIA, Tools, REPL).
 /// </summary>
-public class DevToolsWindow : Window
+public partial class DevToolsWindow : Window
 {
     private const int SearchRefreshDelayMilliseconds = 150;
     private const int TreeBuildNodeBatchSize = 8;
@@ -36,33 +38,87 @@ public class DevToolsWindow : Window
     private DevToolsOverlay? _overlay;
     private int _rowIndex;
 
+    // Inspector tree view mode (visual vs logical vs flat). The segmented toggle
+    // in the inspector toolbar flips this; RefreshVisualTree rebuilds accordingly.
+    internal enum InspectorViewMode
+    {
+        Visual = 0,
+        Logical = 1,
+        Flat = 2,
+    }
+    private InspectorViewMode _inspectorViewMode = InspectorViewMode.Visual;
+    private DevToolsUi.SegmentedToggle? _inspectorViewToggle;
+
+    private void SetInspectorViewMode(InspectorViewMode mode)
+    {
+        if (_inspectorViewMode == mode) return;
+        _inspectorViewMode = mode;
+        RefreshVisualTree();
+    }
+
+    /// <summary>
+    /// Returns the children that should appear under <paramref name="visual"/> for
+    /// the currently-selected inspector view mode. Visual = all visual children;
+    /// Logical = filter template decoration (content/items presenters); Flat will
+    /// be handled separately by <see cref="RefreshVisualTree"/>.
+    /// </summary>
+    internal IEnumerable<Visual> EnumerateChildrenForCurrentMode(Visual visual)
+    {
+        int count = visual.VisualChildrenCount;
+        for (int i = 0; i < count; i++)
+        {
+            var child = visual.GetVisualChild(i);
+            if (child == null) continue;
+
+            if (_inspectorViewMode == InspectorViewMode.Logical)
+            {
+                // Hide template plumbing in Logical mode so the user sees
+                // meaningful user-level structure, not the template visual tree.
+                if (IsTemplateDecoration(child)) continue;
+            }
+            yield return child;
+        }
+    }
+
+    private static bool IsTemplateDecoration(Visual visual)
+    {
+        // Keep named FrameworkElements (user markup) visible; filter out typical
+        // template scaffolding (ItemsPresenter, ContentPresenter, panels with no
+        // Name that exist purely to host a template).
+        if (visual is FrameworkElement fe && !string.IsNullOrEmpty(fe.Name))
+            return false;
+        var name = visual.GetType().Name;
+        return name.EndsWith("Presenter", StringComparison.Ordinal)
+            || name.EndsWith("Host", StringComparison.Ordinal);
+    }
+
     // Toolbar state
     private bool _isPickerActive;
-    private Border? _pickerButton;
+    private DevToolsUi.DevToolsButton? _pickerButton;
 
     // All tree items for search/expand/collapse
     private readonly List<DevToolsTreeViewItem> _allTreeItems = new();
     private readonly Queue<PendingTreeBuildNode> _pendingTreeBuild = new();
 
-    // 鈹€鈹€ Syntax highlighting palette (VS Code Dark+ inspired) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
-    private static readonly SolidColorBrush BrushString = new(Color.FromRgb(206, 145, 120));     // #CE9178
-    private static readonly SolidColorBrush BrushNumber = new(Color.FromRgb(181, 206, 168));     // #B5CEA8
-    private static readonly SolidColorBrush BrushBool = new(Color.FromRgb(86, 156, 214));        // #569CD6
-    private static readonly SolidColorBrush BrushEnum = new(Color.FromRgb(220, 220, 170));       // #DCDCAA
-    private static readonly SolidColorBrush BrushNull = new(Color.FromRgb(128, 128, 128));       // #808080
-    private static readonly SolidColorBrush BrushThickness = new(Color.FromRgb(78, 201, 176));   // #4EC9B0
-    private static readonly SolidColorBrush BrushPropName = new(Color.FromRgb(156, 220, 254));   // #9CDCFE
-    private static readonly SolidColorBrush BrushSection = new(Color.FromRgb(78, 201, 176));     // #4EC9B0
-    private static readonly SolidColorBrush BrushType = new(Color.FromRgb(86, 156, 214));        // #569CD6
-    private static readonly SolidColorBrush BrushKeyword = new(Color.FromRgb(197, 134, 192));    // #C586C0
-    private static readonly SolidColorBrush BrushEditBg = new(Color.FromRgb(30, 30, 30));
-    private static readonly SolidColorBrush BrushEditBorder = new(Color.FromRgb(60, 60, 80));
-    private static readonly SolidColorBrush BrushSwatchBorder = new(Color.FromRgb(100, 100, 100));
-    private static readonly SolidColorBrush BrushRowAlt = new(Color.FromRgb(36, 36, 36));
-    private static readonly SolidColorBrush BrushToolbarBg = new(Color.FromRgb(45, 45, 48));
-    private static readonly SolidColorBrush BrushToolbarBorder = new(Color.FromRgb(63, 63, 70));
-    private static readonly SolidColorBrush BrushAccent = new(ThemeColors.Accent);
-    private static readonly SolidColorBrush BrushBreadcrumbSep = new(Color.FromRgb(100, 100, 100));
+    // ── Palette (re-exported from DevToolsTheme for legacy call sites in this file) ──
+    private static readonly SolidColorBrush BrushString       = DevToolsTheme.TokenString;
+    private static readonly SolidColorBrush BrushNumber       = DevToolsTheme.TokenNumber;
+    private static readonly SolidColorBrush BrushBool         = DevToolsTheme.TokenBool;
+    private static readonly SolidColorBrush BrushEnum         = DevToolsTheme.TokenEnum;
+    private static readonly SolidColorBrush BrushNull         = DevToolsTheme.TextMuted;
+    private static readonly SolidColorBrush BrushThickness    = DevToolsTheme.TokenType;
+    private static readonly SolidColorBrush BrushPropName     = DevToolsTheme.TokenProperty;
+    private static readonly SolidColorBrush BrushSection      = DevToolsTheme.Accent;
+    private static readonly SolidColorBrush BrushType         = DevToolsTheme.TokenBool;
+    private static readonly SolidColorBrush BrushKeyword      = DevToolsTheme.TokenKeyword;
+    private static readonly SolidColorBrush BrushEditBg       = DevToolsTheme.Control;
+    private static readonly SolidColorBrush BrushEditBorder   = DevToolsTheme.Border;
+    private static readonly SolidColorBrush BrushSwatchBorder = DevToolsTheme.BorderStrong;
+    private static readonly SolidColorBrush BrushRowAlt       = DevToolsTheme.RowAlt;
+    private static readonly SolidColorBrush BrushToolbarBg    = DevToolsTheme.Chrome;
+    private static readonly SolidColorBrush BrushToolbarBorder = DevToolsTheme.BorderSubtle;
+    private static readonly SolidColorBrush BrushAccent       = DevToolsTheme.Accent;
+    private static readonly SolidColorBrush BrushBreadcrumbSep = DevToolsTheme.TextMuted;
     private static readonly SolidColorBrush BrushBoxMargin = new(Color.FromArgb(180, 255, 180, 100));
     private static readonly SolidColorBrush BrushBoxBorder = new(Color.FromArgb(180, 255, 220, 100));
     private static readonly SolidColorBrush BrushBoxPadding = new(Color.FromArgb(180, 140, 200, 140));
@@ -90,11 +146,22 @@ public class DevToolsWindow : Window
     {
         _targetWindow = targetWindow ?? throw new ArgumentNullException(nameof(targetWindow));
 
-        Title = $"DevTools - {targetWindow.Title}";
-        Width = 780;
-        Height = 820;
+        // Tell the diagnostics layer not to log anything produced by DevTools itself —
+        // otherwise the Events/Layout/Bindings tabs are flooded with hover, click,
+        // scroll, text-input events generated by the tool's own UI.
+        Jalium.UI.Diagnostics.DiagnosticsScope.ExcludeRoot(this);
+
+        // Anything constructed inside this scope has IsDiagnosticsIgnored set
+        // via the Visual field-initializer — closes the window where a new
+        // UIElement fires InvalidateMeasure from its constructor (Header /
+        // Foreground / DP defaults) before AddVisualChild can inherit the flag.
+        using var __devToolsCreationScope = Jalium.UI.Diagnostics.DiagnosticsScope.BeginIgnoredCreation();
+
+        Title = $"DevTools · {targetWindow.Title}";
+        Width = 1040;
+        Height = 860;
         SystemBackdrop = WindowBackdropType.Mica;
-        Background = new SolidColorBrush(Color.FromArgb(255, 32, 32, 32));
+        Background = DevToolsTheme.Chrome;
 
         // Layout: rootGrid has 2 rows (toolbar, content).
         // contentGrid has 3 columns (left=search+tree, middle=splitter, right=properties).
@@ -124,40 +191,70 @@ public class DevToolsWindow : Window
 
         _searchTextBox = new TextBox
         {
-            FontSize = 11,
-            Foreground = new SolidColorBrush(Color.FromRgb(220, 220, 220)),
-            Background = new SolidColorBrush(Color.FromRgb(50, 50, 50)),
-            BorderBrush = BrushToolbarBorder,
-            BorderThickness = new Thickness(0, 0, 0, 1),
-            Padding = new Thickness(6, 4, 6, 4)
+            FontSize = DevToolsTheme.FontSm,
+            FontFamily = DevToolsTheme.UiFont,
+            Foreground = DevToolsTheme.TextPrimary,
+            Background = DevToolsTheme.Control,
+            BorderBrush = DevToolsTheme.BorderSubtle,
+            BorderThickness = DevToolsTheme.ThicknessHairline,
+            Padding = new Thickness(DevToolsTheme.GutterBase, DevToolsTheme.GutterSm, DevToolsTheme.GutterBase, DevToolsTheme.GutterSm),
+            PlaceholderText = "Filter tree…",
         };
         _searchTextBox.TextChanged += OnSearchTextChanged;
-        Grid.SetRow(_searchTextBox, 0);
-        leftGrid.Children.Add(_searchTextBox);
+
+        // View-mode switcher — compact segmented control with three icon buttons.
+        // Glyphs: ≡ (flat list) · ▦ (grid = visual) · ⧉ (layered = logical).
+        _inspectorViewToggle = new DevToolsUi.SegmentedToggle();
+        _inspectorViewToggle.AddSegment("≡", "Flat list", () => SetInspectorViewMode(InspectorViewMode.Flat));
+        _inspectorViewToggle.AddSegment("▦", "Visual tree", () => SetInspectorViewMode(InspectorViewMode.Visual));
+        _inspectorViewToggle.AddSegment("⧉", "Logical tree", () => SetInspectorViewMode(InspectorViewMode.Logical));
+        _inspectorViewToggle.SetSelectedSilent((int)_inspectorViewMode);
+
+        var searchRow = new Grid();
+        searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(_searchTextBox, 0);
+        Grid.SetColumn(_inspectorViewToggle, 1);
+        searchRow.Children.Add(_searchTextBox);
+        searchRow.Children.Add(_inspectorViewToggle);
+
+        var searchRowHost = new Border
+        {
+            Background = DevToolsTheme.Chrome,
+            BorderBrush = DevToolsTheme.BorderSubtle,
+            BorderThickness = DevToolsTheme.ThicknessBottom,
+            Padding = new Thickness(DevToolsTheme.GutterSm, DevToolsTheme.GutterSm, DevToolsTheme.GutterSm, DevToolsTheme.GutterSm),
+            Child = searchRow,
+        };
+        Grid.SetRow(searchRowHost, 0);
+        leftGrid.Children.Add(searchRowHost);
 
         var treeView = new TreeView
         {
-            Background = new SolidColorBrush(Color.FromArgb(255, 40, 40, 40)),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(255, 60, 60, 60)),
-            Margin = new Thickness(4)
+            Background = DevToolsTheme.SurfaceAlt,
+            BorderBrush = DevToolsTheme.BorderSubtle,
+            Margin = new Thickness(0),
         };
         treeView.SelectedItemChanged += OnVisualTreeSelectionChanged;
+        // PreviewMouseRightButtonUp is declared in UIElement but never actually
+        // raised by the framework. Subscribe to the generic PreviewMouseUp and
+        // filter on ChangedButton==Right instead.
+        treeView.AddHandler(UIElement.PreviewMouseUpEvent, new Input.MouseButtonEventHandler(OnVisualTreeRightClick));
         Grid.SetRow(treeView, 1);
         leftGrid.Children.Add(treeView);
 
         var splitter = new GridSplitter
         {
             Width = 6,
-            Margin = new Thickness(0, 4, 0, 4),
-            Background = new SolidColorBrush(Color.FromArgb(255, 64, 64, 64)),
-            ResizeDirection = GridResizeDirection.Columns
+            Background = DevToolsTheme.BorderSubtle,
+            ResizeDirection = GridResizeDirection.Columns,
         };
         Grid.SetColumn(splitter, 1);
         contentGrid.Children.Add(splitter);
-        // 鈹€鈹€ Right column: properties panel 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+        // ── Right column: properties panel ──
         var propertiesPanel = new StackPanel
         {
-            Margin = new Thickness(4)
+            Margin = new Thickness(DevToolsTheme.GutterBase, DevToolsTheme.GutterSm, DevToolsTheme.GutterBase, DevToolsTheme.GutterSm)
         };
         var scrollViewer = new ScrollViewer
         {
@@ -167,17 +264,19 @@ public class DevToolsWindow : Window
         };
         var rightBorder = new Border
         {
-            Background = new SolidColorBrush(Color.FromArgb(255, 40, 40, 40)),
+            Background = DevToolsTheme.SurfaceAlt,
             Child = scrollViewer,
             ClipToBounds = true
         };
         Grid.SetColumn(rightBorder, 2);
         contentGrid.Children.Add(rightBorder);
-        Content = _mainGrid;
 
         _visualTreeView = treeView;
         _propertiesScrollViewer = scrollViewer;
         _propertiesPanel = propertiesPanel;
+
+        // Root content is a TabControl; the _mainGrid (Inspector tab content) is wrapped by BuildTabLayout().
+        Content = BuildTabLayout();
 
         // Add placeholder text so the right pane has initial content
         _propertiesPanel.Children.Add(new TextBlock
@@ -216,80 +315,18 @@ public class DevToolsWindow : Window
 
     private Border CreateToolbar()
     {
-        var toolbar = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Margin = new Thickness(4, 2, 4, 2)
-        };
+        var toolbar = new StackPanel { Orientation = Orientation.Horizontal };
 
-        toolbar.Children.Add(MakeToolbarButton("Refresh", "F5", OnRefreshClick,
-            "M670.783 229.290c-47.677-26.908-102.166-41.658-159.109-41.658-178.952 0-324.022 145.069-324.022 324.022 0 33.553-27.200 60.754-60.754 60.754s-60.754-27.200-60.754-60.754c0-246.059 199.470-445.530 445.530-445.530 89.863 0 175.407 26.802 247.370 74.905l68.914-68.914c8.258-8.259 21.966-7.940 30.617 0.710 4.022 4.022 6.413 9.366 6.677 14.928l10.908 229.367c0.853 17.940-12.982 32.500-30.902 32.522a32.715 32.715 0 0 1-1.583-0.037l-229.367-10.908c-11.960-0.569-21.644-10.715-21.630-22.661 0.007-5.555 2.152-10.794 5.991-14.634l72.111-72.111z m-318.218 564.726c47.677 26.908 102.166 41.659 159.109 41.659 178.952 0 324.022-145.069 324.022-324.022 0-33.553 27.200-60.754 60.754-60.754s60.754 27.200 60.754 60.754c0 246.059-199.470 445.530-445.530 445.530-89.863 0-175.407-26.802-247.370-74.905l-68.914 68.914c-8.258 8.258-21.966 7.941-30.617-0.710-4.022-4.022-6.413-9.367-6.677-14.928l-10.908-229.367c-0.853-17.940 12.982-32.500 30.902-32.522a31.497 31.497 0 0 1 1.584 0.037l229.367 10.909c11.960 0.569 21.644 10.714 21.630 22.661-0.006 5.555-2.152 10.794-5.991 14.633l-72.112 72.110z"));
-
-        _pickerButton = MakeToolbarButton("Pick", "Ctrl+Shift+C", OnPickerClick,
-            "M702.932 777.584c-11.692-3.161-23.743 3.758-26.903 15.45-3.165 11.698 3.758 23.744 15.451 26.903 73.027 19.747 105.712 47.546 105.712 66.333 0 14.494-19.804 37.052-75.398 56.907-55.701 19.895-130.205 30.845-209.791 30.845-79.586 0-154.099-10.95-209.799-30.845-55.593-19.855-75.396-42.413-75.396-56.907 0-18.793 32.702-46.602 105.761-66.348 11.698-3.161 18.618-15.201 15.456-26.899-3.159-11.692-15.199-18.617-26.897-15.455-89.119 24.084-138.198 62.687-138.198 108.702 0 26.869 17.359 47.165 31.924 59.459 17.477 14.762 41.905 27.805 72.594 38.766 60.318 21.541 140.063 33.407 224.549 33.407 84.493 0 164.238-11.872 224.556-33.407 30.689-10.961 55.115-24.005 72.595-38.766 14.564-12.295 31.924-32.590 31.924-59.459 0-46-49.056-84.603-138.137-108.686zM422.048 826.725c23.419 26.842 56.222 42.223 90.118 42.223h0.005c34.028 0 66.802-15.506 90.080-42.569 7.059-7.696 67.087-73.789 127.916-160.351 88.146-125.430 132.837-229.369 132.837-308.923 0-47.367-9.283-93.344-27.597-136.640-17.684-41.803-42.986-79.343-75.212-111.563-32.219-32.218-69.751-57.526-111.554-75.202-43.302-18.315-89.278-27.603-136.639-27.603-47.367 0-93.344 9.289-136.641 27.603-41.802 17.678-79.342 42.985-111.561 75.202-32.219 32.226-57.526 69.759-75.202 111.563-18.315 43.297-27.603 89.273-27.603 136.640 0 79.552 44.724 183.524 132.929 309.029 61.247 87.146 121.682 153.568 128.124 160.590zM375.908 347.290c0-77.421 62.989-140.405 140.402-140.405 77.421 0 140.404 62.986 140.404 140.405 0 77.415-62.982 140.404-140.404 140.404-77.414 0-140.402-62.989-140.402-140.404z");
+        toolbar.Children.Add(DevToolsUi.Button("Refresh",  () => RefreshVisualTree(), DevToolsUi.ButtonStyle.Default, icon: "↻"));
+        _pickerButton = DevToolsUi.Toggle("Pick",       () => { if (_isPickerActive) DeactivatePicker(); else ActivatePicker(); }, _isPickerActive, icon: "◎");
         toolbar.Children.Add(_pickerButton);
+        toolbar.Children.Add(DevToolsUi.VerticalDivider());
+        toolbar.Children.Add(DevToolsUi.Button("Expand",   () => ExpandAll(),   icon: "⊕"));
+        toolbar.Children.Add(DevToolsUi.Button("Collapse", () => CollapseAll(), icon: "⊖"));
+        toolbar.Children.Add(DevToolsUi.VerticalDivider());
+        toolbar.Children.Add(DevToolsUi.Button("Copy",     () => CopyElementInfo(), icon: "⧉"));
 
-        toolbar.Children.Add(MakeToolbarButton("Expand", "Ctrl+E", OnExpandAllClick,
-            "M947.2 916.48l-30.72-199.68c0-15.36-15.36-30.72-30.72-30.72-5.12 0-10.24 0-15.36 5.12-5.12 0-5.12 5.12-10.24 5.12l-51.2 51.2-194.56-199.68c-10.24-10.24-25.6-10.24-35.84 0l-35.84 35.84c-10.24 10.24-10.24 25.6 0 35.84l199.68 199.68-51.2 51.2c-5.12 5.12-5.12 5.12-5.12 10.24-5.12 5.12-5.12 10.24-5.12 15.36 0 15.36 15.36 30.72 30.72 30.72l194.56 25.6h5.12c10.24 0 20.48-5.12 20.48-15.36 10.24-10.24 15.36-10.24 15.36-20.48z m-506.88-368.64c-10.24-10.24-25.6-10.24-35.84 0L204.8 747.52l-51.2-51.2c0-5.12 0-10.24-5.12-10.24s-5.12-5.12-15.36-5.12c-15.36 0-30.72 15.36-30.72 30.72l-30.72 199.68c0 5.12 5.12 15.36 5.12 15.36 5.12 5.12 15.36 15.36 25.6 15.36h5.12l199.68-25.6c15.36 0 30.72-15.36 30.72-30.72 0-5.12 0-10.24-5.12-15.36 0-5.12-5.12-5.12-5.12-10.24l-51.2-51.2L476.16 614.4c10.24-10.24 10.24-25.6 0-35.84 0 5.12-35.84-30.72-35.84-30.72z m506.88-440.32c0-5.12-5.12-15.36-5.12-15.36-5.12-5.12-15.36-15.36-20.48-15.36h-5.12L716.8 102.4c-15.36 0-30.72 15.36-30.72 30.72 0 5.12 0 10.24 5.12 15.36 0 5.12 5.12 5.12 5.12 10.24l51.2 51.2-194.56 194.56c-10.24 10.24-10.24 25.6 0 35.84l35.84 35.84c10.24 10.24 25.6 10.24 35.84 0l194.56-204.8 51.2 51.2c5.12 5.12 5.12 5.12 15.36 5.12 5.12 0 5.12 5.12 10.24 5.12 10.24 0 25.6-10.24 25.6-25.6l25.6-199.68z m-670.72 102.4l51.2-51.2c0-5.12 5.12-5.12 5.12-10.24 5.12-5.12 5.12-10.24 5.12-15.36 0-15.36-15.36-30.72-30.72-30.72l-199.68-25.6c-10.24 0-15.36 5.12-20.48 15.36-5.12 5.12-10.24 5.12-10.24 15.36L107.52 307.2c0 15.36 15.36 30.72 30.72 30.72 5.12 0 5.12 0 15.36-5.12l5.12-5.12 51.2-51.2L409.6 476.16c10.24 10.24 25.6 10.24 35.84 0l35.84-35.84c10.24-10.24 10.24-25.6 0-35.84-5.12 0-204.8-194.56-204.8-194.56z"));
-        toolbar.Children.Add(MakeToolbarButton("Collapse", "Ctrl+Shift+E", OnCollapseAllClick,
-            "M398.409143 172.763429c-3.218286 0-11.190857 0-14.409143 3.218285-3.218286 0-6.436571 3.218286-11.190857 6.436572l-57.636572 57.563428L95.963429 20.772571C84.845714 9.581714 67.291429 9.581714 57.563429 20.772571L17.627429 59.245714c-11.190857 11.190857-11.190857 28.818286 0 38.4l223.963428 224.036572-57.563428 57.563428c-3.218286 3.218286-6.436571 6.436571-6.436572 11.264-3.218286 3.145143-3.218286 11.190857-3.218286 14.336 0 17.627429 14.409143 32.036571 32.036572 32.036572l219.209143 27.209143h3.145143a30.281143 30.281143 0 0 0 25.6-14.409143c3.218286-6.436571 6.436571-11.190857 6.436571-20.845715L428.763429 204.8a29.842286 29.842286 0 0 0-30.354286-32.036571zM592.018286 460.8h3.145143l224.036571-28.818286c17.554286 0 32.036571-14.409143 32.036571-31.963428 0-3.218286 0-11.190857-3.218285-14.409143 0-3.218286-3.218286-6.436571-6.436572-11.190857l-57.563428-56.027429 220.818285-220.818286c11.190857-11.190857 11.190857-28.745143 0-38.4l-38.4-38.4c-11.264-11.190857-28.818286-11.190857-38.4 0L705.536 239.981714l-57.636571-57.563428c-3.145143-3.218286-6.363429-6.436571-11.190858-6.436572-3.145143 0-6.363429-3.218286-14.409142-3.218285a32.109714 32.109714 0 0 0-31.963429 32.036571l-32.036571 224.036571c0 6.363429 3.218286 14.336 6.436571 17.554286 9.581714 8.045714 17.554286 14.409143 27.209143 14.409143zM428.836571 563.2h-3.218285l-219.209143 28.818286a32.109714 32.109714 0 0 0-32.036572 31.963428c0 3.218286 0 11.190857 3.218286 14.409143 0 3.218286 3.218286 6.436571 6.436572 11.190857l57.563428 57.636572-220.818286 219.209143c-11.190857 11.190857-11.190857 28.745143 0 38.4l38.4 38.4c11.190857 11.190857 28.818286 11.190857 38.4 0l222.427429-219.209143 57.563429 57.563428c3.218286 3.218286 6.436571 6.436571 14.409142 6.436572 3.218286 0 6.436571 3.145143 11.264 3.145143 17.554286 0 31.963429-14.336 31.963429-31.963429l28.818286-224.036571a29.110857 29.110857 0 0 0-6.436572-17.554286c-11.190857-8.045714-17.554286-14.409143-28.818285-14.409143z m577.536 361.618286L782.409143 708.754286l57.563428-57.636572c3.218286-3.218286 6.436571-6.363429 6.436572-11.190857 3.218286-3.218286 3.218286-11.190857 3.218286-14.409143a32.109714 32.109714 0 0 0-32.036572-31.963428L596.845714 561.590857h-3.145143c-11.190857 0-17.627429 6.436571-25.6 14.409143-3.218286 6.436571-6.436571 11.190857-6.436571 17.554286l32.036571 224.036571c0 17.554286 14.409143 32.036571 31.963429 32.036572 3.218286 0 6.436571 0 14.409143-3.218286 3.218286 0 6.436571-3.218286 11.190857-6.436572l57.636571-57.563428 219.136 220.818286c11.264 11.190857 28.818286 11.190857 38.473143 0l38.4-38.4a29.622857 29.622857 0 0 0 1.536-40.009143z"));
-        toolbar.Children.Add(MakeToolbarButton("Copy", "Ctrl+C", OnCopyClick,
-            "M890.197 41.984H347.179C296.832 41.984 256 81.195 256 129.536v75.861h86.016V156.928c0-16.128 13.611-29.184 30.379-29.184h492.16c16.768 0 30.379 13.056 30.379 29.184v539.349c0 7.68-3.2 15.061-8.96 20.437a30.379 30.379 0 0 1-21.461 8.149H733.867v85.12h156.245c50.133 0 90.88-38.827 91.179-86.955V129.536c0-48.341-40.832-87.552-91.093-87.552z M676.864 214.016H133.845C83.499 214.016 42.667 253.227 42.667 301.568v75.861h86.016V328.96c0-16.128 13.611-29.184 30.379-29.184h492.16c16.768 0 30.379 13.056 30.379 29.184v539.349c0 7.68-3.2 15.061-8.96 20.437a30.379 30.379 0 0 1-21.461 8.149H520.533v85.12h156.245c50.133 0 90.88-38.827 91.179-86.955V301.568c0.043-48.341-40.789-87.552-91.093-87.552z M42.709 301.568v593.493c0.299 48.128 41.045 86.955 91.179 86.955H546.133v-85.12H159.445a30.379 30.379 0 0 1-21.461-8.149 27.947 27.947 0 0 1-8.96-20.437V328.96c0-16.128 13.611-29.184 30.379-29.184h492.16c16.768 0 30.379 13.056 30.379 29.184v48.469H768V301.568c0-48.341-40.832-87.552-91.179-87.552H133.803c-50.304 0-91.136 39.211-91.093 87.552z M256 384.683h298.667a42.667 42.667 0 0 1 0 85.333H256a42.667 42.667 0 0 1 0-85.333zM256 555.349h298.667a42.667 42.667 0 0 1 0 85.333H256a42.667 42.667 0 0 1 0-85.333zM256 726.016h298.667a42.667 42.667 0 0 1 0 85.333H256a42.667 42.667 0 0 1 0-85.333z"));
-
-        return new Border
-        {
-            Background = BrushToolbarBg,
-            BorderBrush = BrushToolbarBorder,
-            BorderThickness = new Thickness(0, 0, 0, 1),
-            Child = toolbar
-        };
-    }
-
-    private static Border MakeToolbarButton(string label, string shortcut, RoutedEventHandler handler, string? iconPathData = null)
-    {
-        var inner = new StackPanel { Orientation = Orientation.Horizontal };
-
-        if (iconPathData != null)
-        {
-            var icon = new ShapePath
-            {
-                Data = iconPathData,
-                Fill = new SolidColorBrush(Color.FromRgb(200, 200, 200)),
-                Stretch = Stretch.Uniform,
-                Width = 12,
-                Height = 12,
-                Margin = new Thickness(0, 0, 4, 0),
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            inner.Children.Add(icon);
-        }
-
-        inner.Children.Add(new TextBlock
-        {
-            Text = label,
-            FontSize = 11,
-            Foreground = new SolidColorBrush(Color.FromRgb(200, 200, 200)),
-            Margin = new Thickness(0, 0, 4, 0),
-            VerticalAlignment = VerticalAlignment.Center
-        });
-        inner.Children.Add(new TextBlock
-        {
-            Text = shortcut,
-            FontSize = 9,
-            Foreground = new SolidColorBrush(Color.FromRgb(120, 120, 120)),
-            VerticalAlignment = VerticalAlignment.Center
-        });
-
-        var btn = new Border
-        {
-            Background = new SolidColorBrush(Color.FromArgb(1, 0, 0, 0)),
-            Padding = new Thickness(8, 4, 8, 4),
-            Margin = new Thickness(2),
-            CornerRadius = new CornerRadius(3)
-        };
-        btn.Child = inner;
-        btn.MouseDown += (s, e) => handler(s, e);
-        return btn;
+        return DevToolsUi.Toolbar(toolbar);
     }
 
     private void OnRefreshClick(object sender, RoutedEventArgs e) => RefreshVisualTree();
@@ -315,7 +352,7 @@ public class DevToolsWindow : Window
     {
         _isPickerActive = true;
         if (_pickerButton != null)
-            _pickerButton.BorderBrush = BrushAccent;
+            _pickerButton.IsActive = true;
 
         _targetWindow.PreviewMouseMove += OnTargetPreviewMouseMove;
         _targetWindow.PreviewMouseDown += OnTargetPreviewMouseDown;
@@ -325,7 +362,7 @@ public class DevToolsWindow : Window
     {
         _isPickerActive = false;
         if (_pickerButton != null)
-            _pickerButton.BorderBrush = null;
+            _pickerButton.IsActive = false;
 
         _targetWindow.PreviewMouseMove -= OnTargetPreviewMouseMove;
         _targetWindow.PreviewMouseDown -= OnTargetPreviewMouseDown;
@@ -349,12 +386,7 @@ public class DevToolsWindow : Window
 
         var hit = HitTestVisualTree(_targetWindow, me.Position);
         if (hit != null)
-        {
-            SelectVisualInTree(hit);
-            _selectedVisual = hit;
-            UpdatePropertiesPanel(hit);
-            _overlay?.HighlightElement(hit as UIElement);
-        }
+            RevealInInspector(hit);
 
         DeactivatePicker();
         me.Handled = true;
@@ -402,51 +434,136 @@ public class DevToolsWindow : Window
     }
 
     /// <summary>
-    /// Selects the tree item corresponding to the given visual.
+    /// Switches to the Inspector tab, normalizes view state (Visual mode + cleared
+    /// search filter) and locates <paramref name="target"/> in the tree. Callers from
+    /// Layout / Events / ContextMenu / breadcrumb / picker all go through this so the
+    /// reveal flow is uniform and resilient.
     /// </summary>
-    private void SelectVisualInTree(Visual visual)
+    internal void RevealInInspector(Visual? target)
     {
-        // First, try to find in already-built items
+        if (target == null) return;
+
+        // ── Normalize state so locate is deterministic ─────────────────
+        // 1. Switch to the Inspector tab. Tab Content assignment is synchronous;
+        //    the tree is already built in this same window, so no rebuild fires.
+        if (_rootTabs != null && _inspectorTab != null && _rootTabs.SelectedItem != _inspectorTab)
+            _rootTabs.SelectedItem = _inspectorTab;
+
+        // 2. Any active filter hides non-matching ancestors — expansion would
+        //    stop at the first missing node. Clear it before locating.
+        bool needsRebuild = false;
+        if (!string.IsNullOrEmpty(_searchTextBox.Text))
+        {
+            _searchTextBox.Text = "";
+            needsRebuild = true;
+        }
+
+        // 3. Only Visual mode guarantees every UIElement has a tree item.
+        //    Logical filters template decorations and Flat flattens hierarchy —
+        //    either can make a valid visual un-locatable. Force Visual mode.
+        if (_inspectorViewMode != InspectorViewMode.Visual)
+        {
+            _inspectorViewMode = InspectorViewMode.Visual;
+            _inspectorViewToggle?.SetSelectedSilent((int)InspectorViewMode.Visual);
+            needsRebuild = true;
+        }
+
+        if (needsRebuild) RefreshVisualTree();
+
+        // Locate + highlight. Keep this synchronous: RefreshVisualTree has already
+        // re-seeded the root + pending queue synchronously, and SelectVisualInTree
+        // walks the ancestor chain forcing EnsureChildrenBuilt level by level.
+        // Only claim selection if the tree actually found a matching item —
+        // otherwise we'd show stale properties for an element that isn't in the
+        // target window (e.g. a DevTools UI element that leaked past the scope
+        // exclusion).
+        if (!SelectVisualInTree(target)) return;
+
+        _selectedVisual = target;
+        UpdatePropertiesPanel(target);
+        _overlay?.HighlightElement(target as UIElement);
+    }
+
+    /// <summary>
+    /// Selects the tree item corresponding to <paramref name="visual"/>, lazily
+    /// building the ancestor chain if needed. Returns true when a matching tree
+    /// item was found + selected, false otherwise. Call
+    /// <see cref="RevealInInspector"/> instead if you don't already know the
+    /// Inspector is in Visual mode — this method trusts the caller to have
+    /// normalized state first.
+    /// </summary>
+    private bool SelectVisualInTree(Visual visual)
+    {
+        if (visual == null) return false;
+
+        // Fast path: the item is already materialized.
         foreach (var item in _allTreeItems)
         {
             if (item.Visual == visual)
             {
                 ExpandAncestors(item);
                 item.IsSelected = true;
-                return;
+                ScrollTreeItemIntoView(item);
+                return true;
             }
         }
 
-        // Not found — tree is lazily built and this node hasn't been created yet.
-        // Build the ancestor chain from root to target, then force-expand along that path.
+        // Deep path: build ancestor chain via VisualParent, falling back to the
+        // logical parent so that popups / tooltips / detached-but-tracked visuals
+        // still resolve (their VisualParent can be a popup root, not the target
+        // window).
         var ancestorChain = new List<Visual>();
-        for (Visual? v = visual; v != null; v = v.VisualParent)
+        var visited = new HashSet<Visual>();
+        Visual? v = visual;
+        while (v != null && visited.Add(v))
         {
             ancestorChain.Add(v);
             if (v == _targetWindow) break;
+            Visual? parent = v.VisualParent;
+            if (parent == null && v is FrameworkElement fe)
+            {
+                // Fall back to the templated parent when the visual parent is gone
+                // (e.g. a template part whose host recycled). TemplatedParent is
+                // the only "logical"-ish link this framework currently exposes.
+                parent = fe.TemplatedParent as Visual;
+            }
+            v = parent;
         }
-        if (ancestorChain.Count == 0 || ancestorChain[^1] != _targetWindow) return;
-        ancestorChain.Reverse(); // [_targetWindow, child, ..., visual]
+        if (ancestorChain.Count == 0 || ancestorChain[^1] != _targetWindow) return false;
+        ancestorChain.Reverse(); // [_targetWindow, …, visual]
 
-        // Find root tree item
+        // Find root tree item. If it doesn't exist (tree cleared), rebuild and retry.
         DevToolsTreeViewItem? current = null;
         foreach (var item in _allTreeItems)
         {
             if (item.Visual == _targetWindow) { current = item; break; }
         }
-        if (current == null) return;
+        if (current == null)
+        {
+            RefreshVisualTree();
+            foreach (var item in _allTreeItems)
+            {
+                if (item.Visual == _targetWindow) { current = item; break; }
+            }
+            if (current == null) return false;
+        }
 
-        // Build a set for O(1) lookup of visuals in the ancestor chain
         var ancestorSet = new HashSet<Visual>(ancestorChain);
 
-        // Walk from root toward target, force-building children at each level
-        while (current.Visual != visual)
+        // Walk from root to target, force-expanding + force-building children.
+        // If any level is missing in the current view mode (e.g. a filtered
+        // decoration), we fall back to fuzzy step: pick whichever child is an
+        // ancestor of the target via VisualParent, even if it's not in the
+        // chain hash.
+        int guard = 0;
+        while (current.Visual != visual && guard++ < 4096)
         {
             current.IsExpanded = true;
             EnsureChildrenBuilt(current);
 
-            // Find the child whose visual is in the ancestor chain (i.e. on the path to target)
             DevToolsTreeViewItem? next = null;
+
+            // Preferred: exact chain hit.
             foreach (var child in current.Items)
             {
                 if (child is DevToolsTreeViewItem dti && ancestorSet.Contains(dti.Visual))
@@ -455,12 +572,87 @@ public class DevToolsWindow : Window
                     break;
                 }
             }
-            if (next == null) return;
+
+            // Fallback: no exact chain hit (view mode filtered some nodes).
+            // Walk each child's subtree and pick the one whose visual descendants
+            // contain the target.
+            if (next == null)
+            {
+                foreach (var child in current.Items)
+                {
+                    if (child is not DevToolsTreeViewItem dti) continue;
+                    if (IsVisualDescendant(visual, dti.Visual))
+                    {
+                        next = dti;
+                        break;
+                    }
+                }
+            }
+
+            if (next == null) return false;
             current = next;
         }
 
         ExpandAncestors(current);
         current.IsSelected = true;
+        ScrollTreeItemIntoView(current);
+        return true;
+    }
+
+    /// <summary>
+    /// True when <paramref name="candidate"/> is reachable from
+    /// <paramref name="ancestor"/> via VisualParent (or logical Parent fallback).
+    /// Bounded walk — depth cap prevents runaway scans.
+    /// </summary>
+    private static bool IsVisualDescendant(Visual candidate, Visual ancestor)
+    {
+        const int MaxDepth = 256;
+        Visual? v = candidate;
+        int depth = 0;
+        while (v != null && depth++ < MaxDepth)
+        {
+            if (ReferenceEquals(v, ancestor)) return true;
+            Visual? parent = v.VisualParent;
+            if (parent == null && v is FrameworkElement fe)
+                parent = fe.TemplatedParent as Visual;
+            v = parent;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Scrolls the given tree item into the TreeView's viewport.
+    /// A deep Pick can touch a long ancestor chain of TreeViewItems that are
+    /// still being realized by the VSP pipeline — their VisualParent stays
+    /// null until the VSP Measure for that level has run. We poll across
+    /// dispatcher turns (each turn gives the layout manager a chance to
+    /// complete another level) until the item is attached, then BringIntoView.
+    /// </summary>
+    private void ScrollTreeItemIntoView(DevToolsTreeViewItem item)
+    {
+        ScrollTreeItemIntoViewWithRetries(item, remainingRetries: 16);
+    }
+
+    private void ScrollTreeItemIntoViewWithRetries(DevToolsTreeViewItem item, int remainingRetries)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (item.VisualParent == null)
+            {
+                if (remainingRetries <= 0) return;
+                // Nudge the tree to keep processing layout, then try again next turn.
+                _visualTreeView.InvalidateMeasure();
+                ScrollTreeItemIntoViewWithRetries(item, remainingRetries - 1);
+                return;
+            }
+
+            try { item.BringIntoView(); }
+            catch
+            {
+                // BringIntoView walks ancestor ScrollViewers — any framework
+                // hiccup there should not blow up the inspector selection.
+            }
+        });
     }
 
     /// <summary>
@@ -468,6 +660,11 @@ public class DevToolsWindow : Window
     /// </summary>
     private void EnsureChildrenBuilt(DevToolsTreeViewItem parentItem)
     {
+        // Synchronous forced-build path used by SelectVisualInTree / RevealInInspector.
+        // Entered from non-tree-build-timer callbacks, so we need our own scope
+        // to keep freshly-created items flagged.
+        using var __devToolsCreationScope = Jalium.UI.Diagnostics.DiagnosticsScope.BeginIgnoredCreation();
+
         var remaining = _pendingTreeBuild.Count;
         var requeue = new List<PendingTreeBuildNode>(remaining);
         bool found = false;
@@ -478,13 +675,13 @@ public class DevToolsWindow : Window
             if (node.Item == parentItem && !found)
             {
                 found = true;
-                var childCount = node.Visual.VisualChildrenCount;
+                var visibleChildren = EnumerateChildrenForCurrentMode(node.Visual).ToList();
+                int childCount = visibleChildren.Count;
                 var childItems = new List<TreeViewItem>(childCount - node.NextChildIndex);
                 while (node.NextChildIndex < childCount)
                 {
-                    var child = node.Visual.GetVisualChild(node.NextChildIndex);
+                    var child = visibleChildren[node.NextChildIndex];
                     node.NextChildIndex++;
-                    if (child == null) continue;
 
                     var childItem = new DevToolsTreeViewItem(child);
                     PrepareTreeItem(childItem, node.Level + 1);
@@ -506,14 +703,15 @@ public class DevToolsWindow : Window
 
     private static void ExpandAncestors(TreeViewItem item)
     {
-        var parent = item.VisualParent;
+        // Walk the logical TreeViewItem parent chain (set by AddChildItems /
+        // PrepareContainerForItem). Relying on VisualParent breaks when the
+        // item is not yet realized by the VSP — it's null in that case and
+        // we'd silently skip the whole ancestor chain.
+        var parent = item.ParentItem;
         while (parent != null)
         {
-            if (parent is TreeViewItem parentItem)
-            {
-                parentItem.IsExpanded = true;
-            }
-            parent = parent.VisualParent;
+            parent.IsExpanded = true;
+            parent = parent.ParentItem;
         }
     }
 
@@ -654,6 +852,8 @@ public class DevToolsWindow : Window
             DeactivatePicker();
         _targetWindow.DevToolsOverlay = null;
         _overlay = null;
+
+        Jalium.UI.Diagnostics.DiagnosticsScope.IncludeRoot(this);
     }
 
     private void OnKeyDownHandler(object sender, KeyEventArgs e)
@@ -716,6 +916,11 @@ public class DevToolsWindow : Window
 
     private void RefreshVisualTree()
     {
+        // Any new DevToolsTreeViewItem constructed in this call gets IsDiagnosticsIgnored
+        // in its field initializer — constructor-time InvalidateMeasure then
+        // short-circuits and never pollutes Layout stats.
+        using var __devToolsCreationScope = Jalium.UI.Diagnostics.DiagnosticsScope.BeginIgnoredCreation();
+
         _searchRefreshTimer.Stop();
         _treeBuildTimer.Stop();
         _pendingTreeBuild.Clear();
@@ -753,6 +958,31 @@ public class DevToolsWindow : Window
             UpdatePropertiesPanel(_selectedVisual);
             _overlay?.HighlightElement(_selectedVisual as UIElement);
         }
+    }
+
+    private void OnVisualTreeRightClick(object sender, Input.MouseButtonEventArgs me)
+    {
+        if (me.ChangedButton != Input.MouseButton.Right) return;
+        if (me.OriginalSource is not Visual hit) return;
+
+        // Walk up from the clicked visual to find the hosting DevToolsTreeViewItem —
+        // the Header and any decorations fire from inner elements, not the item itself.
+        DevToolsTreeViewItem? item = null;
+        for (var cur = hit; cur != null; cur = cur.VisualParent)
+        {
+            if (cur is DevToolsTreeViewItem dti) { item = dti; break; }
+        }
+        if (item == null) return;
+
+        // Select the item so the rest of the UI (overlay, properties panel) agrees
+        // with the target of the menu.
+        item.IsSelected = true;
+        _selectedVisual = item.Visual;
+        UpdatePropertiesPanel(item.Visual);
+        _overlay?.HighlightElement(item.Visual as UIElement);
+
+        OpenElementContextMenu(item.Visual, _visualTreeView);
+        me.Handled = true;
     }
 
     /// <summary>
@@ -821,11 +1051,25 @@ public class DevToolsWindow : Window
 
     private void OnTreeBuildTimerTick(object? sender, EventArgs e)
     {
+        // Tree builds run on the DevTools dispatcher and create new tree-view
+        // items. Mark them as diagnostics-ignored the moment they're new'd up.
+        using var __devToolsCreationScope = Jalium.UI.Diagnostics.DiagnosticsScope.BeginIgnoredCreation();
+
         _treeBuildTimer.Stop();
 
         if (_isClosing)
         {
             _pendingTreeBuild.Clear();
+            return;
+        }
+
+        // Flat mode: materialize all Visual descendants under the root as
+        // sibling nodes under the root container (no hierarchy). We use the
+        // existing pending queue as a plain BFS walker.
+        if (_inspectorViewMode == InspectorViewMode.Flat)
+        {
+            BuildFlatBatch();
+            if (_pendingTreeBuild.Count > 0) ScheduleTreeBuild();
             return;
         }
 
@@ -836,7 +1080,9 @@ public class DevToolsWindow : Window
                _pendingTreeBuild.Count > 0)
         {
             var pendingNode = _pendingTreeBuild.Dequeue();
-            var childCount = pendingNode.Visual.VisualChildrenCount;
+            // Snapshot all candidate children once (mode-aware filter).
+            var visibleChildren = EnumerateChildrenForCurrentMode(pendingNode.Visual).ToList();
+            int childCount = visibleChildren.Count;
             if (pendingNode.NextChildIndex >= childCount)
             {
                 processedNodes++;
@@ -847,12 +1093,8 @@ public class DevToolsWindow : Window
             while (pendingNode.NextChildIndex < childCount &&
                    processedChildren < TreeBuildChildBatchSize)
             {
-                var child = pendingNode.Visual.GetVisualChild(pendingNode.NextChildIndex);
+                var child = visibleChildren[pendingNode.NextChildIndex];
                 pendingNode.NextChildIndex++;
-                if (child == null)
-                {
-                    continue;
-                }
 
                 var childItem = new DevToolsTreeViewItem(child);
                 PrepareTreeItem(childItem, pendingNode.Level + 1);
@@ -874,6 +1116,40 @@ public class DevToolsWindow : Window
         if (_pendingTreeBuild.Count > 0)
         {
             ScheduleTreeBuild();
+        }
+    }
+
+    /// <summary>
+    /// Flat view: pop one pending node, realise its visual children as direct
+    /// siblings of the tree's root, and enqueue them so their descendants also
+    /// get flattened. Depth cap guards against pathological trees.
+    /// </summary>
+    private void BuildFlatBatch()
+    {
+        const int FlatDepthCap = 24;
+        if (_visualTreeView.Items.Count == 0) return;
+        if (_visualTreeView.Items[0] is not DevToolsTreeViewItem rootItem) return;
+
+        int processed = 0;
+        while (processed < TreeBuildChildBatchSize && _pendingTreeBuild.Count > 0)
+        {
+            var pendingNode = _pendingTreeBuild.Dequeue();
+            if (pendingNode.Level >= FlatDepthCap) continue;
+
+            int count = pendingNode.Visual.VisualChildrenCount;
+            for (int i = 0; i < count; i++)
+            {
+                var child = pendingNode.Visual.GetVisualChild(i);
+                if (child == null) continue;
+
+                var childItem = new DevToolsTreeViewItem(child);
+                PrepareTreeItem(childItem, 1);
+                _allTreeItems.Add(childItem);
+                rootItem.AddChildItems(new[] { (TreeViewItem)childItem });
+                _pendingTreeBuild.Enqueue(new PendingTreeBuildNode(childItem, child, pendingNode.Level + 1));
+                processed++;
+                if (processed >= TreeBuildChildBatchSize) break;
+            }
         }
     }
 
@@ -1197,6 +1473,13 @@ public class DevToolsWindow : Window
                     AddBindingInspector(fe);
                 }
                 catch { }
+
+                // Template XAML reveal button
+                try
+                {
+                    AppendTemplateXamlViewer(fe);
+                }
+                catch { }
             }
         }
     }
@@ -1475,6 +1758,8 @@ public class DevToolsWindow : Window
                 AddFormattedDependencyPropertyValue(property.Name, value, nameBrush);
                 break;
         }
+
+        AppendValueSourceBadge(target, property);
     }
 
     private static object? GetInspectablePropertyValue(DependencyObject target, DependencyProperty property)
@@ -1694,10 +1979,7 @@ public class DevToolsWindow : Window
                 var target = ancestor;
                 clickable.MouseDown += (_, _) =>
                 {
-                    SelectVisualInTree(target);
-                    _selectedVisual = target;
-                    UpdatePropertiesPanel(target);
-                    _overlay?.HighlightElement(target as UIElement);
+                    RevealInInspector(target);
                 };
                 row.Children.Add(clickable);
             }
@@ -2083,6 +2365,8 @@ public class DevToolsWindow : Window
                 }
             }
         }
+
+        AppendStyleXamlViewer(style);
     }
 
     // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲

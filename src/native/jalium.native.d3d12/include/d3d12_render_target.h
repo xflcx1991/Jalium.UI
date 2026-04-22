@@ -29,6 +29,9 @@ public:
     /// Override: set rendering engine with hot-switch support.
     JaliumResult SetRenderingEngine(JaliumRenderingEngine engine) override;
 
+    /// Override: report glyph atlas / path cache / texture usage for DevTools.
+    JaliumResult QueryGpuStats(JaliumGpuStats* out) const override;
+
     // RenderTarget implementation
     JaliumResult Resize(int32_t width, int32_t height) override;
     JaliumResult BeginDraw() override;
@@ -82,6 +85,7 @@ public:
     void AddDirtyRect(float x, float y, float w, float h) override;
     void SetFullInvalidation() override;
     void DrawBitmap(Bitmap* bitmap, float x, float y, float w, float h, float opacity) override;
+    void DrawBitmap(Bitmap* bitmap, float x, float y, float w, float h, float opacity, int scalingMode) override;
     void DrawBackdropFilter(
         float x, float y, float w, float h,
         const char* backdropFilter, const char* material, const char* materialTint,
@@ -222,12 +226,27 @@ private:
     };
     std::unordered_map<IDCompositionVisual*, WebViewVisualEntry> webViewVisuals_;
 
-    // Dirty rect tracking
+    // Dirty rect tracking with aggregation (containment / intersection /
+    // near-adjacency merging). When the rect count would exceed MaxDirtyRects
+    // we perform a "minimum-waste" merge of the closest pair instead of
+    // surrendering to a full-window redraw.
+public:
     struct DirtyRect { float x, y, w, h; };
+private:
     std::vector<DirtyRect> dirtyRects_;
     bool fullInvalidation_ = true;
-    static constexpr size_t MaxDirtyRects = 8;
+    // Raised from 8 → 32. DXGI Present1 accepts any count — the old value
+    // existed purely because the previous implementation had no merge logic
+    // and needed a hard cap to avoid unbounded growth.
+    static constexpr size_t MaxDirtyRects = 32;
     static constexpr float DirtyRectMargin = 2.0f;
+    // Two rects whose edges are within this distance (in DIPs) are treated as
+    // touching — prevents scattered AA fringes from staying fragmented.
+    static constexpr float DirtyRectAdjacencyEpsilon = 1.0f;
+    // How much bounding-area waste is tolerable when speculatively merging two
+    // disjoint rects, relative to the larger rect's area. 0.3 = merge as long
+    // as waste is ≤ 30 % of the larger input.
+    static constexpr float DirtyRectMergeWasteRatio = 0.3f;
 
     // DPI
     float dpiX_ = 96.0f;

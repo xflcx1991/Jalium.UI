@@ -235,6 +235,87 @@ public abstract class DrawingContext : IDisposable, IClipDrawingContext
     public abstract void DrawEllipse(Brush? brush, Pen? pen, Point center, double radiusX, double radiusY);
 
     /// <summary>
+    /// Draws a batch of identical filled circles in one call. All circles
+    /// share the same brush and radius — intended for dense particle-like
+    /// scenarios (grid dots, scatter plots, node ports, marker lists) where
+    /// issuing thousands of individual <see cref="DrawEllipse"/> calls
+    /// dominates frame time even though the GPU collapses them to one
+    /// instanced draw.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Optimised implementations (<c>RenderTargetDrawingContext</c>) forward
+    /// the whole batch to the native side in one call via the
+    /// already-existing <c>BeginEllipseBatch</c> / <c>EndEllipseBatch</c>
+    /// mechanism, eliminating N managed→native round trips, N brush-cache
+    /// lookups, and N native-vector push_backs in favour of a single
+    /// <c>FillEllipseBatch</c>.
+    /// </para>
+    /// <para>
+    /// The default implementation falls back to a loop over
+    /// <see cref="DrawEllipse"/> so any <see cref="DrawingContext"/>
+    /// subclass (test doubles, export contexts) keeps working without
+    /// change.
+    /// </para>
+    /// <para>
+    /// Stroke rendering is intentionally not supported here — the native
+    /// batch path is fill-only. Callers needing stroked batches can loop
+    /// <see cref="DrawEllipse"/> explicitly.
+    /// </para>
+    /// </remarks>
+    /// <param name="brush">The fill brush. Must be non-null; passing null
+    /// is a no-op (nothing to draw).</param>
+    /// <param name="centers">Circle centre points.</param>
+    /// <param name="radius">Circle radius (used for both X and Y — the
+    /// batch API targets circles, not general ellipses).</param>
+    public virtual void DrawPoints(Brush? brush, ReadOnlySpan<Point> centers, double radius)
+    {
+        if (brush is null || centers.IsEmpty || !(radius > 0))
+        {
+            return;
+        }
+
+        for (int i = 0; i < centers.Length; i++)
+        {
+            DrawEllipse(brush, pen: null, centers[i], radius, radius);
+        }
+    }
+
+    /// <summary>
+    /// Draws a batch of line segments that all share the same
+    /// <see cref="Pen"/>. Intended for designer grids, rulers, charts, and
+    /// any scenario that would otherwise loop <see cref="DrawLine"/> with
+    /// an unchanging pen — the loop's managed-to-native round-trips and
+    /// per-call brush-cache lookups are the dominant cost at scale.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <paramref name="endpoints"/> is a flat list of start/end pairs:
+    /// element at index <c>2k</c> is the start of segment <c>k</c>, index
+    /// <c>2k+1</c> is its end. Odd-length spans are truncated by one.
+    /// </para>
+    /// <para>
+    /// Optimised backends resolve the pen's native brush once up front and
+    /// reuse it for every segment, saving N-1 brush-cache lookups. The
+    /// default fallback loops <see cref="DrawLine"/> so any
+    /// <see cref="DrawingContext"/> subclass works unchanged.
+    /// </para>
+    /// </remarks>
+    public virtual void DrawLines(Pen pen, ReadOnlySpan<Point> endpoints)
+    {
+        if (pen is null || endpoints.Length < 2)
+        {
+            return;
+        }
+
+        var pairs = endpoints.Length / 2;
+        for (int i = 0; i < pairs; i++)
+        {
+            DrawLine(pen, endpoints[2 * i], endpoints[2 * i + 1]);
+        }
+    }
+
+    /// <summary>
     /// Draws text at the specified location.
     /// </summary>
     /// <param name="formattedText">The formatted text to draw.</param>
@@ -277,6 +358,27 @@ public abstract class DrawingContext : IDisposable, IClipDrawingContext
     public abstract void DrawImage(ImageSource imageSource, Rect rectangle);
 
     /// <summary>
+    /// Draws an image using the specified bitmap scaling mode.
+    /// </summary>
+    /// <param name="imageSource">The image to draw.</param>
+    /// <param name="rectangle">The destination rectangle.</param>
+    /// <param name="scalingMode">
+    /// The algorithm used to scale the bitmap when its source pixel size differs
+    /// from the destination rectangle. <see cref="BitmapScalingMode.Unspecified"/>
+    /// resolves to <see cref="BitmapScalingMode.HighQuality"/> (anisotropic + mipmap)
+    /// in the default backend pipeline.
+    /// </param>
+    /// <remarks>
+    /// The default implementation forwards to the legacy <see cref="DrawImage(ImageSource, Rect)"/>
+    /// overload so existing contexts (PDF export, headless test, etc.) keep working.
+    /// Backends that honour scaling mode should override this method.
+    /// </remarks>
+    public virtual void DrawImage(ImageSource imageSource, Rect rectangle, BitmapScalingMode scalingMode)
+    {
+        DrawImage(imageSource, rectangle);
+    }
+
+    /// <summary>
     /// Draws a backdrop effect.
     /// </summary>
     /// <param name="rectangle">The area to apply the effect to.</param>
@@ -309,6 +411,53 @@ public abstract class DrawingContext : IDisposable, IClipDrawingContext
     /// Pops the most recent transform, clip, or opacity.
     /// </summary>
     public abstract void Pop();
+
+    /// <summary>
+    /// Pushes a per-draw effect on top of the current render state. Subsequent
+    /// draw calls are captured into an offscreen bitmap of <paramref name="captureBounds"/>,
+    /// and the captured bitmap is piped through <paramref name="effect"/> when
+    /// <see cref="PopEffect"/> is called.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Unlike <see cref="UIElement"/>'s whole-element <c>Effect</c> (applied
+    /// automatically by the render pipeline), <see cref="PushEffect"/> lets
+    /// callers wrap an arbitrary range of draw calls — e.g. a single glyph in an
+    /// animated text presenter — with its own effect. Each push allocates an
+    /// offscreen capture target, so this is expensive per draw; use sparingly
+    /// (per-cell rather than per-frame).
+    /// </para>
+    /// <para>
+    /// Default implementation is a no-op, making this safe to call on drawing
+    /// contexts that don't support effect capture (headless test contexts, PDF
+    /// export, etc.). Implementations that honour it must match each
+    /// <see cref="PushEffect"/> with exactly one <see cref="PopEffect"/>.
+    /// </para>
+    /// </remarks>
+    /// <param name="effect">Effect to apply. Must be non-null; a null effect
+    /// with a captureBounds push would still cost the capture without any
+    /// shader pass, so we reject it outright.</param>
+    /// <param name="captureBounds">Bounds (in local drawing coordinates) of
+    /// the area to capture. Effect padding is applied on top by the context.</param>
+    public virtual void PushEffect(IEffect effect, Rect captureBounds)
+    {
+        // Default no-op. Contexts that support offscreen capture override this
+        // to open a capture scope.
+    }
+
+    /// <summary>
+    /// Ends the most recent <see cref="PushEffect"/> scope: stops capturing,
+    /// applies the pushed effect to the captured bitmap, and composes the
+    /// result back onto the main render target at the captured bounds.
+    /// </summary>
+    /// <remarks>
+    /// Must be paired one-for-one with <see cref="PushEffect"/> calls. Calling
+    /// when no matching push is active is a no-op.
+    /// </remarks>
+    public virtual void PopEffect()
+    {
+        // Default no-op. See PushEffect.
+    }
 
     /// <summary>
     /// Closes the drawing context.

@@ -3,13 +3,14 @@ using System.Diagnostics;
 using System.Linq;
 using Jalium.UI;
 using Jalium.UI.Media;
+using Jalium.UI.Rendering;
 
 namespace Jalium.UI.Interop;
 
 /// <summary>
 /// A DrawingContext implementation that renders to a RenderTarget.
 /// </summary>
-public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingContext, IClipBoundsDrawingContext, IOpacityDrawingContext, IEffectDrawingContext, ITransformDrawingContext
+public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingContext, IClipBoundsDrawingContext, IOpacityDrawingContext, IEffectDrawingContext, ITransformDrawingContext, ICacheableDrawingContext
 {
     private const int MaxBrushCacheSize = 256;
     private const int MaxTextFormatCacheSize = 64;
@@ -27,6 +28,27 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
     private readonly Dictionary<ImageSource, BitmapCacheEntry> _bitmapCache = new();
     private readonly Stack<DrawingState> _stateStack = new();
     private readonly Stack<Rect?> _clipBoundsStack = new();
+    private readonly Stack<PushedEffect> _effectStack = new();
+
+    // Depth of non-translate (scale/rotate/skew/matrix) transforms currently active
+    // on the transform stack. Translate transforms go through the managed Offset
+    // fast-path and do NOT increment this. When > 0, the managed coordinate space
+    // (design coord + accumulated translate) no longer matches the actual screen
+    // space, so any clip rect pushed before these transforms cannot be used for
+    // managed culling against childBounds — native D2D clipping continues to be
+    // correct because D2D applies the matrix itself.
+    private int _nativeTransformDepth;
+
+    // Full current native transform matrix mirrored on the managed side. The
+    // native renderer applies transforms on the CPU (see AddText/AddSdfRect),
+    // which scales bitmap-backed content (text glyph atlases, bitmaps) and
+    // causes blurring under ScaleTransform. Mirroring the matrix here lets
+    // DrawText pre-rasterize glyphs at screen resolution by pushing an inverse
+    // transform and a scaled-up font size — giving a crisp result identical
+    // to what D2D/DirectWrite would produce with matrix-aware text rendering.
+    // Elements are m11, m12, m21, m22, dx, dy (same layout as Transform2D).
+    private readonly double[] _currentNativeMatrix = new double[6] { 1, 0, 0, 1, 0, 0 };
+    private readonly Stack<double[]> _nativeMatrixStack = new();
     private long _bitmapCacheBytes;
     private long _bitmapCacheSequence;
     private long _brushCacheSequence;
@@ -35,16 +57,51 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
 
     private sealed class BitmapCacheEntry
     {
-        public BitmapCacheEntry(NativeBitmap bitmap, long estimatedBytes, long lastAccessSequence)
+        public BitmapCacheEntry(NativeBitmap bitmap, long estimatedBytes, long lastAccessSequence, uint contentRevision = 0)
         {
             Bitmap = bitmap;
             EstimatedBytes = estimatedBytes;
             LastAccessSequence = lastAccessSequence;
+            ContentRevision = contentRevision;
         }
 
         public NativeBitmap Bitmap { get; }
         public long EstimatedBytes { get; }
         public long LastAccessSequence { get; set; }
+        /// <summary>
+        /// For mutable sources (<see cref="WriteableBitmap"/>) this holds the
+        /// <c>ContentRevision</c> value at upload time. A mismatch on lookup
+        /// means the back-buffer has been rewritten and we must re-upload.
+        /// </summary>
+        public uint ContentRevision { get; }
+    }
+
+    /// <summary>
+    /// Snapshot of a <see cref="DrawingContext.PushEffect"/> call. We store the
+    /// <b>full capture region</b> (element bounds inflated by the effect's
+    /// padding), not just the element bounds — that way <see cref="DrawingContext.PopEffect"/>
+    /// can draw the whole blurred/shadowed/shader'd extent back onto the main
+    /// target, including the padding where blur soft edges live. Drawing only
+    /// the element bounds would crop those soft edges off, leaving the central
+    /// pixels dominant and the original silhouette visible through the "blur".
+    /// </summary>
+    private readonly struct PushedEffect
+    {
+        public PushedEffect(IEffect effect, float x, float y, float w, float h,
+            float captureX, float captureY)
+        {
+            Effect = effect;
+            X = x; Y = y; W = w; H = h;
+            CaptureX = captureX; CaptureY = captureY;
+        }
+
+        public IEffect Effect { get; }
+        public float X { get; }   // capture region top-left x, on main RT
+        public float Y { get; }   // capture region top-left y
+        public float W { get; }   // capture region width (element + horizontal padding)
+        public float H { get; }   // capture region height (element + vertical padding)
+        public float CaptureX { get; }  // offscreen texture origin (same as X in this design)
+        public float CaptureY { get; }
     }
 
     // Ellipse batch buffer for particle brush optimization
@@ -91,7 +148,20 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
     public Point Offset { get; set; }
 
     /// <inheritdoc />
-    public Rect? CurrentClipBounds => _clipBoundsStack.Count > 0 ? _clipBoundsStack.Peek() : null;
+    /// <remarks>
+    /// Returns null while a non-translate transform (scale/rotate/skew/matrix) is
+    /// active on the transform stack. The managed clip stack stores bounds in the
+    /// (accumulated-translate + design) coordinate space that existed when PushClip
+    /// was called; once a subsequent non-translate transform is applied, that space
+    /// no longer matches the on-screen rendering, so consumers (e.g. Visual.ShouldRenderChild
+    /// culling) could wrongly discard visible children. Native D2D clipping still
+    /// runs because D2D applies the transform matrix to its own clip stack, so
+    /// correctness is preserved by the renderer itself.
+    /// </remarks>
+    public Rect? CurrentClipBounds =>
+        _nativeTransformDepth > 0
+            ? null
+            : (_clipBoundsStack.Count > 0 ? _clipBoundsStack.Peek() : null);
 
     /// <summary>
     /// When true, temporarily replaces GPU-expensive effects with cheap overlays.
@@ -127,6 +197,18 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
             _renderTarget.FillEllipseBatch(_ellipseBatchBuffer, (uint)_ellipseBatchCount);
             _ellipseBatchCount = 0;
         }
+    }
+
+    /// <summary>
+    /// Installs <c>MediaRenderCacheHost</c> into <c>Visual.RenderCacheHost</c>
+    /// on first use of this type. Kept on the drawing-context class — which
+    /// is guaranteed to be loaded before any render happens — so the
+    /// retained-mode cache is live for every frame without requiring a
+    /// dedicated startup hook in each app entry point.
+    /// </summary>
+    static RenderTargetDrawingContext()
+    {
+        Jalium.UI.Media.Rendering.MediaRenderCacheHost.Bootstrap();
     }
 
     /// <summary>
@@ -402,6 +484,96 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
     }
 
     /// <inheritdoc />
+    public override void DrawLines(Pen pen, ReadOnlySpan<Point> endpoints)
+    {
+        if (_closed || pen?.Brush is null || endpoints.Length < 2)
+        {
+            return;
+        }
+
+        // One brush-cache lookup for the whole batch, then a tight loop of
+        // native DrawLine calls. Dashed pens fall through to per-segment
+        // dashing via DrawDashedLine, which cannot be amortised across
+        // segments without compromising the dash phase alignment — the
+        // loop still saves N-1 GetNativeBrush hash lookups either way.
+        var nativeBrush = GetNativeBrush(pen.Brush);
+        if (nativeBrush is null)
+        {
+            return;
+        }
+
+        var thickness = (float)pen.Thickness;
+        var dashed = pen.DashStyle is { Dashes.Count: > 0 };
+        var pairs = endpoints.Length / 2;
+
+        for (int i = 0; i < pairs; i++)
+        {
+            var p0 = endpoints[2 * i];
+            var p1 = endpoints[2 * i + 1];
+            var x0 = SnapCoordinate(p0.X + Offset.X);
+            var y0 = SnapCoordinate(p0.Y + Offset.Y);
+            var x1 = SnapCoordinate(p1.X + Offset.X);
+            var y1 = SnapCoordinate(p1.Y + Offset.Y);
+
+            if (dashed)
+            {
+                DrawDashedLine(x0, y0, x1, y1, nativeBrush, thickness, pen.DashStyle!, pen.Thickness);
+            }
+            else
+            {
+                _renderTarget.DrawLine(x0, y0, x1, y1, nativeBrush, thickness);
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public override void DrawPoints(Brush? brush, ReadOnlySpan<Point> centers, double radius)
+    {
+        if (_closed || brush is null || centers.IsEmpty || !(radius > 0))
+        {
+            return;
+        }
+
+        // Fast path: the native ellipse batch API already exists and packs
+        // N solid-color circles into a single FillEllipseBatch call. Wrap
+        // the per-point DrawEllipse loop in a Begin/End scope so each
+        // DrawEllipse takes the existing batch-buffer fast path at line 498.
+        //
+        // The only contract the batch buffer requires is `brush is
+        // SolidColorBrush && pen == null` — DrawPoints enforces both by
+        // construction. Non-solid brushes fall through the base loop,
+        // which still works (one native call per point) but misses the
+        // packed path; documented as a caller responsibility.
+        if (brush is SolidColorBrush)
+        {
+            var wasBatching = _isEllipseBatching;
+            if (!wasBatching)
+            {
+                BeginEllipseBatch(centers.Length);
+            }
+            try
+            {
+                for (int i = 0; i < centers.Length; i++)
+                {
+                    DrawEllipse(brush, pen: null, centers[i], radius, radius);
+                }
+            }
+            finally
+            {
+                if (!wasBatching)
+                {
+                    EndEllipseBatch();
+                }
+            }
+            return;
+        }
+
+        // Non-solid fill: fall back to the default loop. Still correct,
+        // just no batch packing.
+        base.DrawPoints(brush, centers, radius);
+    }
+
+    /// <inheritdoc />
     public override void DrawEllipse(Brush? brush, Pen? pen, Point center, double radiusX, double radiusY)
     {
         if (_closed) return;
@@ -474,22 +646,123 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
         var brush = formattedText.Foreground != null ? GetNativeBrush(formattedText.Foreground) : null;
         if (brush == null) return;
 
-        var format = GetTextFormat(
-            formattedText.FontFamily,
-            formattedText.FontSize,
-            formattedText.FontWeight,
-            formattedText.FontStyle);
-        if (format == null) return;
-
-        var x = (float)(origin.X + Offset.X);
-        var y = (float)Math.Round(origin.Y + Offset.Y);
+        var mx = origin.X + Offset.X;
+        var my = origin.Y + Offset.Y;
         var width = (float)formattedText.MaxTextWidth;
         var height = (float)formattedText.MaxTextHeight;
-
         if (width <= 0 || float.IsInfinity(width) || float.IsNaN(width)) width = 10000;
         if (height <= 0 || float.IsInfinity(height) || float.IsNaN(height)) height = 10000;
 
-        _renderTarget.DrawText(formattedText.Text, format, x, y, width, height, brush);
+        // When a non-translate transform is active, the native renderer applies
+        // the transform on the CPU by (a) translating the text origin and
+        // (b) scaling each glyph quad's size by the matrix's scale factor. Step
+        // (b) stretches an atlas that was rasterized at the original font size,
+        // producing a blurry result for any scale != 1. To fix this, we pre-
+        // rasterize the glyph atlas at the screen-effective font size, push an
+        // inverse matrix so the native matrix cancels out, and hand native the
+        // screen-space coordinates — leaving it with an identity transform and
+        // glyphs already at their final resolution.
+        var nm11 = _currentNativeMatrix[0];
+        var nm12 = _currentNativeMatrix[1];
+        var nm21 = _currentNativeMatrix[2];
+        var nm22 = _currentNativeMatrix[3];
+        var ndx = _currentNativeMatrix[4];
+        var ndy = _currentNativeMatrix[5];
+
+        bool isIdentity = _nativeTransformDepth <= 0 ||
+            (Math.Abs(nm11 - 1.0) < 1e-6 && Math.Abs(nm12) < 1e-6 &&
+             Math.Abs(nm21) < 1e-6 && Math.Abs(nm22 - 1.0) < 1e-6 &&
+             Math.Abs(ndx) < 1e-6 && Math.Abs(ndy) < 1e-6);
+
+        // Pixel-snap the effective font size (mirrors WPF TextFormattingMode.Display) and
+        // degrade heavy weights at sizes where CJK strokes collide (WinUI's gasp-table
+        // hinting does the same implicitly). These passes apply to both identity-matrix
+        // and scale-compensated paths: under identity the caller's font size is usually
+        // already an integer so snapping is a no-op, but the weight degradation matters
+        // for small-size bold that's blurry regardless of scale.
+        var fontScale = 1.0;
+        if (!isIdentity)
+        {
+            var scaleX = Math.Sqrt(nm11 * nm11 + nm12 * nm12);
+            var scaleY = Math.Sqrt(nm21 * nm21 + nm22 * nm22);
+            if (scaleX <= 1e-6 || scaleY <= 1e-6) return; // degenerate
+            fontScale = Math.Max(scaleX, scaleY);
+        }
+
+        var rawScaledFontSize = formattedText.FontSize * fontScale;
+        var effectiveFontSize = Math.Max(1.0, Math.Round(rawScaledFontSize));
+
+        // Weight degradation threshold: 13px is the knee where YaHei Bold strokes
+        // start merging on a 1:1 pixel grid. Below that, fall back to Medium/Regular
+        // so small CJK labels stay readable instead of turning into dark blobs.
+        var effectiveWeight = formattedText.FontWeight;
+        if (effectiveFontSize < 13.0 && effectiveWeight >= 500)
+        {
+            effectiveWeight = 400;
+        }
+
+        if (isIdentity)
+        {
+            var format = GetTextFormat(
+                formattedText.FontFamily,
+                effectiveFontSize,
+                effectiveWeight,
+                formattedText.FontStyle);
+            if (format == null) return;
+
+            var x = (float)mx;
+            var y = (float)Math.Round(my);
+            _renderTarget.DrawText(formattedText.Text, format, x, y, width, height, brush);
+            return;
+        }
+
+        var scaledFormat = GetTextFormat(
+            formattedText.FontFamily,
+            effectiveFontSize,
+            effectiveWeight,
+            formattedText.FontStyle);
+        if (scaledFormat == null) return;
+
+        // Screen-space origin = current matrix applied to (mx, my).
+        var screenX = (float)(nm11 * mx + nm21 * my + ndx);
+        var screenY = (float)Math.Round(nm12 * mx + nm22 * my + ndy);
+
+        // Layout bounding box scales with the actual em size used, so wrap positions
+        // stay consistent with the (snapped) glyph metrics rather than the mathematical scale.
+        var effectiveScale = effectiveFontSize / formattedText.FontSize;
+        var scaledWidth = (float)(width * effectiveScale);
+        var scaledHeight = (float)(height * effectiveScale);
+
+        // Inverse of the current 2x2 linear part; affine inverse translation is
+        // -A^{-1} * t. For a pure scale (m12=m21=0) this is simply the diagonal reciprocal.
+        var det = nm11 * nm22 - nm12 * nm21;
+        if (Math.Abs(det) < 1e-12) return;
+        var invA11 = nm22 / det;
+        var invA12 = -nm12 / det;
+        var invA21 = -nm21 / det;
+        var invA22 = nm11 / det;
+        var invDx = -(invA11 * ndx + invA21 * ndy);
+        var invDy = -(invA12 * ndx + invA22 * ndy);
+
+        // Native's compose is new_top = old_top * incoming. We pick incoming so that
+        // old_top * incoming = Identity, i.e. incoming = old_top^{-1}. After the push,
+        // the native CPU-side transform does nothing, so the screen-space coords we
+        // pass through go directly onto the atlas.
+        _renderTarget.PushTransform(new float[]
+        {
+            (float)invA11, (float)invA12,
+            (float)invA21, (float)invA22,
+            (float)invDx, (float)invDy
+        });
+
+        try
+        {
+            _renderTarget.DrawText(formattedText.Text, scaledFormat, screenX, screenY, scaledWidth, scaledHeight, brush);
+        }
+        finally
+        {
+            _renderTarget.PopTransform();
+        }
     }
 
     /// <inheritdoc />
@@ -1572,6 +1845,10 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
 
     /// <inheritdoc />
     public override void DrawImage(ImageSource imageSource, Rect rectangle)
+        => DrawImage(imageSource, rectangle, BitmapScalingMode.Unspecified);
+
+    /// <inheritdoc />
+    public override void DrawImage(ImageSource imageSource, Rect rectangle, BitmapScalingMode scalingMode)
     {
         if (_closed || imageSource == null) return;
 
@@ -1604,7 +1881,7 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
                 {
                     var cx = (float)Math.Round(rectangle.X + Offset.X);
                     var cy = (float)Math.Round(rectangle.Y + Offset.Y);
-                    _renderTarget.DrawBitmap(cachedNative, cx, cy, (float)rectangle.Width, (float)rectangle.Height, 1.0f);
+                    _renderTarget.DrawBitmap(cachedNative, cx, cy, (float)rectangle.Width, (float)rectangle.Height, 1.0f, scalingMode);
 
                     var frameNum2 = System.Threading.Interlocked.Increment(ref s_svgFrameNumber);
                     if (frameNum2 <= 5 || frameNum2 % 300 == 0)
@@ -1653,7 +1930,7 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
                 {
                     var cx = (float)Math.Round(rectangle.X + Offset.X);
                     var cy = (float)Math.Round(rectangle.Y + Offset.Y);
-                    _renderTarget.DrawBitmap(nativeBmp, cx, cy, (float)rectangle.Width, (float)rectangle.Height, 1.0f);
+                    _renderTarget.DrawBitmap(nativeBmp, cx, cy, (float)rectangle.Width, (float)rectangle.Height, 1.0f, scalingMode);
                 }
             }
             else
@@ -1696,7 +1973,7 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
         var width = (float)rectangle.Width;
         var height = (float)rectangle.Height;
 
-        _renderTarget.DrawBitmap(bitmap, x, y, width, height, 1.0f);
+        _renderTarget.DrawBitmap(bitmap, x, y, width, height, 1.0f, scalingMode);
     }
 
     /// <inheritdoc />
@@ -1947,6 +2224,25 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
                 (float)m21, (float)m22,
                 (float)finalDx, (float)finalDy
             });
+            _nativeTransformDepth++;
+
+            // Mirror the matrix compose that the native renderer performs
+            // (new_top = old_top * incoming, same as Transform2D::operator*).
+            // Save the previous matrix so Pop can restore it.
+            _nativeMatrixStack.Push((double[])_currentNativeMatrix.Clone());
+            var ocm11 = _currentNativeMatrix[0];
+            var ocm12 = _currentNativeMatrix[1];
+            var ocm21 = _currentNativeMatrix[2];
+            var ocm22 = _currentNativeMatrix[3];
+            var ocdx = _currentNativeMatrix[4];
+            var ocdy = _currentNativeMatrix[5];
+            _currentNativeMatrix[0] = ocm11 * m11 + ocm12 * m21;
+            _currentNativeMatrix[1] = ocm11 * m12 + ocm12 * m22;
+            _currentNativeMatrix[2] = ocm21 * m11 + ocm22 * m21;
+            _currentNativeMatrix[3] = ocm21 * m12 + ocm22 * m22;
+            _currentNativeMatrix[4] = ocdx * m11 + ocdy * m21 + finalDx;
+            _currentNativeMatrix[5] = ocdx * m12 + ocdy * m22 + finalDy;
+
             _stateStack.Push(new DrawingState(DrawingStateType.NativeTransform, Point.Zero));
         }
     }
@@ -2122,6 +2418,12 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
                 Offset = state.SavedOffset;
                 break;
             case DrawingStateType.NativeTransform:
+                _nativeTransformDepth--;
+                if (_nativeMatrixStack.Count > 0)
+                {
+                    var prev = _nativeMatrixStack.Pop();
+                    Array.Copy(prev, _currentNativeMatrix, 6);
+                }
                 _renderTarget.PopTransform();
                 break;
             case DrawingStateType.Clip:
@@ -2181,6 +2483,64 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
     {
         if (_closed) return;
         Pop();
+    }
+
+    // ========================================================================
+    // Per-draw PushEffect / PopEffect — nestable capture-and-shader scopes.
+    // Distinct from the element-level capture that Visual.Render orchestrates
+    // around a UIElement.Effect: this one is caller-driven, so per-glyph
+    // animation or selective effect regions can opt in explicitly.
+    // ========================================================================
+
+    /// <inheritdoc />
+    public override void PushEffect(IEffect effect, Rect captureBounds)
+    {
+        if (_closed || effect == null || !effect.HasEffect) return;
+
+        var padding = effect.EffectPadding;
+
+        // Capture region = element bounds inflated by effect padding (shadows,
+        // glows etc. draw outside the element). Apply current Offset so the
+        // capture sits at the right screen position.
+        var left = captureBounds.X + Offset.X - padding.Left;
+        var top = captureBounds.Y + Offset.Y - padding.Top;
+        var right = captureBounds.X + Offset.X + captureBounds.Width + padding.Right;
+        var bottom = captureBounds.Y + Offset.Y + captureBounds.Height + padding.Bottom;
+
+        // Pixel-snap the capture bounds, same as Visual.Render does, so changing
+        // a continuous parameter (e.g. animated blur radius) doesn't re-sample
+        // sub-pixel edges every frame.
+        var snappedLeft = (float)Math.Floor(left);
+        var snappedTop = (float)Math.Floor(top);
+        var snappedRight = (float)Math.Ceiling(right);
+        var snappedBottom = (float)Math.Ceiling(bottom);
+        var captureW = Math.Max(0f, snappedRight - snappedLeft);
+        var captureH = Math.Max(0f, snappedBottom - snappedTop);
+
+        if (captureW <= 0 || captureH <= 0) return;
+
+        // Store the FULL capture region — see PushedEffect's xml doc for why.
+        // (X, Y) is the screen-space top-left of the capture region (with
+        // padding). (W, H) is the full capture size. CaptureX/CaptureY match
+        // X/Y, giving uvOffset = 0 so ApplyElementEffect samples the offscreen
+        // texture starting from its top-left and covers the entire blurred area.
+        _effectStack.Push(new PushedEffect(effect,
+            snappedLeft, snappedTop, captureW, captureH,
+            snappedLeft, snappedTop));
+
+        BeginEffectCapture(snappedLeft, snappedTop, captureW, captureH);
+    }
+
+    /// <inheritdoc />
+    public override void PopEffect()
+    {
+        if (_closed || _effectStack.Count == 0) return;
+
+        var entry = _effectStack.Pop();
+        EndEffectCapture();
+        ApplyElementEffect(entry.Effect,
+            entry.X, entry.Y, entry.W, entry.H,
+            entry.CaptureX, entry.CaptureY);
     }
 
     // ========================================================================
@@ -2611,9 +2971,18 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
     {
         if (imageSource == null) return null;
 
+        // For mutable sources we need to validate the cached upload against the
+        // current content revision — a rewritten WriteableBitmap shares the
+        // same instance, so reference identity alone isn't enough.
+        uint currentRevision = imageSource is Jalium.UI.Media.WriteableBitmap wb
+            ? wb.ContentRevision : 0u;
+
         if (_bitmapCache.TryGetValue(imageSource, out var cached))
         {
-            if (cached.Bitmap.IsValid)
+            bool stale = imageSource is Jalium.UI.Media.WriteableBitmap &&
+                         cached.ContentRevision != currentRevision;
+
+            if (!stale && cached.Bitmap.IsValid)
             {
                 cached.LastAccessSequence = ++_bitmapCacheSequence;
                 return cached.Bitmap;
@@ -2648,6 +3017,24 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
                 System.Diagnostics.Debug.WriteLine($"[RenderTargetDrawingContext] Failed to create bitmap: {ex.Message}");
             }
         }
+        else if (imageSource is Jalium.UI.Media.WriteableBitmap writeable &&
+                 writeable.PixelWidth > 0 && writeable.PixelHeight > 0)
+        {
+            // WriteableBitmap's backing buffer is Pbgra32 (BGRA8 pre-multiplied)
+            // which matches the native CreateBitmapFromPixels expectation.
+            try
+            {
+                nativeBitmap = _context.CreateBitmapFromPixels(
+                    writeable.BackBufferArray,
+                    writeable.PixelWidth,
+                    writeable.PixelHeight,
+                    writeable.BackBufferStride);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[RenderTargetDrawingContext] WriteableBitmap upload failed: {ex.Message}");
+            }
+        }
 
         if (nativeBitmap != null)
         {
@@ -2655,7 +3042,8 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
             _bitmapCache[imageSource] = new BitmapCacheEntry(
                 nativeBitmap,
                 estimatedBytes,
-                ++_bitmapCacheSequence);
+                ++_bitmapCacheSequence,
+                currentRevision);
             _bitmapCacheBytes += estimatedBytes;
         }
 

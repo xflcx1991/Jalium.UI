@@ -1,3 +1,5 @@
+using Jalium.UI.Rendering;
+
 namespace Jalium.UI;
 
 /// <summary>
@@ -10,6 +12,62 @@ public abstract class Visual : DependencyObject
     private readonly List<Visual> _children = new();
     private bool _isRenderDirty;
     private bool _isSubtreeDirty;
+
+    // Retained-mode drawing cache. When RenderCacheHost is installed, the
+    // render loop records OnRender output into an opaque Drawing handle on
+    // the first dirty frame and replays it from this slot on subsequent
+    // clean frames. SetRenderDirty() implicitly invalidates the cache because
+    // RenderDirect re-records whenever _isRenderDirty is true. Kept as
+    // object so Core doesn't leak the Media.Rendering.Drawing type.
+    private object? _cachedDrawing;
+
+    /// <summary>
+    /// Installs the process-wide retained-mode drawing cache. When non-null,
+    /// every visual's <c>OnRender</c> is recorded into an immutable Drawing
+    /// on its first dirty frame and replayed verbatim on subsequent clean
+    /// frames. A null value preserves the legacy immediate-mode behaviour
+    /// where <c>OnRender</c> is invoked each frame.
+    /// </summary>
+    /// <remarks>
+    /// Typically set once at startup by
+    /// <c>Jalium.UI.Media.Rendering.MediaRenderCacheHost.Bootstrap()</c>,
+    /// which is invoked from <c>RenderTargetDrawingContext</c>'s type
+    /// initializer. Users can opt out via the
+    /// <c>JALIUM_DISABLE_RENDER_CACHE=1</c> environment variable checked by
+    /// that bootstrap.
+    /// </remarks>
+    public static IRenderCacheHost? RenderCacheHost { get; set; }
+
+    /// <summary>
+    /// Whether this Visual participates in the retained-mode drawing cache.
+    /// </summary>
+    /// <remarks>
+    /// Default is <c>true</c> — <c>OnRender</c> is recorded on first dirty
+    /// frame and replayed on subsequent clean frames.
+    /// <para/>
+    /// Override to <c>false</c> when <c>OnRender</c> is a pure delegator to
+    /// external state (e.g. <c>TextBoxContentHost</c> whose <c>OnRender</c>
+    /// forwards to its owner's <c>RenderTextContent</c>). Such visuals own
+    /// no local rendering state, so <c>_isRenderDirty</c> cannot correctly
+    /// track dirtiness: the owner's state can change without this visual's
+    /// own cache ever being invalidated, and the cache would replay stale
+    /// commands forever. Opting out forces immediate-mode per frame, which
+    /// is correct for pure proxies.
+    /// </remarks>
+    protected virtual bool ParticipatesInRenderCache => true;
+    // When true, this visual + all descendants are hidden from Diagnostics
+    // (Layout / Binding / RoutedEvent recording). Set once for DevTools roots;
+    // inherited by children through AddVisualChild so we don't need to walk
+    // the VisualParent chain on every notification — a critical perf win and
+    // also avoids false-negatives when the parent chain is momentarily broken
+    // (e.g. VSP recycling, mid-attach Measure calls).
+    //
+    // Field initializer reads the thread-local creation scope so a Visual
+    // constructed inside DiagnosticsScope.BeginIgnoredCreation() is flagged
+    // immediately — this closes the constructor-time invalidation hole
+    // (DP defaults / Header / Foreground sets fire InvalidateMeasure before
+    // AddVisualChild ever runs).
+    private bool _isDiagnosticsIgnored = Diagnostics.DiagnosticsScope.IsInIgnoredCreationScope;
     [ThreadStatic]
     private static HashSet<Visual>? _renderPath;
     [ThreadStatic]
@@ -63,6 +121,16 @@ public abstract class Visual : DependencyObject
             }
         }
 
+        if (ReferenceEquals(child._parent, this))
+        {
+            // Idempotent fast-path: re-adding the same child to the same parent
+            // should be a no-op. Happens during own-container realization when
+            // multiple pipelines (ItemsControl populate + VSP realize) converge
+            // on the same container within one layout pass.
+            if (!_children.Contains(child)) _children.Add(child);
+            return;
+        }
+
         if (child._parent != null)
         {
             throw new InvalidOperationException($"Visual already has a parent. child={child.GetType().Name}, parent={child._parent.GetType().Name}, attempted new parent={this.GetType().Name}");
@@ -72,8 +140,34 @@ public abstract class Visual : DependencyObject
         child._parent = this;
         _children.Add(child);
 
+        // Propagate diagnostics-ignored flag down. Doing this at attach time
+        // (not at ShouldIgnore query time) means the check is O(1) later,
+        // and can't race with mid-attach Measure calls.
+        if (_isDiagnosticsIgnored && !child._isDiagnosticsIgnored)
+            child.MarkDiagnosticsIgnoredSubtree();
+
         OnVisualChildrenChanged(child, null);
         child.OnVisualParentChanged(oldParent);
+    }
+
+    /// <summary>
+    /// True when this visual (or a DevTools-style ancestor) has been marked
+    /// with <see cref="MarkDiagnosticsIgnoredSubtree"/>. Diagnostics layers
+    /// use this for an O(1) "is DevTools" check.
+    /// </summary>
+    public bool IsDiagnosticsIgnored => _isDiagnosticsIgnored;
+
+    /// <summary>
+    /// Flag this visual + all current descendants so that Diagnostics hooks
+    /// skip them. New descendants added later inherit the flag via
+    /// <see cref="AddVisualChild"/>.
+    /// </summary>
+    public void MarkDiagnosticsIgnoredSubtree()
+    {
+        if (_isDiagnosticsIgnored) return;
+        _isDiagnosticsIgnored = true;
+        for (int i = 0; i < _children.Count; i++)
+            _children[i].MarkDiagnosticsIgnoredSubtree();
     }
 
     /// <summary>
@@ -291,7 +385,42 @@ public abstract class Visual : DependencyObject
             pushedClip = true;
         }
 
-        OnRender(drawingContext);
+        // Retained-mode cache path. When a render cache host is installed
+        // AND the live drawing context opts in via ICacheableDrawingContext,
+        // OnRender is captured into an immutable command list the first time
+        // the visual becomes dirty and replayed on subsequent clean frames.
+        // The cached handle survives across frames; SetRenderDirty simply
+        // flips _isRenderDirty, and RenderDirect re-records when it notices.
+        //
+        // The marker gate exists because OnRender(object) accepts any
+        // context type — user code (typically tests) may pattern-match the
+        // argument for context-specific probing. Substituting a recorder for
+        // such a context would break the match. Only contexts that advertise
+        // themselves as cache-safe participate in caching.
+        //
+        // Invariants preserved against the legacy path:
+        //  - OnRender still sees a DrawingContext that honours IOffsetDrawingContext
+        //    and IClipBoundsDrawingContext for ambient-state reads.
+        //  - Commands arrive at drawingContext in the same order and with the
+        //    same arguments as the legacy direct-dispatch path.
+        //  - Any push (transform / clip / opacity / effect) recorded during
+        //    OnRender has its matching pop recorded too, so drawingContext's
+        //    state stacks remain balanced post-replay.
+        var cacheHost = RenderCacheHost;
+        if (cacheHost != null && ParticipatesInRenderCache && drawingContext is ICacheableDrawingContext)
+        {
+            if (_isRenderDirty || _cachedDrawing == null)
+            {
+                var recorder = cacheHost.CreateRecorder(drawingContext);
+                OnRender(recorder);
+                _cachedDrawing = cacheHost.FinishRecord(recorder);
+            }
+            cacheHost.Replay(_cachedDrawing!, drawingContext);
+        }
+        else
+        {
+            OnRender(drawingContext);
+        }
 
         var childCount = VisualChildrenCount;
         for (int i = 0; i < childCount && i < VisualChildrenCount; i++)
@@ -330,7 +459,29 @@ public abstract class Visual : DependencyObject
                     pushedOpacity = true;
                 }
 
+                // Apply the child's RenderTransform around its RenderTransformOrigin so that
+                // transforms declared on elements (e.g. ScaleTransform for zoom, RotateTransform
+                // for animations) actually affect the rendered subtree. Without this the
+                // RenderTransform DP would be a no-op during live drawing, matching the
+                // behavior already implemented in RenderTargetBitmap for offscreen capture.
+                var pushedTransform = false;
+                var childRenderTransform = uiChild.RenderTransform;
+                if (childRenderTransform != null && drawingContext is ITransformDrawingContext transformContext)
+                {
+                    var origin = uiChild.RenderTransformOrigin;
+                    var size = uiChild.RenderSize;
+                    var originX = origin.X * size.Width;
+                    var originY = origin.Y * size.Height;
+                    transformContext.PushTransform(childRenderTransform, originX, originY);
+                    pushedTransform = true;
+                }
+
                 child.Render(drawingContext);
+
+                if (pushedTransform && drawingContext is ITransformDrawingContext transformContextPop)
+                {
+                    transformContextPop.PopTransform();
+                }
 
                 if (pushedOpacity && drawingContext is IOpacityDrawingContext opacityContext2)
                 {

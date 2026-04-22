@@ -176,6 +176,66 @@ public class HitTestVisibilityTests
         Assert.NotNull(FindVisualAncestor<ScrollBar>(scrollBarHit));
     }
 
+    [Fact]
+    public void WindowHitTest_ShouldTreatPointsOutsideScrollViewerViewportAsClipped()
+    {
+        // Scroll the ScrollViewer so an input control lives past the top of the
+        // viewport. Its VisualBounds still intersect a sibling above the
+        // ScrollViewer, but the user only sees the sibling — clicks there must
+        // hit the sibling, not the scrolled-off input control. This is a scaled
+        // down version of the "click Light mode above a scrollable region" bug.
+        var topBar = new Border { Width = 200, Height = 40 };
+
+        var scrollContent = new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+            Width = 200
+        };
+        for (int i = 0; i < 12; i++)
+        {
+            scrollContent.Children.Add(new Border { Width = 200, Height = 30 });
+        }
+
+        var viewer = new ScrollViewer
+        {
+            Width = 200,
+            Height = 120,
+            Content = scrollContent,
+            IsScrollBarAutoHideEnabled = false,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Visible
+        };
+
+        var stack = new StackPanel { Orientation = Orientation.Vertical, Width = 200 };
+        stack.Children.Add(topBar);
+        stack.Children.Add(viewer);
+
+        var window = new Window
+        {
+            TitleBarStyle = WindowTitleBarStyle.Native,
+            Width = 200,
+            Height = 160,
+            Content = stack
+        };
+
+        window.Measure(new Size(200, 160));
+        window.Arrange(new Rect(0, 0, 200, 160));
+
+        // Prime the cache with a hit inside the ScrollViewer viewport, then
+        // scroll the content so the cached element is no longer visible.
+        var viewportHit = InvokeHitTestElement(window, new Point(100, 60));
+        Assert.NotNull(viewportHit);
+
+        viewer.ScrollToVerticalOffset(100);
+        window.Measure(new Size(200, 160));
+        window.Arrange(new Rect(0, 0, 200, 160));
+
+        // Clicking inside the topBar should land on the topBar regardless of
+        // what was cached below — the scrolled-off content must not reach up
+        // into the bar just because its VisualBounds technically extend there.
+        var topBarHit = InvokeHitTestElement(window, new Point(100, 20));
+        Assert.Same(topBar, topBarHit);
+    }
+
     private static UIElement? InvokeHitTestElement(Window window, Point point)
     {
         var method = typeof(Window).GetMethod("HitTestElement", BindingFlags.Instance | BindingFlags.NonPublic);

@@ -250,10 +250,60 @@ public class TitleBarHitTestTests
 
         LayoutWindow(window, 300, 180);
 
-        // y=64 is outside caption height(32) but inside the enlarged maximize button.
         const int HTMAXBUTTON = 9;
-        int hit = window.ComputeNcHitTestFromClientDip(210, 64, isMaximized: false);
-        Assert.Equal(HTMAXBUTTON, hit);
+
+        // The maximize button must return HTMAXBUTTON across its full
+        // height so the Win11 Snap Layouts flyout can appear anywhere on
+        // it. DWM/Shell does not filter HTMAXBUTTON by y coordinate —
+        // the flyout relies solely on the WM_NCHITTEST return value.
+        Assert.Equal(HTMAXBUTTON, window.ComputeNcHitTestFromClientDip(210, 16, isMaximized: false));
+        Assert.Equal(HTMAXBUTTON, window.ComputeNcHitTestFromClientDip(210, 64, isMaximized: false));
+    }
+
+    [Fact]
+    public void NCHitTest_TallButtons_AllReturnCaptionButtonCodes()
+    {
+        // Snap Layouts flyout relies only on the WM_NCHITTEST return value —
+        // there is no y-coordinate filter. All three caption buttons must
+        // therefore keep their HT* code for their full visual height, at any
+        // title bar height. Min/Max/Close are symmetric in this regard.
+        var window = new Window
+        {
+            Width = 300,
+            Height = 180
+        };
+
+        var titleBar = Assert.IsType<TitleBar>(window.TitleBar);
+        titleBar.Height = 32;
+
+        var minimizeButton = GetButtonByKind(titleBar, TitleBarButtonKind.Minimize);
+        var maximizeButton = GetButtonByKind(titleBar, TitleBarButtonKind.Maximize);
+        var closeButton = GetButtonByKind(titleBar, TitleBarButtonKind.Close);
+        Assert.NotNull(minimizeButton);
+        Assert.NotNull(maximizeButton);
+        Assert.NotNull(closeButton);
+        minimizeButton!.Height = 96;
+        maximizeButton!.Height = 96;
+        closeButton!.Height = 96;
+
+        LayoutWindow(window, 300, 180);
+
+        const int HTMINBUTTON = 8;
+        const int HTMAXBUTTON = 9;
+        const int HTCLOSE = 20;
+
+        const double minX = 180;
+        const double maxX = 220;
+        const double closeX = 270;
+
+        // Every button stays HT* at every y inside its visual rect.
+        Assert.Equal(HTMINBUTTON, window.ComputeNcHitTestFromClientDip(minX, 8, isMaximized: false));
+        Assert.Equal(HTMAXBUTTON, window.ComputeNcHitTestFromClientDip(maxX, 8, isMaximized: false));
+        Assert.Equal(HTCLOSE, window.ComputeNcHitTestFromClientDip(closeX, 8, isMaximized: false));
+
+        Assert.Equal(HTMINBUTTON, window.ComputeNcHitTestFromClientDip(minX, 64, isMaximized: false));
+        Assert.Equal(HTMAXBUTTON, window.ComputeNcHitTestFromClientDip(maxX, 64, isMaximized: false));
+        Assert.Equal(HTCLOSE, window.ComputeNcHitTestFromClientDip(closeX, 64, isMaximized: false));
     }
 
     [Fact]

@@ -237,13 +237,15 @@ internal sealed class LspSemanticHighlighter : IReactiveSyntaxHighlighter
         return _tokenTypes[tokenTypeIndex] switch
         {
             SemanticTokenTypes.Namespace => TokenClassification.Namespace,
-            SemanticTokenTypes.Type or SemanticTokenTypes.Class or SemanticTokenTypes.Struct or
-            SemanticTokenTypes.Enum or SemanticTokenTypes.Interface => TokenClassification.TypeName,
+            SemanticTokenTypes.Struct => TokenClassification.StructName,
+            SemanticTokenTypes.Enum => TokenClassification.EnumName,
+            SemanticTokenTypes.Interface => TokenClassification.InterfaceName,
+            SemanticTokenTypes.Type or SemanticTokenTypes.Class => TokenClassification.TypeName,
             SemanticTokenTypes.TypeParameter => TokenClassification.TypeName,
             SemanticTokenTypes.Parameter => TokenClassification.Parameter,
             SemanticTokenTypes.Variable => TokenClassification.LocalVariable,
             SemanticTokenTypes.Property => TokenClassification.Property,
-            SemanticTokenTypes.EnumMember => TokenClassification.Field,
+            SemanticTokenTypes.EnumMember => TokenClassification.EnumMember,
             SemanticTokenTypes.Event => TokenClassification.Identifier,
             SemanticTokenTypes.Function or SemanticTokenTypes.Method => TokenClassification.Method,
             SemanticTokenTypes.Macro => TokenClassification.Preprocessor,

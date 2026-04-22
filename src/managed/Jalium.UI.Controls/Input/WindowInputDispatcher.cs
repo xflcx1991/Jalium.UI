@@ -418,8 +418,9 @@ internal sealed class WindowInputDispatcher
         if (_host.OnPreviewWindowKeyDown(key, modifiers, isRepeat))
             return true;
 
-        // F3 toggles debug HUD
-        if (key == Key.F3 && !isRepeat)
+        // F3 toggles debug HUD — silently ignored unless the app opted in via
+        // builder.UseDebugHud(). Treat as unhandled so other handlers can claim F3.
+        if (key == Key.F3 && !isRepeat && _host.CanToggleDebugHud)
         {
             _host.DebugHudEnabled = !_host.DebugHudEnabled;
             _host.DebugHudOverlayVisibility = _host.DebugHudEnabled ? Visibility.Visible : Visibility.Collapsed;

@@ -936,6 +936,30 @@ public partial class ScrollViewer : Control
         return base.HitTestCore(point);
     }
 
+    /// <inheritdoc />
+    internal override bool IsPointInsideLayoutClip(Point localPoint)
+    {
+        var clip = GetLayoutClip();
+        if (clip == null)
+        {
+            return true;
+        }
+
+        if (clip is Rect rect)
+        {
+            return rect.Contains(localPoint);
+        }
+
+        if (clip is Media.Geometry geometry)
+        {
+            // Honor rounded-rect / custom-shape viewport clips so hit-testing
+            // matches the pixels the user can actually see.
+            return geometry.FillContains(localPoint);
+        }
+
+        return true;
+    }
+
     internal bool IsContentDescendant(UIElement element)
     {
         for (UIElement? current = element; current != null && !ReferenceEquals(current, this); current = current.VisualParent as UIElement)
@@ -2071,53 +2095,11 @@ public partial class ScrollViewer : Control
         if (!isVertical && !ReferenceEquals(sender, _horizontalScrollBar))
             return;
 
-        var sourceScrollBar = sender as ScrollBar;
-        var fromScrollBarWheel = sourceScrollBar?.IsWheelScrollingInput == true;
-        var useSmoothWheelInertia = fromScrollBarWheel &&
-                                    IsScrollInertiaEnabled &&
-                                    GetEffectiveScrollInertiaDurationMs() > 0;
-
-        if (useSmoothWheelInertia)
-        {
-            // Keep thumb/content visually aligned with current offset, then animate toward new target.
-            _isUpdatingScrollBars = true;
-            try
-            {
-                if (isVertical)
-                {
-                    _verticalScrollBar.Value = _verticalOffset;
-                }
-                else
-                {
-                    _horizontalScrollBar.Value = _horizontalOffset;
-                }
-            }
-            finally
-            {
-                _isUpdatingScrollBars = false;
-            }
-
-            if (!_isSmoothScrolling)
-            {
-                _smoothTargetX = _horizontalOffset;
-                _smoothTargetY = _verticalOffset;
-            }
-
-            if (isVertical)
-            {
-                _smoothTargetY = Math.Clamp(e.NewValue, 0, Math.Max(0, ScrollableHeight));
-            }
-            else
-            {
-                _smoothTargetX = Math.Clamp(e.NewValue, 0, Math.Max(0, ScrollableWidth));
-            }
-
-            StartSmoothScroll();
-            return;
-        }
-
-        // ScrollBar thumb drag/page click/line click should remain immediate.
-        // Cancel wheel inertia so direct interactions do not compete with animation.
+        // Mouse-wheel input on the scrollbar track bubbles up to ScrollViewer.OnMouseWheel
+        // (ScrollBar no longer handles the wheel itself), so every Scroll event that reaches
+        // this handler comes from a direct interaction — thumb drag, page click, or line click —
+        // and should apply the new value immediately. Any in-flight wheel-driven smooth scroll
+        // must be cancelled so the direct interaction does not compete with an animation.
         CancelSmoothScroll();
 
         if (isVertical)

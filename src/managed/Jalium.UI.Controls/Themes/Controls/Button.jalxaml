@@ -51,13 +51,21 @@
         </Setter>
 
         <Style.Triggers>
-            <PropertyTrigger Property="IsMouseOver" Value="True">
+            <MultiTrigger>
+                <MultiTrigger.Conditions>
+                    <Condition Property="IsMouseOver" Value="True" />
+                    <Condition Property="IsEnabled" Value="True" />
+                </MultiTrigger.Conditions>
                 <Setter Property="Background" Value="{DynamicResource ControlBackgroundHover}" />
                 <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderHover}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsPressed" Value="True">
+            </MultiTrigger>
+            <MultiTrigger>
+                <MultiTrigger.Conditions>
+                    <Condition Property="IsPressed" Value="True" />
+                    <Condition Property="IsEnabled" Value="True" />
+                </MultiTrigger.Conditions>
                 <Setter Property="Background" Value="{DynamicResource ButtonBackgroundPressed}" />
-            </PropertyTrigger>
+            </MultiTrigger>
             <PropertyTrigger Property="IsKeyboardFocused" Value="True">
                 <Setter TargetName="FocusBorder" Property="Visibility" Value="Visible" />
             </PropertyTrigger>
@@ -200,15 +208,23 @@
         </Setter>
 
         <Style.Triggers>
-            <PropertyTrigger Property="IsMouseOver" Value="True">
+            <MultiTrigger>
+                <MultiTrigger.Conditions>
+                    <Condition Property="IsMouseOver" Value="True" />
+                    <Condition Property="IsEnabled" Value="True" />
+                </MultiTrigger.Conditions>
                 <Setter TargetName="StateOverlay" Property="Background" Value="{DynamicResource ControlBackgroundHover}" />
                 <Setter TargetName="StateOverlay" Property="Opacity" Value="1" />
                 <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderHover}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsPressed" Value="True">
+            </MultiTrigger>
+            <MultiTrigger>
+                <MultiTrigger.Conditions>
+                    <Condition Property="IsPressed" Value="True" />
+                    <Condition Property="IsEnabled" Value="True" />
+                </MultiTrigger.Conditions>
                 <Setter TargetName="StateOverlay" Property="Background" Value="{DynamicResource ButtonBackgroundPressed}" />
                 <Setter TargetName="StateOverlay" Property="Opacity" Value="1" />
-            </PropertyTrigger>
+            </MultiTrigger>
             <PropertyTrigger Property="IsKeyboardFocused" Value="True">
                 <Setter TargetName="FocusBorder" Property="Visibility" Value="Visible" />
             </PropertyTrigger>
@@ -265,12 +281,20 @@
         </Setter>
 
         <Style.Triggers>
-            <PropertyTrigger Property="IsMouseOver" Value="True">
+            <MultiTrigger>
+                <MultiTrigger.Conditions>
+                    <Condition Property="IsMouseOver" Value="True" />
+                    <Condition Property="IsEnabled" Value="True" />
+                </MultiTrigger.Conditions>
                 <Setter Property="Foreground" Value="{DynamicResource HyperlinkForegroundHover}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsPressed" Value="True">
+            </MultiTrigger>
+            <MultiTrigger>
+                <MultiTrigger.Conditions>
+                    <Condition Property="IsPressed" Value="True" />
+                    <Condition Property="IsEnabled" Value="True" />
+                </MultiTrigger.Conditions>
                 <Setter Property="Foreground" Value="{DynamicResource HyperlinkForegroundPressed}" />
-            </PropertyTrigger>
+            </MultiTrigger>
             <PropertyTrigger Property="IsKeyboardFocused" Value="True">
                 <Setter TargetName="FocusBorder" Property="Visibility" Value="Visible" />
             </PropertyTrigger>

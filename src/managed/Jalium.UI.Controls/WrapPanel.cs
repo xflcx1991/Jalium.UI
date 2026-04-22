@@ -32,6 +32,22 @@ public class WrapPanel : Panel
         DependencyProperty.Register(nameof(ItemHeight), typeof(double), typeof(WrapPanel),
             new PropertyMetadata(double.NaN, OnItemSizeChanged));
 
+    /// <summary>
+    /// Identifies the HorizontalSpacing dependency property.
+    /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
+    public static readonly DependencyProperty HorizontalSpacingProperty =
+        DependencyProperty.Register(nameof(HorizontalSpacing), typeof(double), typeof(WrapPanel),
+            new PropertyMetadata(0.0, OnLayoutPropertyChanged));
+
+    /// <summary>
+    /// Identifies the VerticalSpacing dependency property.
+    /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
+    public static readonly DependencyProperty VerticalSpacingProperty =
+        DependencyProperty.Register(nameof(VerticalSpacing), typeof(double), typeof(WrapPanel),
+            new PropertyMetadata(0.0, OnLayoutPropertyChanged));
+
     #endregion
 
     #region Properties
@@ -66,6 +82,31 @@ public class WrapPanel : Panel
         set => SetValue(ItemHeightProperty, value);
     }
 
+    /// <summary>
+    /// Gets or sets the horizontal spacing between adjacent items (gap between columns for
+    /// horizontal orientation, or between columns of wrapped lines for vertical orientation).
+    /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
+    public double HorizontalSpacing
+    {
+        get => (double)GetValue(HorizontalSpacingProperty)!;
+        set => SetValue(HorizontalSpacingProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the vertical spacing between wrapped lines (gap between rows for
+    /// horizontal orientation, or between items within a column for vertical orientation).
+    /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
+    public double VerticalSpacing
+    {
+        get => (double)GetValue(VerticalSpacingProperty)!;
+        set => SetValue(VerticalSpacingProperty, value);
+    }
+
+    private static double SanitizeSpacing(double value) =>
+        (double.IsNaN(value) || double.IsInfinity(value) || value < 0) ? 0 : value;
+
     #endregion
 
     private static void OnOrientationChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -84,6 +125,14 @@ public class WrapPanel : Panel
         }
     }
 
+    private static void OnLayoutPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is WrapPanel panel)
+        {
+            panel.InvalidateMeasure();
+        }
+    }
+
     protected override Size MeasureOverride(Size availableSize)
     {
         var orientation = Orientation;
@@ -91,11 +140,20 @@ public class WrapPanel : Panel
         var itemHeight = ItemHeight;
         bool hasFixedWidth = !double.IsNaN(itemWidth);
         bool hasFixedHeight = !double.IsNaN(itemHeight);
+        var hSpacing = SanitizeSpacing(HorizontalSpacing);
+        var vSpacing = SanitizeSpacing(VerticalSpacing);
+
+        // Along the primary (stacking) axis, items are separated by primaryGap.
+        // Between wrapped lines along the secondary axis, lines are separated by secondaryGap.
+        double primaryGap = orientation == Orientation.Horizontal ? hSpacing : vSpacing;
+        double secondaryGap = orientation == Orientation.Horizontal ? vSpacing : hSpacing;
 
         double totalWidth = 0;
         double totalHeight = 0;
-        double lineSize = 0;      // Size in the primary direction
+        double lineSize = 0;      // Size in the primary direction (without trailing gap)
         double lineThickness = 0; // Size in the secondary direction
+        int itemsOnLine = 0;
+        int lineCount = 0;
 
         foreach (var child in Children)
         {
@@ -110,49 +168,61 @@ public class WrapPanel : Panel
 
             var childWidth = hasFixedWidth ? itemWidth : fe.DesiredSize.Width;
             var childHeight = hasFixedHeight ? itemHeight : fe.DesiredSize.Height;
+            var childPrimary = orientation == Orientation.Horizontal ? childWidth : childHeight;
+            var childSecondary = orientation == Orientation.Horizontal ? childHeight : childWidth;
+            var primaryLimit = orientation == Orientation.Horizontal ? availableSize.Width : availableSize.Height;
+            var prospective = itemsOnLine > 0 ? lineSize + primaryGap + childPrimary : childPrimary;
 
-            if (orientation == Orientation.Horizontal)
+            if (itemsOnLine > 0 && prospective > primaryLimit)
             {
-                // Check if we need to wrap to next line
-                if (lineSize + childWidth > availableSize.Width && lineSize > 0)
+                // Commit the completed line and start a new one.
+                if (orientation == Orientation.Horizontal)
                 {
-                    // Wrap to next line
                     totalWidth = Math.Max(totalWidth, lineSize);
                     totalHeight += lineThickness;
-                    lineSize = 0;
-                    lineThickness = 0;
                 }
-
-                lineSize += childWidth;
-                lineThickness = Math.Max(lineThickness, childHeight);
-            }
-            else // Vertical
-            {
-                // Check if we need to wrap to next column
-                if (lineSize + childHeight > availableSize.Height && lineSize > 0)
+                else
                 {
-                    // Wrap to next column
                     totalHeight = Math.Max(totalHeight, lineSize);
                     totalWidth += lineThickness;
-                    lineSize = 0;
-                    lineThickness = 0;
                 }
 
-                lineSize += childHeight;
-                lineThickness = Math.Max(lineThickness, childWidth);
+                lineCount++;
+                lineSize = childPrimary;
+                lineThickness = childSecondary;
+                itemsOnLine = 1;
+            }
+            else
+            {
+                if (itemsOnLine > 0) lineSize += primaryGap;
+                lineSize += childPrimary;
+                lineThickness = Math.Max(lineThickness, childSecondary);
+                itemsOnLine++;
             }
         }
 
-        // Add the last line
-        if (orientation == Orientation.Horizontal)
+        // Add the last line.
+        if (itemsOnLine > 0)
         {
-            totalWidth = Math.Max(totalWidth, lineSize);
-            totalHeight += lineThickness;
+            if (orientation == Orientation.Horizontal)
+            {
+                totalWidth = Math.Max(totalWidth, lineSize);
+                totalHeight += lineThickness;
+            }
+            else
+            {
+                totalHeight = Math.Max(totalHeight, lineSize);
+                totalWidth += lineThickness;
+            }
+            lineCount++;
         }
-        else
+
+        // Inject secondary spacing between lines.
+        if (lineCount > 1)
         {
-            totalHeight = Math.Max(totalHeight, lineSize);
-            totalWidth += lineThickness;
+            var secondaryTotal = (lineCount - 1) * secondaryGap;
+            if (orientation == Orientation.Horizontal) totalHeight += secondaryTotal;
+            else totalWidth += secondaryTotal;
         }
 
         return new Size(
@@ -167,12 +237,13 @@ public class WrapPanel : Panel
         var itemHeight = ItemHeight;
         bool hasFixedWidth = !double.IsNaN(itemWidth);
         bool hasFixedHeight = !double.IsNaN(itemHeight);
+        var hSpacing = SanitizeSpacing(HorizontalSpacing);
+        var vSpacing = SanitizeSpacing(VerticalSpacing);
+        double primaryGap = orientation == Orientation.Horizontal ? hSpacing : vSpacing;
+        double secondaryGap = orientation == Orientation.Horizontal ? vSpacing : hSpacing;
+        double primaryLimit = orientation == Orientation.Horizontal ? finalSize.Width : finalSize.Height;
 
-        double x = 0;
-        double y = 0;
-        double lineThickness = 0;
-
-        // First pass: calculate line thicknesses for proper alignment
+        // First pass: calculate line layout honouring primary spacing.
         var lineInfo = new List<LineInfo>();
         var currentLine = new LineInfo();
 
@@ -182,29 +253,22 @@ public class WrapPanel : Panel
 
             var childWidth = hasFixedWidth ? itemWidth : fe.DesiredSize.Width;
             var childHeight = hasFixedHeight ? itemHeight : fe.DesiredSize.Height;
+            var childPrimary = orientation == Orientation.Horizontal ? childWidth : childHeight;
+            var childSecondary = orientation == Orientation.Horizontal ? childHeight : childWidth;
+            var prospective = currentLine.Elements.Count > 0
+                ? currentLine.Size + primaryGap + childPrimary
+                : childPrimary;
 
-            if (orientation == Orientation.Horizontal)
+            if (currentLine.Elements.Count > 0 && prospective > primaryLimit)
             {
-                if (currentLine.Size + childWidth > finalSize.Width && currentLine.Elements.Count > 0)
-                {
-                    lineInfo.Add(currentLine);
-                    currentLine = new LineInfo();
-                }
-                currentLine.Elements.Add((fe, childWidth, childHeight));
-                currentLine.Size += childWidth;
-                currentLine.Thickness = Math.Max(currentLine.Thickness, childHeight);
+                lineInfo.Add(currentLine);
+                currentLine = new LineInfo();
             }
-            else
-            {
-                if (currentLine.Size + childHeight > finalSize.Height && currentLine.Elements.Count > 0)
-                {
-                    lineInfo.Add(currentLine);
-                    currentLine = new LineInfo();
-                }
-                currentLine.Elements.Add((fe, childWidth, childHeight));
-                currentLine.Size += childHeight;
-                currentLine.Thickness = Math.Max(currentLine.Thickness, childWidth);
-            }
+
+            if (currentLine.Elements.Count > 0) currentLine.Size += primaryGap;
+            currentLine.Elements.Add((fe, childWidth, childHeight));
+            currentLine.Size += childPrimary;
+            currentLine.Thickness = Math.Max(currentLine.Thickness, childSecondary);
         }
 
         if (currentLine.Elements.Count > 0)
@@ -212,13 +276,19 @@ public class WrapPanel : Panel
             lineInfo.Add(currentLine);
         }
 
-        // Second pass: arrange children
+        // Second pass: arrange children.
         double offset = 0;
-        foreach (var line in lineInfo)
+        for (int lineIndex = 0; lineIndex < lineInfo.Count; lineIndex++)
         {
+            if (lineIndex > 0) offset += secondaryGap;
+
+            var line = lineInfo[lineIndex];
             double pos = 0;
+            bool firstOnLine = true;
             foreach (var (element, width, height) in line.Elements)
             {
+                if (!firstOnLine) pos += primaryGap;
+
                 Rect childRect;
                 if (orientation == Orientation.Horizontal)
                 {
@@ -231,6 +301,7 @@ public class WrapPanel : Panel
                     pos += height;
                 }
                 element.Arrange(childRect);
+                firstOnLine = false;
                 // Note: Do NOT call SetVisualBounds here - ArrangeCore already handles margin
             }
             offset += line.Thickness;

@@ -618,7 +618,7 @@ public partial class Popup : FrameworkElement
         var target = PlacementTarget ?? this;
         var targetBounds = GetElementWindowBounds(target);
 
-        // Check bottom overflow 閳?flip to top
+        // Vertical flip: Bottom -> Top
         if (position.Y + popupSize.Height > windowSize.Height && Placement == PlacementMode.Bottom)
         {
             double flippedY = targetBounds.Y - popupSize.Height;
@@ -626,7 +626,7 @@ public partial class Popup : FrameworkElement
                 position = new Point(position.X, flippedY);
         }
 
-        // Check top overflow 閳?flip to bottom
+        // Vertical flip: Top -> Bottom
         if (position.Y < 0 && Placement == PlacementMode.Top)
         {
             double flippedY = targetBounds.Y + targetBounds.Height;
@@ -634,16 +634,38 @@ public partial class Popup : FrameworkElement
                 position = new Point(position.X, flippedY);
         }
 
-        // Check right overflow 閳?shift left
-        if (position.X + popupSize.Width > windowSize.Width)
+        // Horizontal flip: Right -> left side of target
+        if (position.X + popupSize.Width > windowSize.Width && Placement == PlacementMode.Right)
         {
-            position = new Point(Math.Max(0, windowSize.Width - popupSize.Width), position.Y);
+            double flippedX = targetBounds.X - popupSize.Width;
+            if (flippedX >= 0)
+                position = new Point(flippedX, position.Y);
         }
 
-        // Check left overflow 閳?shift right
-        if (position.X < 0)
+        // Horizontal flip: Left -> right side of target
+        if (position.X < 0 && Placement == PlacementMode.Left)
         {
-            position = new Point(0, position.Y);
+            double flippedX = targetBounds.X + targetBounds.Width;
+            if (flippedX + popupSize.Width <= windowSize.Width)
+                position = new Point(flippedX, position.Y);
+        }
+
+        // Generic X shift for placements whose X derives from target.X (Bottom/Top/Custom/Relative/etc.)
+        // keeps them inside the window when the popup is wider than expected.
+        // Skip Right/Left placements: if their directional flip above failed, leave the position
+        // overflowing so the caller can promote the popup to an External Window and render
+        // beyond the owner window instead of clamping it back and clipping against the edge.
+        if (Placement != PlacementMode.Right && Placement != PlacementMode.Left)
+        {
+            if (position.X + popupSize.Width > windowSize.Width)
+            {
+                position = new Point(Math.Max(0, windowSize.Width - popupSize.Width), position.Y);
+            }
+
+            if (position.X < 0)
+            {
+                position = new Point(0, position.Y);
+            }
         }
 
         return position;
@@ -677,9 +699,10 @@ public partial class Popup : FrameworkElement
         var target = PlacementTarget ?? this;
         var targetWindowBounds = GetElementWindowBounds(target);
         var targetScreenTopLeft = WindowLocalToScreen(new Point(targetWindowBounds.X, targetWindowBounds.Y));
+        var physTargetW = targetWindowBounds.Width * dpiScale;
         var physTargetH = targetWindowBounds.Height * dpiScale;
 
-        // Check bottom overflow 閳?flip to top of target
+        // Vertical flip: Bottom -> Top of target
         if (screenPos.Y + physPopupH > workArea.Bottom &&
             (Placement == PlacementMode.Bottom || Placement == PlacementMode.Custom))
         {
@@ -688,7 +711,7 @@ public partial class Popup : FrameworkElement
                 screenPos = new Point(screenPos.X, flippedY);
         }
 
-        // Check top overflow 閳?flip to bottom of target
+        // Vertical flip: Top -> Bottom of target
         if (screenPos.Y < workArea.Top && Placement == PlacementMode.Top)
         {
             double flippedY = targetScreenTopLeft.Y + physTargetH;
@@ -696,7 +719,23 @@ public partial class Popup : FrameworkElement
                 screenPos = new Point(screenPos.X, flippedY);
         }
 
-        // Clamp X to working area
+        // Horizontal flip: Right -> left side of target on screen
+        if (screenPos.X + physPopupW > workArea.Right && Placement == PlacementMode.Right)
+        {
+            double flippedX = targetScreenTopLeft.X - physPopupW;
+            if (flippedX >= workArea.Left)
+                screenPos = new Point(flippedX, screenPos.Y);
+        }
+
+        // Horizontal flip: Left -> right side of target on screen
+        if (screenPos.X < workArea.Left && Placement == PlacementMode.Left)
+        {
+            double flippedX = targetScreenTopLeft.X + physTargetW;
+            if (flippedX + physPopupW <= workArea.Right)
+                screenPos = new Point(flippedX, screenPos.Y);
+        }
+
+        // Clamp X to working area (fallback when flipping to the opposite side still does not fit)
         if (screenPos.X + physPopupW > workArea.Right)
             screenPos = new Point(Math.Max(workArea.Left, workArea.Right - physPopupW), screenPos.Y);
         if (screenPos.X < workArea.Left)

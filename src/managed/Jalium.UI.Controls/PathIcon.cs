@@ -64,29 +64,18 @@ public class PathIcon : IconElement
 
         var foreground = GetEffectiveForeground();
         var fitMatrix = CreateFitMatrix(Data.Bounds, RenderSize);
-        var finalMatrix = fitMatrix;
 
-        if (RenderTransform is Transform renderTransform)
-        {
-            var renderMatrix = renderTransform.Value;
-            if (!renderMatrix.IsIdentity)
-            {
-                var origin = RenderTransformOrigin;
-                var cx = origin.X * RenderSize.Width;
-                var cy = origin.Y * RenderSize.Height;
-                finalMatrix = Matrix.Multiply(
-                    finalMatrix,
-                    MatrixHelper.CreateCenteredMatrix(renderMatrix, cx, cy));
-            }
-        }
-
-        if (finalMatrix.IsIdentity)
+        // Only handle the fit-to-size matrix here. Any user-supplied
+        // RenderTransform (rotation/skew/scale) is pushed generically by
+        // Visual.RenderDirect around this element's draw pass — applying it
+        // again here would double-transform the icon.
+        if (fitMatrix.IsIdentity)
         {
             dc.DrawGeometry(foreground, null, Data);
             return;
         }
 
-        dc.PushTransform(new MatrixTransform(finalMatrix));
+        dc.PushTransform(new MatrixTransform(fitMatrix));
         try
         {
             dc.DrawGeometry(foreground, null, Data);

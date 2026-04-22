@@ -270,7 +270,23 @@ public class Frame : ContentControl
         // Create new instance
         try
         {
-            var page = Activator.CreateInstance(pageType) as Page;
+            Page? page = null;
+
+            // Prefer DI when an IViewFactory is registered with the Application.
+            // The factory also wires up DataContext from a registered ViewModel
+            // (see AddView<TView, TViewModel>()).
+            var factory = Application.Current?.Services is { } services
+                ? services.GetService(typeof(Jalium.UI.Hosting.IViewFactory)) as Jalium.UI.Hosting.IViewFactory
+                : null;
+
+            if (factory != null)
+            {
+                page = factory.CreateView(pageType) as Page;
+            }
+
+            // Fallback for apps that don't use AppBuilder / DI.
+            page ??= Activator.CreateInstance(pageType) as Page;
+
             if (page != null && page.NavigationCacheMode != NavigationCacheMode.Disabled)
             {
                 // Manage cache size

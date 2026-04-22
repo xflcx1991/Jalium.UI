@@ -152,7 +152,6 @@ public class ScrollBar : RangeBase
     private double _autoHideVisualAnimTo;
     private double _autoHideCollapseProgress;
     private double _chromeOpacity = 1.0;
-    internal bool IsWheelScrollingInput { get; private set; }
     private const string ScrollBarStyleKey = "ScrollBarStyle";
     private const string LineButtonStyleKey = "ScrollBarLineButtonStyle";
     private const string PageButtonStyleKey = "ScrollBarPageButtonStyle";
@@ -185,9 +184,15 @@ public class ScrollBar : RangeBase
         // Create visual children
         CreateVisualChildren();
 
-        // Register event handlers
+        // Register event handlers.
+        // MouseWheel is intentionally NOT handled here: when a ScrollBar is hosted inside a
+        // ScrollViewer, the wheel event should bubble up so that ScrollViewer.OnMouseWheel
+        // runs the same accumulation-based smooth scroll logic as when the pointer is over
+        // the content area. Handling the wheel directly on ScrollBar (and raising a Scroll
+        // event with a precomputed NewValue) caused the scrollbar-track scrolling speed to
+        // lag behind content-area scrolling when the user scrolled the wheel rapidly,
+        // because the Scroll-event path assigned the smooth target instead of accumulating it.
         AddHandler(MouseDownEvent, new MouseButtonEventHandler(OnMouseDownHandler));
-        AddHandler(MouseWheelEvent, new MouseWheelEventHandler(OnMouseWheelHandler));
         ResourcesChanged += OnResourcesChangedHandler;
 
         _autoHideCollapseProgress = IsThumbSlim ? 1.0 : 0.0;
@@ -795,31 +800,6 @@ public class ScrollBar : RangeBase
         {
             Focus();
         }
-    }
-
-    private void OnMouseWheelHandler(object sender, MouseWheelEventArgs e)
-    {
-        double pageStep = double.IsFinite(LargeChange) && LargeChange > 0
-            ? LargeChange
-            : SmallChange;
-        var delta = ScrollViewer.ComputeMouseWheelDelta(e.Delta, SmallChange, pageStep);
-        var newValue = Math.Clamp(Value + delta, Minimum, Maximum);
-
-        if (Math.Abs(newValue - Value) > double.Epsilon)
-        {
-            Value = newValue;
-            IsWheelScrollingInput = true;
-            try
-            {
-                RaiseScrollEvent(delta < 0 ? ScrollEventType.SmallDecrement : ScrollEventType.SmallIncrement);
-            }
-            finally
-            {
-                IsWheelScrollingInput = false;
-            }
-        }
-
-        e.Handled = true;
     }
 
     private void RaiseScrollEvent(ScrollEventType scrollType)

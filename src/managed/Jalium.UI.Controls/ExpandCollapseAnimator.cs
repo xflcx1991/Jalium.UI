@@ -1,126 +1,221 @@
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Jalium.UI.Media;
-using Jalium.UI.Media.Animation;
 using Jalium.UI.Threading;
 
 namespace Jalium.UI.Controls;
 
 /// <summary>
-/// Provides smooth expand/collapse animation for panels with elastic spring easing.
-/// All expand animations (height, arrow, cloth) share one unified progress (0→1).
-/// Cloth draping staggers per-child via progress offset, not time offset.
+/// Provides smooth expand/collapse animation for panels with non-linear cubic easing.
+/// Drives Height + Opacity together, plus an optional chevron arrow rotation, so the
+/// content grows/shrinks visually instead of snapping in and out.
 /// </summary>
 internal static class ExpandCollapseAnimator
 {
-    private const double ExpandDurationMs = 350;
-    private const double CollapseDurationMs = 150;
+    private const double ExpandDurationMs = 280.0;
+    private const double CollapseDurationMs = 200.0;
 
-    // Cloth: each child's animation starts at a progress delay proportional to its index.
-    // e.g. 0.08 means child[1] starts at progress=0.08, child[2] at 0.16, etc.
-    private const double ClothStaggerProgress = 0.08;
+    // Per-panel animation state — keyed by the panel so that multiple Expanders
+    // running at once don't stomp on each other. ConditionalWeakTable lets the
+    // panel (and therefore its state) be garbage collected normally.
+    private static readonly ConditionalWeakTable<FrameworkElement, AnimationContext> s_contexts = new();
 
-    private static readonly BackEase ExpandEase = new() { EasingMode = EasingMode.EaseOut, Amplitude = 1.0 };
-    private static readonly BackEase ClothEase = new() { EasingMode = EasingMode.EaseOut, Amplitude = 1.2 };
-    private static readonly CubicEase ArrowEase = new() { EasingMode = EasingMode.EaseOut };
-    private static readonly CubicEase CollapseEase = new() { EasingMode = EasingMode.EaseInOut };
+    private sealed class AnimationContext
+    {
+        public DispatcherTimer? Timer;
+        public readonly Stopwatch Stopwatch = new();
+        public FrameworkElement? Panel;
+        public Shapes.Path? Arrow;
+
+        public double StartHeight;
+        public double TargetHeight;
+        public double StartOpacity;
+        public double TargetOpacity;
+        public double StartArrowAngle;
+        public double TargetArrowAngle;
+
+        public bool Expanding;
+        public double DurationMs;
+    }
 
     /// <summary>
-    /// Animates a panel expanding with elastic overshoot and cloth draping effect.
-    /// Height, arrow, and cloth all driven by a single progress 0→1.
+    /// Animates a panel expanding with a cubic ease-out curve.
     /// </summary>
     internal static DispatcherTimer? AnimateExpand(FrameworkElement panel, DispatcherTimer? activeTimer, Shapes.Path? arrow = null)
     {
-        activeTimer?.Stop();
-        ClearChildOffsets(panel);
-
-        panel.Visibility = Visibility.Visible;
-        panel.ClipToBounds = true;
-        panel.Height = double.NaN;
-        panel.MaxHeight = double.PositiveInfinity;
-        if (arrow != null)
-        {
-            EnsureRotateTransform(arrow).Angle = 90;
-            arrow.InvalidateVisual();
-        }
-
-        panel.ClipToBounds = false;
-        return null;
+        _ = activeTimer; // Preserved for API compatibility; state is owned by the animator.
+        return StartAnimation(panel, arrow, expanding: true);
     }
 
     /// <summary>
-    /// Animates a panel collapsing smoothly.
+    /// Animates a panel collapsing with a cubic ease-in curve.
     /// </summary>
     internal static DispatcherTimer? AnimateCollapse(FrameworkElement panel, DispatcherTimer? activeTimer, Shapes.Path? arrow = null)
     {
-        activeTimer?.Stop();
-        ClearChildOffsets(panel);
+        _ = activeTimer;
+        return StartAnimation(panel, arrow, expanding: false);
+    }
+
+    private static DispatcherTimer? StartAnimation(FrameworkElement panel, Shapes.Path? arrow, bool expanding)
+    {
+        var ctx = s_contexts.GetValue(panel, _ => new AnimationContext { Panel = panel });
+        ctx.Timer?.Stop();
+        ctx.Arrow = arrow;
+
+        // Capture current visual state as the animation starting point. This
+        // makes interrupted animations (rapid toggles) blend seamlessly.
+        var currentHeight = ResolveCurrentHeight(panel);
+        ctx.StartHeight = currentHeight;
+        ctx.StartOpacity = panel.Opacity;
+        ctx.StartArrowAngle = (arrow?.RenderTransform as RotateTransform)?.Angle
+                              ?? (expanding ? 0.0 : 90.0);
+
+        if (expanding)
+        {
+            // Force the panel into the layout pass so we can measure the
+            // content's natural height, then start from the current clipped value.
+            panel.Visibility = Visibility.Visible;
+            panel.ClipToBounds = true;
+
+            ctx.TargetHeight = MeasureNaturalHeight(panel);
+            ctx.TargetOpacity = 1.0;
+            ctx.TargetArrowAngle = 90.0;
+            ctx.DurationMs = ExpandDurationMs;
+        }
+        else
+        {
+            panel.ClipToBounds = true;
+
+            ctx.TargetHeight = 0.0;
+            ctx.TargetOpacity = 0.0;
+            ctx.TargetArrowAngle = 0.0;
+            ctx.DurationMs = CollapseDurationMs;
+        }
+
+        ctx.Expanding = expanding;
+
+        // Nothing to animate — snap to target immediately.
+        if (ctx.TargetHeight <= 0.0 && !expanding && currentHeight <= 0.0)
+        {
+            ApplyFinalState(ctx);
+            return null;
+        }
+
+        // Prime the panel at the starting height so the first frame doesn't
+        // jump (important when the panel was sized to Auto/NaN before).
+        panel.Height = currentHeight;
+        panel.Opacity = ctx.StartOpacity;
         if (arrow != null)
         {
-            EnsureRotateTransform(arrow).Angle = 0;
-            arrow.InvalidateVisual();
+            EnsureRotateTransform(arrow).Angle = ctx.StartArrowAngle;
         }
 
-        panel.Visibility = Visibility.Collapsed;
-        panel.Height = double.NaN;
-        panel.MaxHeight = double.PositiveInfinity;
-        panel.ClipToBounds = false;
-        return null;
-    }
+        ctx.Stopwatch.Restart();
 
-    #region Helpers
-
-    private struct ClothChild
-    {
-        public UIElement Element;
-        public double InitialY;
-        public double ProgressDelay; // 0.0 for first child, increases for later children
-    }
-
-    private static ClothChild[] CollectClothChildren(FrameworkElement panel, double targetHeight)
-    {
-        if (panel is not Panel p || p.Children.Count == 0)
-            return [];
-
-        var count = 0;
-        for (int i = 0; i < p.Children.Count; i++)
+        if (ctx.Timer == null)
         {
-            if (p.Children[i] is UIElement child && child.Visibility != Visibility.Collapsed)
-                count++;
-        }
-
-        if (count == 0)
-            return [];
-
-        var baseOffset = Math.Min(targetHeight * 0.3, 40.0);
-        var result = new ClothChild[count];
-        var idx = 0;
-
-        for (int i = 0; i < p.Children.Count; i++)
-        {
-            if (p.Children[i] is UIElement child && child.Visibility != Visibility.Collapsed)
+            ctx.Timer = new DispatcherTimer
             {
-                var progressDelay = idx * ClothStaggerProgress;
-                result[idx] = new ClothChild
-                {
-                    Element = child,
-                    InitialY = -baseOffset * (idx + 1.0) / count,
-                    ProgressDelay = Math.Min(progressDelay, 0.5) // cap at 50% so child still has room to animate
-                };
-                child.RenderOffset = new Point(0, result[idx].InitialY);
-                idx++;
+                Interval = CompositionTarget.FrameInterval
+            };
+            ctx.Timer.Tick += (_, _) => OnTick(ctx);
+        }
+        ctx.Timer.Start();
+
+        return ctx.Timer;
+    }
+
+    private static void OnTick(AnimationContext ctx)
+    {
+        var panel = ctx.Panel;
+        if (panel == null)
+        {
+            ctx.Timer?.Stop();
+            return;
+        }
+
+        var elapsed = ctx.Stopwatch.Elapsed.TotalMilliseconds;
+        var t = Math.Min(1.0, elapsed / Math.Max(1.0, ctx.DurationMs));
+
+        // Non-linear: cubic ease-out on expand (fast-start, soft-land),
+        // cubic ease-in on collapse (soft-start, fast-exit).
+        var eased = ctx.Expanding ? EaseOutCubic(t) : EaseInCubic(t);
+
+        panel.Height = ctx.StartHeight + (ctx.TargetHeight - ctx.StartHeight) * eased;
+        panel.Opacity = ctx.StartOpacity + (ctx.TargetOpacity - ctx.StartOpacity) * eased;
+
+        if (ctx.Arrow != null)
+        {
+            var angle = ctx.StartArrowAngle + (ctx.TargetArrowAngle - ctx.StartArrowAngle) * eased;
+            EnsureRotateTransform(ctx.Arrow).Angle = angle;
+            ctx.Arrow.InvalidateVisual();
+        }
+
+        if (t >= 1.0)
+        {
+            ApplyFinalState(ctx);
+        }
+    }
+
+    private static void ApplyFinalState(AnimationContext ctx)
+    {
+        var panel = ctx.Panel;
+        if (panel == null) return;
+
+        ctx.Timer?.Stop();
+        ctx.Stopwatch.Stop();
+
+        if (ctx.Expanding)
+        {
+            // Restore Auto sizing so the panel can grow/shrink with its content.
+            panel.Height = double.NaN;
+            panel.Opacity = 1.0;
+            panel.ClipToBounds = false;
+            if (ctx.Arrow != null)
+            {
+                EnsureRotateTransform(ctx.Arrow).Angle = 90.0;
             }
         }
-
-        return result;
+        else
+        {
+            panel.Height = 0.0;
+            panel.Opacity = 0.0;
+            panel.Visibility = Visibility.Collapsed;
+            if (ctx.Arrow != null)
+            {
+                EnsureRotateTransform(ctx.Arrow).Angle = 0.0;
+            }
+        }
     }
 
-    private static void ClearChildOffsets(FrameworkElement panel)
+    private static double ResolveCurrentHeight(FrameworkElement panel)
     {
-        if (panel is not Panel p) return;
-        for (int i = 0; i < p.Children.Count; i++)
+        if (!double.IsNaN(panel.Height) && panel.Height >= 0.0)
         {
-            if (p.Children[i] is UIElement child)
-                child.RenderOffset = default;
+            return panel.Height;
         }
+
+        // Collapsed panels don't participate in layout → ActualHeight is 0.
+        return panel.Visibility == Visibility.Visible ? panel.ActualHeight : 0.0;
+    }
+
+    private static double MeasureNaturalHeight(FrameworkElement panel)
+    {
+        // Clear any explicit Height so measure reflects the content's own desire.
+        panel.Height = double.NaN;
+        panel.InvalidateMeasure();
+
+        var availableWidth = panel.ActualWidth > 0
+            ? panel.ActualWidth
+            : (panel.VisualParent is FrameworkElement parent && parent.ActualWidth > 0
+                ? parent.ActualWidth
+                : double.PositiveInfinity);
+
+        panel.Measure(new Size(availableWidth, double.PositiveInfinity));
+        var desired = panel.DesiredSize.Height;
+
+        // Guard against pathological 0 when measurement can't resolve yet.
+        return desired > 0.0 ? desired : panel.ActualHeight;
     }
 
     private static RotateTransform EnsureRotateTransform(Shapes.Path arrow)
@@ -134,5 +229,7 @@ internal static class ExpandCollapseAnimator
         return rt;
     }
 
-    #endregion
+    private static double EaseOutCubic(double t) => 1.0 - Math.Pow(1.0 - t, 3.0);
+
+    private static double EaseInCubic(double t) => t * t * t;
 }

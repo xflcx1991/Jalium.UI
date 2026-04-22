@@ -4,6 +4,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Reflection;
 using Jalium.UI.Controls;
+using Jalium.UI.Diagnostics;
 
 namespace Jalium.UI.Data;
 
@@ -458,11 +459,13 @@ public sealed class BindingExpression : BindingExpressionBase
             Status = BindingStatus.Unattached;
             if (Target is FrameworkElement pendingFe)
                 pendingFe.DataContextChanged += OnDataContextChanged;
+            BindingDiagnostics.NotifyStatus(this, "Unattached — source not resolved");
             return;
         }
 
         IsActive = true;
         Status = BindingStatus.Active;
+        BindingDiagnostics.NotifyActivated(this);
 
         // Subscribe to source changes
         SubscribeToSource();
@@ -508,6 +511,8 @@ public sealed class BindingExpression : BindingExpressionBase
 
         if (ResolvedSource == null || _sourceProperty == null)
             return;
+
+        BindingDiagnostics.NotifyUpdateSource(this);
 
         try
         {
@@ -650,6 +655,8 @@ public sealed class BindingExpression : BindingExpressionBase
         Validation.MarkInvalid(Target, error);
         Status = BindingStatus.UpdateSourceError;
 
+        BindingDiagnostics.NotifyError(this, error?.ErrorContent?.ToString() ?? "<null>");
+
         if (_binding.NotifyOnValidationError)
         {
             RaiseValidationErrorEvent(error, ValidationErrorEventAction.Added);
@@ -694,6 +701,8 @@ public sealed class BindingExpression : BindingExpressionBase
     {
         if (!IsActive || _isUpdating)
             return;
+
+        BindingDiagnostics.NotifyUpdateTarget(this);
 
         try
         {

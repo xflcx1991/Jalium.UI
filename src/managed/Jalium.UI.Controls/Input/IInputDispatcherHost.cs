@@ -53,6 +53,13 @@ internal interface IInputDispatcherHost
 
     // ── Debug HUD ──
 
+    /// <summary>
+    /// When <see langword="false"/>, F3 is a no-op — the application has not
+    /// opted in via <c>builder.UseDebugHud()</c>. When <see langword="true"/>,
+    /// F3 toggles <see cref="DebugHudEnabled"/> as usual.
+    /// </summary>
+    bool CanToggleDebugHud { get; }
+
     bool DebugHudEnabled { get; set; }
     Visibility DebugHudOverlayVisibility { set; }
 

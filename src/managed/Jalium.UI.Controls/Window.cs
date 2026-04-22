@@ -5,6 +5,7 @@ using Jalium.UI.Input;
 using Jalium.UI.Input.StylusPlugIns;
 using Jalium.UI.Interop;
 using Jalium.UI.Media;
+using Jalium.UI.Rendering;
 using Jalium.UI.Threading;
 using Jalium.UI.Controls.DevTools;
 using System.Diagnostics;
@@ -125,7 +126,11 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
         private int _renderFrameCalls, _paintCalls, _processRenderCalls;
         private int _beginDrawFails, _resizeCount;
         private int _fullFrames, _partialFrames, _skippedFrames;
+        private int _promotedFrames;      // Partial dirty region that exceeded the area threshold → promoted to full
+        private int _capacityExceeded;    // Aggregator hit its soft capacity and performed a forced merge
         private int _dirtyElementCount;
+        private int _dirtyRectCount;      // Rects submitted to the native RT on the most recent partial frame
+        private double _dirtyCoverageRatio; // Real covered pixel ratio (0-1) of the most recent partial frame
 
         // ── Snapshot (displayed values, updated once per second) ──
         private double _dFps, _dWorstMs;
@@ -133,11 +138,14 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
         private int _dRenderFrameCalls, _dPaintCalls, _dProcessRenderCalls;
         private int _dBeginDrawFails, _dResizeCount;
         private int _dFullFrames, _dPartialFrames, _dSkippedFrames;
-        private int _dDirtyElements;
+        private int _dPromotedFrames, _dCapacityExceeded;
+        private int _dDirtyElements, _dDirtyRectCount;
+        private double _dDirtyCoverageRatio;
 
         // ── State ──
         private string _renderPath = "—";
         private string _backendName = "?";
+        private string _engineName = "?";
         private int _windowWidth, _windowHeight;
         private float _dpiScale;
         private Rect _dirtyRegion;
@@ -153,12 +161,22 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
         public void OnSkipped() => _skippedFrames++;
         public void OnFull() { _fullFrames++; _renderPath = "Full"; }
         public void OnPartial() { _partialFrames++; _renderPath = "Partial"; }
+        public void OnPromoted() { _promotedFrames++; _renderPath = "Promoted→Full"; }
+        public void OnCapacityExceeded() => _capacityExceeded++;
         public void MarkLayout() => _layoutMs = _frameSw.Elapsed.TotalMilliseconds;
         public void MarkRender() => _renderMs = _frameSw.Elapsed.TotalMilliseconds;
         public void SetBackend(string b) => _backendName = b;
+        public void SetEngine(string e) => _engineName = e;
         public void SetWindowSize(int w, int h) { _windowWidth = w; _windowHeight = h; }
         public void SetDpiScale(float s) => _dpiScale = s;
         public void SetDirtyInfo(int elementCount, Rect region) { _dirtyElementCount = elementCount; _dirtyRegion = region; }
+        public void SetDirtyRegionStats(int rectCount, double coverageRatio)
+        {
+            _dirtyRectCount = rectCount;
+            _dirtyCoverageRatio = coverageRatio;
+        }
+
+        public readonly Jalium.UI.Diagnostics.FrameHistory FrameHistory = new();
 
         public void OnEndDraw()
         {
@@ -166,6 +184,12 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
             _lastFrameMs = _presentMs;
             if (_lastFrameMs > _worstFrameMs) _worstFrameMs = _lastFrameMs;
             _frameCount++;
+
+            double layoutMs = _layoutMs;
+            double renderMs = Math.Max(0, _renderMs - _layoutMs);
+            double presentMs = Math.Max(0, _presentMs - _renderMs);
+            FrameHistory.Push(new Jalium.UI.Diagnostics.FrameHistory.Sample(
+                layoutMs, renderMs, presentMs, _presentMs, _dirtyElementCount));
         }
 
         private void FlushInterval()
@@ -185,7 +209,11 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
             _dFullFrames = _fullFrames;
             _dPartialFrames = _partialFrames;
             _dSkippedFrames = _skippedFrames;
+            _dPromotedFrames = _promotedFrames;
+            _dCapacityExceeded = _capacityExceeded;
             _dDirtyElements = _dirtyElementCount;
+            _dDirtyRectCount = _dirtyRectCount;
+            _dDirtyCoverageRatio = _dirtyCoverageRatio;
 
             // Sample GC stats
             _gcTotalBytes = GC.GetTotalMemory(false);
@@ -203,9 +231,20 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
             _fullFrames = 0;
             _partialFrames = 0;
             _skippedFrames = 0;
+            _promotedFrames = 0;
+            _capacityExceeded = 0;
             _worstFrameMs = 0;
             _intervalSw.Restart();
         }
+
+        /// <summary>
+        /// Readonly snapshot of the partial-render diagnostics.
+        /// Exposed so DevTools / custom HUDs can render their own summary.
+        /// </summary>
+        public (int full, int partial, int promoted, int skipped, int capacityExceeded,
+                int dirtyRects, double coverageRatio) PartialRenderSnapshot() =>
+            (_dFullFrames, _dPartialFrames, _dPromotedFrames, _dSkippedFrames,
+             _dCapacityExceeded, _dDirtyRectCount, _dDirtyCoverageRatio);
 
         public void UpdateOverlay(DebugHudOverlay overlay)
         {
@@ -221,11 +260,13 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
             overlay.Update(
                 _dFps, _dWorstMs,
                 layoutMs, renderMs, presentMs, _dPresentMs,
-                _renderPath, _backendName,
+                _renderPath, _backendName, _engineName,
                 _dFullFrames, _dPartialFrames, _dSkippedFrames, _dBeginDrawFails,
                 _dDirtyElements, dirtyStr,
                 _windowWidth, _windowHeight, _dpiScale,
-                _gcTotalBytes, _gcGen0, _gcGen1, _gcGen2);
+                _gcTotalBytes, _gcGen0, _gcGen1, _gcGen2,
+                _dPromotedFrames, _dCapacityExceeded,
+                _dDirtyRectCount, _dDirtyCoverageRatio);
         }
     }
 
@@ -239,16 +280,30 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
     // FLIP_SEQUENTIAL with N buffers: buffer K's non-dirty area still has content
     // from frame K-N.  We must repaint the union of the last N-1 dirty regions
     // to cover all stale buffers.  With FrameCount=3, track 2 previous regions.
+    // Store per-frame region snapshots (array of rects) instead of a single
+    // bounding rect so that scattered small dirty patches across frames don't
+    // ratchet the Union into a giant bounding box.
     private const int DirtyHistoryCount = 2;
-    private readonly Rect[] _dirtyHistory = new Rect[DirtyHistoryCount];
+    private readonly Rect[][] _dirtyHistory = new Rect[DirtyHistoryCount][];
     private int _dirtyHistoryIndex;
     private long _lastRenderTicks;          // Timestamp of last completed render (for rate-limiting)
     private Timer? _renderThrottleTimer;    // Deferred render when rate-limited or waiting for the GPU
     private long _suppressEscapeUntilTick;
-    // Maps dirty element 鈫?pre-layout bounds (captured when AddDirtyElement is called).
-    // After UpdateLayout, we also compute post-layout bounds.
-    // Both are submitted as dirty rects so vacated areas (FLIP_SEQUENTIAL) are repainted.
-    private readonly Dictionary<UIElement, Rect> _dirtyElements = new();
+    // Per-dirty-element state.  PreLayoutBounds captures where the element WAS
+    // when AddDirtyElement was first called in this frame (before UpdateLayout).
+    // PreciseLocalRects (optional) lets callers mark only a sub-rectangle of the
+    // element dirty — caret blink, focus ring, progress-bar fill — instead of
+    // the whole control. Post-layout bounds are computed at render time.
+    private sealed class DirtyElementEntry
+    {
+        public Rect PreLayoutBounds;
+        public List<Rect>? PreciseLocalRects;
+    }
+    private readonly Dictionary<UIElement, DirtyElementEntry> _dirtyElements = new();
+    // Free-floating dirty rects in window (screen) coordinates. Populated by
+    // AddDirtyRect — used when an animation / compositor system knows a region
+    // changed but doesn't own a single UIElement.
+    private readonly List<Rect> _dirtyFreeRects = new();
     private readonly object _dirtyLock = new(); // Protects _dirtyElements from cross-thread access
     private int _appliedDwmTopMarginPhysical = -1;
     private bool _attemptedAutoWindowIcon;
@@ -1640,17 +1695,19 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
         var button = GetTitleBarButtonAtPoint(new Point(pt.X / _dpiScale, pt.Y / _dpiScale));
         _inputDispatcher.UpdateTitleBarButtonHover(button);
 
-        // Track non-client mouse leave
+        // Only request TME_LEAVE so the button hover state can be cleared when
+        // the cursor exits the NC area. Do NOT request TME_HOVER here — that
+        // would continually reset the DefWindowProc-owned hover timer that
+        // Windows 11 uses to arm the Snap Layouts flyout. DefWindowProc will
+        // register its own hover tracking via the standard message flow.
         TRACKMOUSEEVENT tme = new()
         {
             cbSize = (uint)Marshal.SizeOf<TRACKMOUSEEVENT>(),
-            dwFlags = TME_LEAVE | TME_HOVER | TME_NONCLIENT,
+            dwFlags = TME_LEAVE | TME_NONCLIENT,
             hwndTrack = Handle,
             dwHoverTime = HOVER_DEFAULT
         };
         _ = TrackMouseEvent(ref tme);
-
-        // Let DWM/DefWindowProc continue processing NC mouse move for Snap state machine.
     }
 
     private void OnNcMouseLeave()
@@ -1699,6 +1756,7 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
         proxyLParam = PackScreenPointToLParam(proxyScreenPoint);
         return true;
     }
+
 
     private bool TryGetDwmMaxButtonBounds(out (int left, int top, int right, int bottom) dwmMaxRect)
     {
@@ -3372,17 +3430,24 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
             return;
         }
 
-        int titleBarPhysical = GetCustomTitleBarTopMarginPhysical();
-        if (_appliedDwmTopMarginPhysical == titleBarPhysical)
+        int topMarginPhysical = GetCustomTitleBarTopMarginPhysical();
+        if (_appliedDwmTopMarginPhysical == topMarginPhysical)
         {
             return;
         }
 
-        MARGINS margins = new() { Left = 0, Right = 0, Top = titleBarPhysical, Bottom = 0 };
+        MARGINS margins = new() { Left = 0, Right = 0, Top = topMarginPhysical, Bottom = 0 };
         _ = DwmExtendFrameIntoClientArea(Handle, ref margins);
-        _appliedDwmTopMarginPhysical = titleBarPhysical;
+        _appliedDwmTopMarginPhysical = topMarginPhysical;
     }
 
+    // DWM uses the Top margin to decide where the caption frame starts and
+    // whether to arm the Windows 11 Snap Layouts flyout over the maximize
+    // button. If we pass 0/1 here the flyout stops appearing entirely; if
+    // we pass the full custom title-bar height DWM still anchors the caption
+    // button rect to the system height at the top of that region. So mirror
+    // the title-bar height (or at least enough to cover it) to keep DWM's
+    // caption semantics aligned with our custom chrome.
     private int GetCustomTitleBarTopMarginPhysical()
     {
         if (!IsTitleBarVisible())
@@ -3394,16 +3459,6 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
         if (TitleBar != null)
         {
             titleBarHeightDip = GetElementHeightDip(TitleBar, titleBarHeightDip);
-
-            // DWM hover tracking must include oversized caption buttons as well,
-            // otherwise Snap only appears inside the old top margin.
-            foreach (var button in TitleBar.EnumerateButtons())
-            {
-                if (button.Visibility == Visibility.Visible)
-                {
-                    titleBarHeightDip = Math.Max(titleBarHeightDip, GetElementHeightDip(button, titleBarHeightDip));
-                }
-            }
         }
 
         return Math.Max((int)Math.Ceiling(titleBarHeightDip * _dpiScale), 1);
@@ -4293,9 +4348,14 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
 
     /// <summary>
     /// Gets whether this window can open DevTools.
-    /// Override to return false in windows that should not open DevTools (e.g., DevToolsWindow).
+    /// Default: reads <see cref="Jalium.UI.Hosting.DeveloperToolsOptions.EnableDevTools"/>
+    /// from the application's DI container — apps must call
+    /// <c>builder.UseDevTools()</c> to opt in. Without that call F12 is inert.
+    /// Subclasses (e.g. <c>DevToolsWindow</c>) can still override to force a
+    /// stricter policy (hard-disable regardless of the service flag).
     /// </summary>
-    protected virtual bool CanOpenDevTools => true;
+    protected virtual bool CanOpenDevTools
+        => Jalium.UI.Hosting.DeveloperToolsResolver.IsDevToolsEnabled;
 
     internal static (int left, int top, int right, int bottom) ComputeCustomNcCalcSizeRect(
         (int left, int top, int right, int bottom) originalRect,
@@ -4699,24 +4759,20 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
                     }
                     if (window.TitleBarStyle == WindowTitleBarStyle.Custom)
                     {
-                        var customHitResult = window.HandleNcHitTest(lParam);
-
-                        if (window.ShouldUseWin11SnapNcRouting() &&
-                            DwmDefWindowProc(hWnd, msg, wParam, lParam, out nint dwmHitResult))
+                        // Let DWM first have a chance to resolve the NC hit. This is
+                        // what primes the Windows 11 Snap Layouts state machine — DWM
+                        // uses this pass to notice HTMAXBUTTON in subsequent NC mouse
+                        // messages and arm the flyout timer. Without this call, the
+                        // flyout never appears even when we return HTMAXBUTTON. If
+                        // DWM claims the hit (typical for caption resize handles),
+                        // honor its result; otherwise fall through to our custom
+                        // button / caption / client logic.
+                        if (DwmDefWindowProc(hWnd, msg, wParam, lParam, out nint dwmHit) && dwmHit != nint.Zero)
                         {
-                            // Keep custom caption-button hit-testing in charge so styled
-                            // button dimensions can enlarge WM_NCHITTEST regions.
-                            if (IsCaptionButtonNcHit(customHitResult))
-                            {
-                                return customHitResult;
-                            }
-
-                            if (dwmHitResult != nint.Zero)
-                            {
-                                return dwmHitResult;
-                            }
+                            return dwmHit;
                         }
 
+                        var customHitResult = window.HandleNcHitTest(lParam);
                         if (customHitResult != HTNOWHERE)
                         {
                             return customHitResult;
@@ -4728,31 +4784,19 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
                     if (window.TitleBarStyle == WindowTitleBarStyle.Custom)
                     {
                         window.OnNcMouseMove(wParam, lParam);
-                        if (window.ShouldUseWin11SnapNcRouting())
-                        {
-                            _ = DwmDefWindowProc(hWnd, msg, wParam, lParam, out _);
-                        }
+                        // Let DefWindowProc handle NC hover tracking so Windows 11 can
+                        // arm the Snap Layouts flyout timer. Do not swallow this message.
                     }
                     break;
 
                 case WM_NCMOUSEHOVER:
-                    if (window.TitleBarStyle == WindowTitleBarStyle.Custom)
-                    {
-                        if (window.ShouldUseWin11SnapNcRouting())
-                        {
-                            _ = DwmDefWindowProc(hWnd, msg, wParam, lParam, out _);
-                        }
-                    }
+                    // Let DefWindowProc forward this to DWM/Shell for Snap Layouts.
                     break;
 
                 case WM_NCMOUSELEAVE:
                     if (window.TitleBarStyle == WindowTitleBarStyle.Custom)
                     {
                         window.OnNcMouseLeave();
-                        if (window.ShouldUseWin11SnapNcRouting())
-                        {
-                            _ = DwmDefWindowProc(hWnd, msg, wParam, lParam, out _);
-                        }
                     }
                     break;
 
@@ -5357,6 +5401,7 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
             lock (_dirtyLock)
             {
                 _dirtyElements.Clear();
+                _dirtyFreeRects.Clear();
                 _fullInvalidation = true;
             }
 
@@ -5424,6 +5469,7 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
             lock (_dirtyLock)
             {
                 _dirtyElements.Clear();
+                _dirtyFreeRects.Clear();
                 _fullInvalidation = true;
             }
 
@@ -5517,6 +5563,16 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
         if (endResult == JaliumResult.Ok)
         {
             _debugHud.OnEndDraw();
+            // GPU resource snapshot (glyph atlas, path cache, textures) for
+            // the Perf tab. Best-effort — a backend that hasn't implemented
+            // the query just leaves LatestGpuSnapshot unchanged.
+            if (renderTarget.TryQueryGpuStats(out var gpuStats))
+            {
+                Jalium.UI.Diagnostics.RenderDiagnostics.PublishGpuSnapshot(
+                    gpuStats.GlyphSlotsUsed, gpuStats.GlyphSlotsTotal, gpuStats.GlyphBytes,
+                    gpuStats.PathEntries, gpuStats.PathBytes,
+                    gpuStats.TextureCount, gpuStats.TextureBytes);
+            }
             _lastRenderTicks = Environment.TickCount64;
             ResetRenderRecoveryBackoff();
             return true;
@@ -5743,7 +5799,7 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
             // ── Compute dirty region from accumulated dirty elements ──
             // Check dirty AFTER UpdateLayout so layout-triggered invalidations are included.
             bool fullInvalidation;
-            Rect dirtyRegion = Rect.Empty;
+            DirtyRegionAggregator? aggregator = null;
             // D3D12 now uses retained-mode dirty rects by default.
             // If a specific driver shows stale-buffer artifacts, the old behavior can be
             // restored with JALIUM_D3D12_FORCE_FULL_REPLAY=1.
@@ -5754,7 +5810,7 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
                 // skip the frame entirely regardless of backend.  requiresFullReplay means
                 // "when we DO render, repaint everything" — it must NOT prevent skipping
                 // frames where there is genuinely nothing to render.
-                if (!_fullInvalidation && _dirtyElements.Count == 0)
+                if (!_fullInvalidation && _dirtyElements.Count == 0 && _dirtyFreeRects.Count == 0)
                 {
                     _debugHud.OnSkipped();
                     if (DebugRender) System.Diagnostics.Debug.WriteLine("[RenderFrame] SKIP: no dirty, no fullInvalidation");
@@ -5768,16 +5824,16 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
                     System.Diagnostics.Debug.WriteLine($"[RenderFrame] path={( fullInvalidation ? "FULL" : "PARTIAL")} reason={reason} dirtyCount={_dirtyElements.Count} fullInv={_fullInvalidation}");
                     if (_dirtyElements.Count > 0 && _dirtyElements.Count <= 10)
                     {
-                        foreach (var (el, bounds) in _dirtyElements)
-                            System.Diagnostics.Debug.WriteLine($"  dirty: {el.GetType().Name} bounds={bounds}");
+                        foreach (var (el, entry) in _dirtyElements)
+                            System.Diagnostics.Debug.WriteLine($"  dirty: {el.GetType().Name} bounds={entry.PreLayoutBounds}");
                     }
                 }
 
                 if (!fullInvalidation)
                 {
-                    dirtyRegion = ComputeDirtyRegion();
+                    aggregator = ComputeDirtyRegions();
                 }
-                _debugHud.SetDirtyInfo(_dirtyElements.Count, dirtyRegion);
+                _debugHud.SetDirtyInfo(_dirtyElements.Count, aggregator?.GetBoundingBox() ?? Rect.Empty);
 
                 // NOTE: do NOT clear _dirtyElements here.  BeginDraw may fail
                 // (GPU still busy with the previous frame) and we need to preserve
@@ -5788,6 +5844,7 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
             _drawingContext ??= new RenderTargetDrawingContext(RenderTarget, context);
             _drawingContext.SimplifyGpuEffects = _isSizing;
             _debugHud.SetBackend(RenderTarget.Backend.ToString());
+            _debugHud.SetEngine(RenderTarget.RenderingEngine.ToString());
             _debugHud.SetWindowSize(RenderTarget.Width, RenderTarget.Height);
             _debugHud.SetDpiScale((float)_dpiScale);
 
@@ -5795,19 +5852,16 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
             // This minimizes input-to-display latency for all scenarios.
             RenderTarget.SetVSyncEnabled(false);
 
+            var windowBounds = new Rect(0, 0, ActualWidth, ActualHeight);
+
             if (fullInvalidation)
             {
                 // ── Full render path (first frame, resize, theme change) ──
                 // Full render refreshes the CURRENT buffer only. The other N-1
                 // swap chain buffers still have stale content. Seed the dirty
                 // history with the full window rect so the next N-1 partial frames
-                // repaint everything on those buffers. If the DXGI runtime copies
-                // non-dirty content between buffers this is redundant (the >50%
-                // area check will promote to full), but it's required on drivers
-                // that skip the copy for D3D12 FLIP_SEQUENTIAL.
-                var fullWindowRect = new Rect(0, 0, ActualWidth, ActualHeight);
-                for (int h = 0; h < DirtyHistoryCount; h++) _dirtyHistory[h] = fullWindowRect;
-                _dirtyHistoryIndex = 0;
+                // repaint everything on those buffers.
+                SeedDirtyHistoryFullWindow(windowBounds);
                 RenderTarget.SetFullInvalidation();
 
                 // TryBeginDraw: non-blocking.  If the GPU hasn't finished the
@@ -5820,7 +5874,7 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
                 }
 
                 // GPU is ready — commit dirty state now.
-                lock (_dirtyLock) { _dirtyElements.Clear(); _fullInvalidation = false; }
+                lock (_dirtyLock) { _dirtyElements.Clear(); _dirtyFreeRects.Clear(); _fullInvalidation = false; }
 
                 try
                 {
@@ -5852,57 +5906,71 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
                     throw;
                 }
             }
-            else if (dirtyRegion.IsEmpty)
+            else if (aggregator == null || aggregator.IsEmpty)
             {
                 // Dirty elements exist but their visible bounds are outside the window
                 // (e.g., ProgressBar animating off-screen). Nothing to render — GPU idle.
-                lock (_dirtyLock) { _dirtyElements.Clear(); _fullInvalidation = false; }
+                lock (_dirtyLock) { _dirtyElements.Clear(); _dirtyFreeRects.Clear(); _fullInvalidation = false; }
                 return;
             }
             else
             {
                 // ── Retained mode partial render ──
-                // Union with dirty regions from the last N-1 frames so that all
-                // FLIP_SEQUENTIAL buffers get stale areas repainted.
-                var rawDirtyRegion = dirtyRegion;
+                // Capture this frame's raw rects BEFORE folding in history — we
+                // store the raw snapshot (what actually changed this frame) in
+                // the ring buffer; history folding is applied to the working
+                // aggregator only, so we don't compound history indefinitely.
+                var rawSnapshot = aggregator.Rects.ToArray();
+
+                // Fold in dirty regions from the last N-1 frames so that every
+                // FLIP_SEQUENTIAL buffer has its stale pixels repainted. Because
+                // aggregator absorbs redundant rects the fold is idempotent for
+                // regions that haven't changed.
                 for (int h = 0; h < DirtyHistoryCount; h++)
                 {
-                    if (!_dirtyHistory[h].IsEmpty)
-                        dirtyRegion = dirtyRegion.Union(_dirtyHistory[h]);
+                    var history = _dirtyHistory[h];
+                    if (history == null) continue;
+                    foreach (var r in history) aggregator.Add(r);
                 }
-                // Record this frame's raw dirty region into the ring buffer
-                _dirtyHistory[_dirtyHistoryIndex] = rawDirtyRegion;
+                _dirtyHistory[_dirtyHistoryIndex] = rawSnapshot;
                 _dirtyHistoryIndex = (_dirtyHistoryIndex + 1) % DirtyHistoryCount;
 
-                const double DirtyRectMargin = 2.0;
-                var clipRegion = new Rect(
-                    dirtyRegion.X - DirtyRectMargin,
-                    dirtyRegion.Y - DirtyRectMargin,
-                    dirtyRegion.Width + DirtyRectMargin * 2,
-                    dirtyRegion.Height + DirtyRectMargin * 2);
-                var windowBounds = new Rect(0, 0, ActualWidth, ActualHeight);
-                clipRegion = clipRegion.Intersect(windowBounds);
-                if (clipRegion.IsEmpty)
+                // DPI-aware margin. Anti-aliased edges on high-density displays
+                // can exceed 2 device pixels; scale the DIP margin accordingly
+                // to avoid subpixel leaks outside the clip.
+                double margin = Math.Max(2.0, 2.0 * Math.Max(1.0, _dpiScale));
+                aggregator.Inflate(margin, windowBounds);
+
+                if (aggregator.IsEmpty)
                 {
-                    lock (_dirtyLock) { _dirtyElements.Clear(); _fullInvalidation = false; }
+                    lock (_dirtyLock) { _dirtyElements.Clear(); _dirtyFreeRects.Clear(); _fullInvalidation = false; }
                     return;
                 }
 
+                // ── 50 % area check, now measured against the TRUE covered
+                //    pixel area rather than the bounding box. A caret at (10,10)
+                //    + a progress bar at (600,400) used to balloon the bounding
+                //    box to the whole window; with union-area it measures only
+                //    the two small regions. Promotion fires only when partial
+                //    redraw would actually touch > half the pixels of a full frame.
                 double windowArea = ActualWidth * ActualHeight;
-                if (windowArea > 0 &&
-                    clipRegion.Width * clipRegion.Height > windowArea * 0.5)
+                double realArea = aggregator.ComputeRealArea();
+                bool promoteToFull = windowArea > 0 && realArea > windowArea * 0.5;
+                _debugHud.SetDirtyRegionStats(
+                    aggregator.Count,
+                    windowArea > 0 ? realArea / windowArea : 0);
+
+                if (promoteToFull)
                 {
                     // Promoted to full render. Seed history with full window
                     // (same rationale as the main full invalidation path).
-                    var fullRect = new Rect(0, 0, ActualWidth, ActualHeight);
-                    for (int h = 0; h < DirtyHistoryCount; h++) _dirtyHistory[h] = fullRect;
-                    _dirtyHistoryIndex = 0;
+                    SeedDirtyHistoryFullWindow(windowBounds);
                     RenderTarget.SetFullInvalidation();
                     if (!TryBeginDrawOrScheduleRetry()) { return; }
-                    lock (_dirtyLock) { _dirtyElements.Clear(); _fullInvalidation = false; }
+                    lock (_dirtyLock) { _dirtyElements.Clear(); _dirtyFreeRects.Clear(); _fullInvalidation = false; }
                     try
                     {
-                        _debugHud.OnFull();
+                        _debugHud.OnPromoted();
                         ClearBackground();
                         _drawingContext.Offset = Point.Zero;
                         Render(_drawingContext);
@@ -5932,12 +6000,26 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
                 }
                 else
                 {
-                    RenderTarget.AddDirtyRect(
-                        (float)dirtyRegion.X, (float)dirtyRegion.Y,
-                        (float)dirtyRegion.Width, (float)dirtyRegion.Height);
+                    // Submit every rect to the native RT — D3D12 uses them for
+                    // Present1 DirtyRects (DWM copies the rest from the previous
+                    // buffer), and the bounding box is still used as the D2D
+                    // scissor clip because D2D clip stack takes a single rect.
+                    foreach (var r in aggregator.EnumerateRects())
+                    {
+                        RenderTarget.AddDirtyRect(
+                            (float)r.X, (float)r.Y,
+                            (float)r.Width, (float)r.Height);
+                    }
+
+                    var clipRegion = aggregator.GetBoundingBox().Intersect(windowBounds);
+                    if (clipRegion.IsEmpty)
+                    {
+                        lock (_dirtyLock) { _dirtyElements.Clear(); _dirtyFreeRects.Clear(); _fullInvalidation = false; }
+                        return;
+                    }
 
                     if (!TryBeginDrawOrScheduleRetry()) { return; }
-                    lock (_dirtyLock) { _dirtyElements.Clear(); _fullInvalidation = false; }
+                    lock (_dirtyLock) { _dirtyElements.Clear(); _dirtyFreeRects.Clear(); _fullInvalidation = false; }
                     try
                     {
                         _debugHud.OnPartial();
@@ -6019,33 +6101,85 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
     }
 
     /// <summary>
-    /// Computes the union of all dirty element bounds (both pre-layout and post-layout),
-    /// clamped to the window client area. Must be called under <see cref="_dirtyLock"/>.
+    /// Builds a <see cref="DirtyRegionAggregator"/> containing every dirty region for
+    /// this frame. Combines per-element pre-layout and post-layout bounds (so
+    /// elements that moved during UpdateLayout repaint both old and new positions),
+    /// precise sub-rects from <see cref="AddDirtyElement(UIElement, Rect)"/>,
+    /// and free-floating rects from <see cref="AddDirtyRect"/>. Clamped to the
+    /// window client area.
+    /// Must be called under <see cref="_dirtyLock"/>.
     /// </summary>
-    private Rect ComputeDirtyRegion()
+    private DirtyRegionAggregator ComputeDirtyRegions()
     {
-        var union = Rect.Empty;
-        foreach (var (element, preLayoutBounds) in _dirtyElements)
+        var agg = new DirtyRegionAggregator(capacity: 32);
+        var windowBounds = new Rect(0, 0, ActualWidth, ActualHeight);
+
+        foreach (var (element, entry) in _dirtyElements)
         {
-            // Pre-layout bounds: where the element WAS before UpdateLayout.
-            if (!preLayoutBounds.IsEmpty)
+            if (entry.PreciseLocalRects is { Count: > 0 } preciseLocal)
             {
-                union = union.Union(preLayoutBounds);
+                // Translate local sub-rects into screen space using the CURRENT
+                // screen offset (post-layout).  The pre-layout bounds are still
+                // submitted below so vacated pixels get repainted even when a
+                // precise list is also present.
+                var postBounds = element.GetScreenBounds();
+                foreach (var local in preciseLocal)
+                {
+                    var screenRect = new Rect(
+                        postBounds.X + local.X,
+                        postBounds.Y + local.Y,
+                        local.Width,
+                        local.Height);
+                    var clipped = screenRect.Intersect(windowBounds);
+                    if (!clipped.IsEmpty) agg.Add(clipped);
+                }
+            }
+            else
+            {
+                // Post-layout bounds: where the element IS now.
+                var postLayoutBounds = element.GetScreenBounds().Intersect(windowBounds);
+                if (!postLayoutBounds.IsEmpty) agg.Add(postLayoutBounds);
             }
 
-            // Post-layout bounds: where the element IS now.
-            var postLayoutBounds = element.GetScreenBounds();
-            if (!postLayoutBounds.IsEmpty)
+            // Pre-layout bounds: where the element WAS before UpdateLayout.
+            // Always submitted (even for precise-rect callers) so that elements
+            // which moved or resized leave no stale pixels behind.
+            if (!entry.PreLayoutBounds.IsEmpty)
             {
-                union = union.Union(postLayoutBounds);
+                var clipped = entry.PreLayoutBounds.Intersect(windowBounds);
+                if (!clipped.IsEmpty) agg.Add(clipped);
             }
         }
 
-        if (union.IsEmpty) return union;
+        foreach (var free in _dirtyFreeRects)
+        {
+            var clipped = free.Intersect(windowBounds);
+            if (!clipped.IsEmpty) agg.Add(clipped);
+        }
 
-        // Clamp to window client area.
-        var windowBounds = new Rect(0, 0, ActualWidth, ActualHeight);
-        return union.Intersect(windowBounds);
+        return agg;
+    }
+
+    /// <summary>
+    /// Legacy accessor returning the bounding box of every dirty region.
+    /// Still used by code paths that only need the outer extent (e.g. HUD display).
+    /// Must be called under <see cref="_dirtyLock"/>.
+    /// </summary>
+    private Rect ComputeDirtyRegion()
+    {
+        return ComputeDirtyRegions().GetBoundingBox();
+    }
+
+    /// <summary>
+    /// Seeds every dirty-history slot with the full window rect, then resets
+    /// the write index. Used after a full-render path so that the next N-1
+    /// FLIP_SEQUENTIAL buffers get their stale content repainted.
+    /// </summary>
+    private void SeedDirtyHistoryFullWindow(Rect windowBounds)
+    {
+        var seed = new[] { windowBounds };
+        for (int h = 0; h < DirtyHistoryCount; h++) _dirtyHistory[h] = seed;
+        _dirtyHistoryIndex = 0;
     }
 
     /// <summary>
@@ -6285,20 +6419,74 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
 
     /// <summary>
     /// Adds a dirty element for partial rendering via native dirty rects.
+    /// The element's full screen bounds are used.
     /// </summary>
     public void AddDirtyElement(UIElement element)
     {
         // Thread-safe: background threads (System.Threading.Timer callbacks from
-        // ProgressBar, Storyboard, caret timers) call InvalidateVisual 鈫?AddDirtyElement.
+        // ProgressBar, Storyboard, caret timers) call InvalidateVisual → AddDirtyElement.
         lock (_dirtyLock)
         {
             // Only capture pre-layout bounds on first registration per frame.
             // This preserves the true "old" position before UpdateLayout moves things.
-            if (!_dirtyElements.ContainsKey(element))
+            if (_dirtyElements.TryGetValue(element, out var entry))
             {
-                _dirtyElements[element] = element.GetScreenBounds();
+                // Already registered. A caller now wants full-element dirty, which
+                // supersedes any precise sub-rect list we had.
+                entry.PreciseLocalRects = null;
+                return;
             }
+            _dirtyElements[element] = new DirtyElementEntry
+            {
+                PreLayoutBounds = element.GetScreenBounds(),
+                PreciseLocalRects = null,
+            };
         }
+    }
+
+    /// <summary>
+    /// Adds a dirty element with a precise sub-rectangle in the element's local
+    /// coordinate space. Multiple calls accumulate (each rect is stored), so
+    /// several independent local regions can be marked dirty without promoting
+    /// to the full element bounds.
+    /// </summary>
+    public void AddDirtyElement(UIElement element, Rect localDirtyRect)
+    {
+        if (localDirtyRect.IsEmpty)
+        {
+            AddDirtyElement(element);
+            return;
+        }
+
+        lock (_dirtyLock)
+        {
+            if (!_dirtyElements.TryGetValue(element, out var entry))
+            {
+                entry = new DirtyElementEntry
+                {
+                    PreLayoutBounds = element.GetScreenBounds(),
+                    PreciseLocalRects = new List<Rect>(2),
+                };
+                _dirtyElements[element] = entry;
+            }
+
+            // If AddDirtyElement(element) was previously called in this frame we
+            // are already tracking the full element — no point adding a sub-rect.
+            if (entry.PreciseLocalRects == null) return;
+
+            entry.PreciseLocalRects.Add(localDirtyRect);
+        }
+    }
+
+    /// <summary>
+    /// Adds a free-floating dirty rectangle in window (screen) coordinates.
+    /// Used by animation / compositor systems that know what pixels changed
+    /// but don't own a single <see cref="UIElement"/>.
+    /// </summary>
+    public void AddDirtyRect(Rect screenRect)
+    {
+        if (screenRect.IsEmpty) return;
+        lock (_dirtyLock) { _dirtyFreeRects.Add(screenRect); }
     }
 
     /// <summary>
@@ -7138,31 +7326,121 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
             return null;
         }
 
-        // Only use the cache when the mouse is still within the last hit element
-        // itself (the common case for small mouse movements).  Walking up ancestor
-        // subtrees is unsafe because it can miss higher-z-order siblings — e.g. a
-        // LiquidGlass overlay in a Grid would be skipped if the cache started from
-        // a background element in a lower-z sibling StackPanel.
-        if (current is FrameworkElement fe
-            && fe.IsHitTestVisible
-            && fe.Visibility == Visibility.Visible
-            && fe.GetScreenBounds().Contains(windowPosition))
+        // The fast path is only safe when the point is inside *every* ancestor's
+        // bounds and layout clip, AND no higher-z sibling of the cached element or
+        // any ancestor could intercept the click. Without either guard, clicks leak
+        // through to scrolled-off or visually clipped content that the user cannot
+        // see — e.g. clicking a title bar above a ScrollViewer should hit the title
+        // bar button, not whichever ScrollViewer child was hit most recently, and
+        // clicking a ScrollBar overlaying the content should hit the ScrollBar, not
+        // the content behind it.
+        if (current is not FrameworkElement fe
+            || !fe.IsHitTestVisible
+            || fe.Visibility != Visibility.Visible)
         {
-            var parent = fe.VisualParent as UIElement;
-            var pointInParent = parent == null
-                ? windowPosition
-                : new Point(
-                    windowPosition.X - parent.GetScreenBounds().X,
-                    windowPosition.Y - parent.GetScreenBounds().Y);
+            return null;
+        }
 
-            var subtreeHit = fe.HitTest(pointInParent);
-            if (subtreeHit != null)
-            {
-                return subtreeHit;
-            }
+        if (!IsCachedSubtreeSafeForPoint(fe, windowPosition))
+        {
+            return null;
+        }
+
+        var parent = fe.VisualParent as UIElement;
+        var pointInParent = parent == null
+            ? windowPosition
+            : new Point(
+                windowPosition.X - parent.GetScreenBounds().X,
+                windowPosition.Y - parent.GetScreenBounds().Y);
+
+        var subtreeHit = fe.HitTest(pointInParent);
+        if (subtreeHit != null)
+        {
+            return subtreeHit;
         }
 
         return null;
+    }
+
+    // Walks from the cached element up to the window, confirming at each level that
+    // the point is inside the element and its layout clip. At the cached element's
+    // immediate parent we also verify no higher-z sibling shadows the cached branch
+    // (the scrollbar-over-content case). Checking only the direct parent avoids
+    // false positives from transparent overlays that always span the window (e.g.
+    // OverlayLayer), while still catching the most common occlusion pattern where
+    // a sibling widget renders on top of the cached subtree.
+    private static bool IsCachedSubtreeSafeForPoint(UIElement cached, Point windowPosition)
+    {
+        var parent = cached.VisualParent;
+        if (parent != null && TryFindHigherZSiblingThatContains(parent, cached, windowPosition))
+        {
+            return false;
+        }
+
+        Visual? node = cached;
+        while (node != null && node is not IWindowHost)
+        {
+            if (node is not UIElement ui)
+            {
+                node = node.VisualParent;
+                continue;
+            }
+
+            var screenBounds = ui.GetScreenBounds();
+            if (!screenBounds.Contains(windowPosition))
+            {
+                return false;
+            }
+
+            var localPoint = new Point(
+                windowPosition.X - screenBounds.X,
+                windowPosition.Y - screenBounds.Y);
+            if (!ui.IsPointInsideLayoutClip(localPoint))
+            {
+                return false;
+            }
+
+            node = ui.VisualParent;
+        }
+
+        return true;
+    }
+
+    private static bool TryFindHigherZSiblingThatContains(Visual parent, Visual child, Point windowPosition)
+    {
+        int count = parent.VisualChildrenCount;
+
+        // Find the child's index.
+        int childIndex = -1;
+        for (int i = 0; i < count; i++)
+        {
+            if (ReferenceEquals(parent.GetVisualChild(i), child))
+            {
+                childIndex = i;
+                break;
+            }
+        }
+
+        if (childIndex < 0)
+        {
+            return false;
+        }
+
+        // Siblings at higher indices render on top of the cached branch; if one of
+        // them contains the point, it would win in a full hit test, so the cache
+        // cannot be trusted to produce the same answer.
+        for (int i = childIndex + 1; i < count; i++)
+        {
+            if (parent.GetVisualChild(i) is UIElement sibling
+                && sibling.IsHitTestVisible
+                && sibling.Visibility == Visibility.Visible
+                && sibling.GetScreenBounds().Contains(windowPosition))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private bool IsElementAttachedToThisWindow(UIElement element)
@@ -8721,6 +8999,9 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
     void IInputDispatcherHost.OpenDevTools() => OpenDevTools();
     void IInputDispatcherHost.ActivateDevToolsPicker() => _devToolsWindow?.ActivatePicker();
 
+    bool IInputDispatcherHost.CanToggleDebugHud
+        => Jalium.UI.Hosting.DeveloperToolsResolver.IsDebugHudEnabled;
+
     bool IInputDispatcherHost.DebugHudEnabled
     {
         get => _debugHud.Enabled;
@@ -8731,6 +9012,35 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
     {
         set => _debugHudOverlay.Visibility = value;
     }
+
+    /// <summary>
+    /// Gets the per-window frame history ring buffer used by DevTools for trend plots.
+    /// Populated on every completed frame by the render HUD.
+    /// </summary>
+    public Jalium.UI.Diagnostics.FrameHistory FrameHistory => _debugHud.FrameHistory;
+
+    /// <summary>
+    /// Hot-switches the rendering engine (Vello/Impeller/Auto) for this window's render target.
+    /// Falls through silently if the render target is not yet created.
+    /// </summary>
+    public void SetRenderingEngineOverride(Jalium.UI.Interop.RenderingEngine engine)
+    {
+        RenderTarget?.SetRenderingEngine(engine);
+        RequestFullInvalidation();
+        InvalidateWindow();
+    }
+
+    /// <summary>
+    /// Returns the active rendering engine for this window, or Auto if no target is bound.
+    /// </summary>
+    public Jalium.UI.Interop.RenderingEngine CurrentRenderingEngine
+        => RenderTarget?.RenderingEngine ?? Jalium.UI.Interop.RenderingEngine.Auto;
+
+    /// <summary>
+    /// Returns the active graphics backend (D3D12/Vulkan/Metal/Software).
+    /// </summary>
+    public Jalium.UI.Interop.RenderBackend CurrentRenderBackend
+        => RenderTarget?.Backend ?? Jalium.UI.Interop.RenderBackend.Auto;
 
     bool IInputDispatcherHost.OnPreviewWindowKeyDown(Key key, ModifierKeys modifiers, bool isRepeat) => OnPreviewWindowKeyDown(key, modifiers, isRepeat);
     bool IInputDispatcherHost.OnPreviewWindowKeyUp(Key key, ModifierKeys modifiers) => OnPreviewWindowKeyUp(key, modifiers);

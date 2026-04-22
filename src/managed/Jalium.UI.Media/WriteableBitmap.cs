@@ -17,6 +17,10 @@ public sealed class WriteableBitmap : BitmapSource
     private bool _isLocked;
     private nint _backBufferPointer;
     private GCHandle _pinnedHandle;
+    // Bumped every time pixels change. Cache layers (RenderTargetDrawingContext
+    // bitmap cache) compare revisions to detect stale native uploads, otherwise
+    // a rewritten back-buffer would be invisible until the ImageSource ref changes.
+    private uint _contentRevision;
 
     /// <summary>
     /// Gets the width of the bitmap in pixels.
@@ -67,6 +71,21 @@ public sealed class WriteableBitmap : BitmapSource
     /// Gets the native handle.
     /// </summary>
     public override nint NativeHandle { get; }
+
+    /// <summary>
+    /// Monotonically-increasing revision bumped on every <see cref="WritePixels(Int32Rect, byte[], int, int)"/>
+    /// (or its overloads). Native rendering backends compare this against their
+    /// cached value to decide whether to re-upload pixel data.
+    /// </summary>
+    public uint ContentRevision => _contentRevision;
+
+    /// <summary>
+    /// Exposes the backing byte buffer for zero-copy native upload paths.
+    /// Consumers MUST NOT retain the reference across <see cref="WritePixels(Int32Rect, byte[], int, int)"/>
+    /// calls — treat it as a valid view only between reads of
+    /// <see cref="ContentRevision"/>.
+    /// </summary>
+    internal byte[] BackBufferArray => _backBuffer;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="WriteableBitmap"/> class.
@@ -215,6 +234,7 @@ public sealed class WriteableBitmap : BitmapSource
             var bytesToCopy = Math.Min(width * bytesPerPixel, stride);
             Array.Copy(pixels, srcOffset, _backBuffer, dstOffset, bytesToCopy);
         }
+        unchecked { _contentRevision++; }
     }
 
     /// <summary>

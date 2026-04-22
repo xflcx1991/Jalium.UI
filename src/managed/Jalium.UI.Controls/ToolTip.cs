@@ -317,10 +317,16 @@ public static class ToolTipService
     #region Attached Properties
 
     /// <summary>Identifies the ToolTip attached dependency property.</summary>
+    /// <remarks>
+    /// Shares storage with <see cref="FrameworkElement.ToolTipProperty"/> via AddOwner so that
+    /// <c>ToolTipService.SetToolTip(element, value)</c> and <c>element.ToolTip = value</c> are
+    /// equivalent, and both trigger the MouseEnter/MouseLeave subscription that drives the
+    /// tooltip popup. Registering a separate DP would silently swallow values set via the
+    /// attached-property API.
+    /// </remarks>
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Content)]
     public static readonly DependencyProperty ToolTipProperty =
-        DependencyProperty.RegisterAttached("ToolTip", typeof(object), typeof(ToolTipService),
-            new PropertyMetadata(null));
+        FrameworkElement.ToolTipProperty.AddOwner(typeof(ToolTipService));
 
     /// <summary>Identifies the HorizontalOffset attached dependency property.</summary>
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
@@ -383,10 +389,15 @@ public static class ToolTipService
             new PropertyMetadata(int.MaxValue));
 
     /// <summary>Identifies the InitialShowDelay attached dependency property.</summary>
+    /// <remarks>
+    /// Default matches <see cref="ToolTip.InitialShowDelayProperty"/> (400 ms). Keeping the
+    /// two in sync means setting <c>ToolTipService.InitialShowDelay</c> on an element with no
+    /// explicit value produces the same hover behaviour as leaving the instance property alone.
+    /// </remarks>
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Behavior)]
     public static readonly DependencyProperty InitialShowDelayProperty =
         DependencyProperty.RegisterAttached("InitialShowDelay", typeof(int), typeof(ToolTipService),
-            new PropertyMetadata(1000));
+            new PropertyMetadata(400));
 
     /// <summary>Identifies the BetweenShowDelay attached dependency property.</summary>
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Behavior)]
@@ -513,10 +524,26 @@ public static class ToolTipService
             {
                 _currentToolTip.Content = uiContent;
             }
+
+            // Propagate ToolTipService attached values from the owner so the
+            // attached-property API (e.g. ToolTipService.SetInitialShowDelay)
+            // actually drives behaviour. A freshly constructed ToolTip would
+            // otherwise always fall back to its own DP defaults, silently
+            // dropping per-element overrides like a zero-delay hint.
+            ApplyOwnerAttachedSettings(owner, _currentToolTip);
         }
 
         _currentToolTip.PlacementTarget = owner;
         _currentToolTip.StartShowTimer(mousePosition);
+    }
+
+    private static void ApplyOwnerAttachedSettings(UIElement owner, ToolTip toolTip)
+    {
+        toolTip.InitialShowDelay = GetInitialShowDelay(owner);
+        toolTip.ShowDuration = GetShowDuration(owner);
+        toolTip.Placement = GetPlacement(owner);
+        toolTip.HorizontalOffset = GetHorizontalOffset(owner);
+        toolTip.VerticalOffset = GetVerticalOffset(owner);
     }
 
     /// <summary>

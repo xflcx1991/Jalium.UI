@@ -40,6 +40,9 @@ public class PasswordBox : Control, IImeSupport
     private const int CaretFadeDuration = 150;
     private DispatcherTimer? _caretTimer;
     private const int CaretAnimationTickMs = 33;
+    // Caret rect (local coords) published by DrawCaret so the blink timer can
+    // invalidate only this region instead of the whole control.
+    private Rect _lastRenderedCaretRect = Rect.Empty;
 
     // Selection state
     private bool _isSelecting;
@@ -840,6 +843,11 @@ public class PasswordBox : Control, IImeSupport
 
         var caretPen = new Pen(caretBrushWithOpacity, 1.5);
         dc.DrawLine(caretPen, new Point(x, y), new Point(x, y + lineHeight));
+
+        // Publish the caret rect in local coords so the blink timer can
+        // invalidate ONLY this rect. Keeps password-box fields from marking
+        // their entire visual dirty every 530ms.
+        _lastRenderedCaretRect = new Rect(x - 2, y - 1, 5, lineHeight + 2);
     }
 
     private void DrawRevealButton(DrawingContext dc, Rect bounds)
@@ -1423,7 +1431,14 @@ public class PasswordBox : Control, IImeSupport
             return;
         }
 
-        InvalidateVisual();
+        if (!_lastRenderedCaretRect.IsEmpty)
+        {
+            InvalidateVisual(_lastRenderedCaretRect);
+        }
+        else
+        {
+            InvalidateVisual();
+        }
         ScheduleNextCaretTick(DateTime.Now);
     }
 

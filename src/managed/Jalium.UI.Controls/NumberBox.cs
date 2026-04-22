@@ -1306,6 +1306,9 @@ public class NumberBox : TextBoxBase, IImeSupport
 
         var caretPen = new Pen(caretBrushWithOpacity, 1.5);
         dc.DrawLine(caretPen, new Point(x, textY), new Point(x, textY + lineHeight));
+
+        // Publish caret rect in local coords for partial-redraw invalidation.
+        _lastRenderedCaretRect = new Rect(x - 2, textY - 1, 5, lineHeight + 2);
     }
 
     private void DrawSpinButton(DrawingContext dc, Rect rect, bool isUp)

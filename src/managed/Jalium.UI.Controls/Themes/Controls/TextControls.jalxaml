@@ -14,11 +14,12 @@
         <Setter Property="Padding" Value="8,6,8,6" />
         <Setter Property="FontFamily" Value="{DynamicResource BodyFontFamily}" />
         <Setter Property="CornerRadius" Value="8" />
-        <Setter Property="MinHeight" Value="32" />
         <Setter Property="SelectionBrush" Value="{DynamicResource SelectionBackground}" />
         <Setter Property="CaretBrush" Value="{DynamicResource TextPrimary}" />
         <Setter Property="TextWrapping" Value="NoWrap" />
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="Template">
             <ControlTemplate TargetType="TextBox">
                 <Border Name="OuterBorder"

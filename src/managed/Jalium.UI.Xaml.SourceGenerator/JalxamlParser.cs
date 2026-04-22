@@ -172,21 +172,22 @@ public static class JalxamlParser
 
             if (reader.NodeType == XmlNodeType.Element)
             {
-                // Skip property elements (e.g., Grid.RowDefinitions)
                 if (!reader.LocalName.Contains('.'))
                 {
                     ParseElement(reader, result);
                 }
                 else
                 {
-                    // Skip property element content
-                    SkipElement(reader);
+                    // Property element (e.g., NavigationView.PaneFooter) — the element
+                    // itself is not a control, but its content may contain x:Name-ed
+                    // controls that still need fields generated. Recurse into content.
+                    ParsePropertyElementContent(reader, result);
                 }
             }
         }
     }
 
-    private static void SkipElement(XmlReader reader)
+    private static void ParsePropertyElementContent(XmlReader reader, JalxamlParseResult result)
     {
         if (reader.IsEmptyElement)
             return;
@@ -196,6 +197,18 @@ public static class JalxamlParser
         {
             if (reader.NodeType == XmlNodeType.EndElement && reader.Depth == depth)
                 break;
+
+            if (reader.NodeType == XmlNodeType.Element)
+            {
+                if (!reader.LocalName.Contains('.'))
+                {
+                    ParseElement(reader, result);
+                }
+                else
+                {
+                    ParsePropertyElementContent(reader, result);
+                }
+            }
         }
     }
 

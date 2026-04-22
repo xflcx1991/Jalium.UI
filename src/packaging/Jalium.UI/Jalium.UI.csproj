@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Jalium.UI</RootNamespace>
     <AssemblyName>Jalium.UI</AssemblyName>
     <Description>Jalium.UI is a modern GPU-accelerated UI framework for .NET. This metapackage includes all Jalium.UI components.</Description>
@@ -14,6 +14,14 @@
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <IncludeSymbols>false</IncludeSymbols>
     <SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>
+
+    <!--
+      元包没有任何 .cs 源文件,不应生成 reference assembly。
+      若下游以 ProjectReference 方式引用本项目,VS 增量构建会出现 obj\...\ref\*.dll
+      与 refint 不同步(CS0006),改为不生成 ref,让下游直接引用 bin 下的实际 dll。
+    -->
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <Authors>Supper Jal</Authors>
     <PackageProjectUrl>https://github.com/VeryJokerJal/Jalium-UI-Gallery</PackageProjectUrl>
     <RepositoryUrl>https://github.com/VeryJokerJal/Jalium-UI-Gallery</RepositoryUrl>

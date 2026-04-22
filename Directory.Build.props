@@ -14,7 +14,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
     <!-- Versioning -->
-    <Version>26.10.1-preview.1</Version>
+    <Version>26.10.1-preview.3</Version>
     <AssemblyVersion>26.10.1.0</AssemblyVersion>
     <FileVersion>26.10.1.0</FileVersion>
 
@@ -39,6 +39,10 @@
     <!-- Some local builds currently emit duplicate SDK-generated assembly attributes. -->
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+
+    <!-- Emit XML documentation alongside each assembly so downstream IDEs / hover tips can display summaries. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591;1573;1574;1584;1711;1712;1587;1734</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup>

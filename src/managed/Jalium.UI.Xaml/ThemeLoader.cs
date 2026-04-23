@@ -64,6 +64,10 @@ public static class ThemeLoader
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(sourceUri);
 
+        Jalium.UI.Markup.JalxamlDiagnostics.Log(
+            "ThemeLoader.LoadReferencedResourceDictionary: uri='{0}' sourceAssembly='{1}'",
+            sourceUri, sourceAssembly?.GetName().Name ?? "<null>");
+
         try
         {
             var sourceUriText = sourceUri.ToString();
@@ -74,7 +78,10 @@ public static class ThemeLoader
             {
                 assembly = ResolveAssembly(packAssemblyName);
                 if (assembly == null)
+                {
+                    Jalium.UI.Markup.JalxamlDiagnostics.Log("  pack uri: failed to resolve assembly '{0}'", packAssemblyName);
                     return null;
+                }
 
                 pathCandidates.AddRange(BuildPathCandidates(componentPath));
             }
@@ -84,14 +91,20 @@ public static class ThemeLoader
                 var (resourceAssembly, resourcePath) = ParseResourceUri(sourceUri.AbsoluteUri);
                 assembly = ResolveAssembly(resourceAssembly);
                 if (assembly == null)
+                {
+                    Jalium.UI.Markup.JalxamlDiagnostics.Log("  resource uri: failed to resolve assembly '{0}'", resourceAssembly);
                     return null;
+                }
 
                 pathCandidates.AddRange(BuildPathCandidates(resourcePath));
             }
             else
             {
                 if (assembly == null)
+                {
+                    Jalium.UI.Markup.JalxamlDiagnostics.Log("  relative uri but sourceAssembly is null — cannot resolve");
                     return null;
+                }
 
                 pathCandidates.AddRange(BuildPathCandidates(sourceUri.IsAbsoluteUri
                     ? sourceUri.AbsolutePath
@@ -99,19 +112,42 @@ public static class ThemeLoader
             }
 
             if (assembly == null || pathCandidates.Count == 0)
+            {
+                Jalium.UI.Markup.JalxamlDiagnostics.Log(
+                    "  assembly={0} candidates={1} — giving up",
+                    assembly?.GetName().Name ?? "<null>", pathCandidates.Count);
                 return null;
+            }
+
+            Jalium.UI.Markup.JalxamlDiagnostics.Log(
+                "  probing '{0}' for [{1}]",
+                assembly.GetName().Name!,
+                string.Join(", ", pathCandidates));
 
             var attemptedResourceNames = new List<string>();
             using var stream = TryOpenEmbeddedResource(assembly, pathCandidates, attemptedResourceNames, out var resolvedResourceName);
             if (stream == null || string.IsNullOrEmpty(resolvedResourceName))
+            {
+                Jalium.UI.Markup.JalxamlDiagnostics.Log(
+                    "  resource NOT FOUND. attempted=[{0}]",
+                    string.Join(", ", attemptedResourceNames));
                 return null;
+            }
 
+            Jalium.UI.Markup.JalxamlDiagnostics.Log("  resolved '{0}', parsing...", resolvedResourceName);
             using var payloadStream = new MemoryStream();
             stream.CopyTo(payloadStream);
-            return LoadResourceDictionaryFromPayload(payloadStream.ToArray(), resolvedResourceName, assembly, sourceUri);
+            var result = LoadResourceDictionaryFromPayload(payloadStream.ToArray(), resolvedResourceName, assembly, sourceUri);
+            Jalium.UI.Markup.JalxamlDiagnostics.Log(
+                "  payload parsed: {0}",
+                result != null ? $"OK ({result.GetType().Name})" : "NULL");
+            return result;
         }
-        catch
+        catch (Exception ex)
         {
+            Jalium.UI.Markup.JalxamlDiagnostics.Log(
+                "  EXCEPTION: {0}: {1}",
+                ex.GetType().Name, ex.Message);
             return null;
         }
     }

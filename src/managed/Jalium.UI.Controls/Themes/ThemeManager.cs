@@ -107,6 +107,10 @@ public static class ThemeManager
     {
         ArgumentNullException.ThrowIfNull(app);
 
+        Jalium.UI.Markup.JalxamlDiagnostics.Log(
+            "ThemeManager.Initialize: entering, already-initialized={0}",
+            _initialized);
+
         _application = app;
         SyncThemeFromCurrentThemeKey();
         ResourceDictionary.CurrentThemeKey = CurrentTheme.ToString();
@@ -123,6 +127,7 @@ public static class ThemeManager
         // If that already completed initialization, stop here to avoid duplicate dictionary insertion.
         if (_initialized)
         {
+            Jalium.UI.Markup.JalxamlDiagnostics.Log("ThemeManager.Initialize: already initialized via re-entry");
             ForceThemeRefresh();
             return;
         }
@@ -131,10 +136,16 @@ public static class ThemeManager
         {
             // XamlLoader not registered yet - Jalium.UI.Xaml module initializer hasn't run.
             // This will be retried when the Xaml assembly is first accessed.
+            Jalium.UI.Markup.JalxamlDiagnostics.Log(
+                "ThemeManager.Initialize: XamlLoader is null, Generic theme will NOT be loaded yet");
             return;
         }
 
+        Jalium.UI.Markup.JalxamlDiagnostics.Log("ThemeManager.Initialize: loading Generic.jalxaml");
         _genericThemeDictionary = LoadGenericTheme();
+        Jalium.UI.Markup.JalxamlDiagnostics.Log(
+            "ThemeManager.Initialize: Generic theme {0}",
+            _genericThemeDictionary != null ? "LOADED" : "FAILED (returned null)");
         if (_genericThemeDictionary != null)
         {
             app.Resources.MergedDictionaries.Add(_genericThemeDictionary);
@@ -295,6 +306,50 @@ public static class ThemeManager
     /// Gets a value indicating whether the theme has been initialized.
     /// </summary>
     public static bool IsInitialized => _initialized;
+
+    /// <summary>
+    /// 把 ThemeManager 管理的三个字典(Generic theme、accent、typography)重新注入到指定
+    /// ResourceDictionary 的 MergedDictionaries 头部。被 <see cref="Application.Resources"/>
+    /// setter 在用户 XAML 把 <c>Application.Resources</c> 整块替换后调用,确保框架默认
+    /// ControlTemplate/Style 不会因为 user 新建 ResourceDictionary 替换而丢失。
+    /// </summary>
+    /// <remarks>
+    /// 字典会插在 MergedDictionaries 的开头,这样 user 在同一个 Resources 里声明的
+    /// Style/Brush 仍然可以 override 框架默认(MergedDictionaries 后添加的优先级高于先添加的)。
+    /// </remarks>
+    public static void ReattachManagedDictionariesTo(ResourceDictionary target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+
+        if (!_initialized)
+        {
+            return;
+        }
+
+        // 头部插入,按 Generic → accent → typography 的原始顺序,且避免重复添加。
+        var inserted = 0;
+        foreach (var managed in new[] { _genericThemeDictionary, _accentDictionary, _typographyDictionary })
+        {
+            if (managed == null)
+            {
+                continue;
+            }
+
+            if (target.MergedDictionaries.Contains(managed))
+            {
+                continue;
+            }
+
+            target.MergedDictionaries.Insert(inserted++, managed);
+        }
+
+        if (inserted > 0)
+        {
+            Jalium.UI.Markup.JalxamlDiagnostics.Log(
+                "ThemeManager.ReattachManagedDictionariesTo: reinjected {0} managed dictionary(ies) after Application.Resources replacement",
+                inserted);
+        }
+    }
 
     /// <summary>
     /// Resets the theme system, allowing re-initialization.

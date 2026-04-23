@@ -94,6 +94,17 @@ public partial class Application
             }
 
             _resources = value ?? new ResourceDictionary();
+
+            // user XAML 常见写法 <Application.Resources><ResourceDictionary>...</ResourceDictionary></Application.Resources>
+            // 会把 Resources 整块替换,导致之前 ThemeManager.Initialize 注入的 Generic / accent /
+            // typography 字典被丢弃 — 表现为 NavigationView 等控件 Template=null、窗口全黑。
+            // 在新 Resources 的 MergedDictionaries 头部把这些字典重新挂回,user 自己在
+            // 同一个 Resources 里声明的 Style/Brush 仍可 override 它们。
+            if (ThemeManager.IsInitialized)
+            {
+                ThemeManager.ReattachManagedDictionariesTo(_resources);
+            }
+
             _resources.Changed += OnApplicationResourcesDictionaryChanged;
             _resources.ChangedWithKeys += OnApplicationResourcesChangedWithKeys;
             OnApplicationResourcesChanged();
@@ -260,6 +271,7 @@ public partial class Application
             {
                 return value;
             }
+
         }
         return null;
     }

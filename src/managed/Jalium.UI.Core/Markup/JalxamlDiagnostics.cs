@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 
 namespace Jalium.UI.Markup;
 
@@ -21,6 +22,8 @@ namespace Jalium.UI.Markup;
 public static class JalxamlDiagnostics
 {
     private static int _enabled = InitEnabledFromEnv();
+    private static readonly string? _traceFilePath = InitTraceFileFromEnv();
+    private static readonly object _fileLock = new();
 
     private static int InitEnabledFromEnv()
     {
@@ -42,6 +45,31 @@ public static class JalxamlDiagnostics
         return 0;
     }
 
+    private static string? InitTraceFileFromEnv()
+    {
+        try
+        {
+            var path = Environment.GetEnvironmentVariable("JALIUM_XAML_TRACE_FILE");
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                // 首次启动截断旧文件,确保每次运行日志都是干净的。
+                try { File.WriteAllText(path, string.Empty); } catch { /* ignore */ }
+                return path;
+            }
+        }
+        catch
+        {
+            // 沙箱/环境变量不可访问,跳过文件输出。
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// 获取当前的 trace 文件路径(从 <c>JALIUM_XAML_TRACE_FILE</c> 环境变量读取)。<c>null</c>
+    /// 表示未配置文件输出。适用于 WinExe 场景下 <see cref="Debug.WriteLine"/> 看不到的时候。
+    /// </summary>
+    public static string? TraceFilePath => _traceFilePath;
+
     /// <summary>
     /// 启用/关闭诊断日志。线程安全。
     /// </summary>
@@ -58,7 +86,7 @@ public static class JalxamlDiagnostics
     {
         if (Enabled)
         {
-            Debug.WriteLine($"[Jalium.UI.Xaml] {message}");
+            Emit(message);
         }
     }
 
@@ -69,7 +97,7 @@ public static class JalxamlDiagnostics
     {
         if (Enabled)
         {
-            Debug.WriteLine($"[Jalium.UI.Xaml] {string.Format(format, arg0)}");
+            Emit(string.Format(format, arg0));
         }
     }
 
@@ -80,7 +108,7 @@ public static class JalxamlDiagnostics
     {
         if (Enabled)
         {
-            Debug.WriteLine($"[Jalium.UI.Xaml] {string.Format(format, arg0, arg1)}");
+            Emit(string.Format(format, arg0, arg1));
         }
     }
 
@@ -91,7 +119,7 @@ public static class JalxamlDiagnostics
     {
         if (Enabled)
         {
-            Debug.WriteLine($"[Jalium.UI.Xaml] {string.Format(format, arg0, arg1, arg2)}");
+            Emit(string.Format(format, arg0, arg1, arg2));
         }
     }
 
@@ -102,7 +130,30 @@ public static class JalxamlDiagnostics
     {
         if (Enabled)
         {
-            Debug.WriteLine($"[Jalium.UI.Xaml] {string.Format(format, args)}");
+            Emit(string.Format(format, args));
+        }
+    }
+
+    private static void Emit(string formatted)
+    {
+        var line = $"[Jalium.UI.Xaml] {formatted}";
+        Debug.WriteLine(line);
+
+        // 文件 sink:WinExe 场景下 Debug.WriteLine 没 debugger attach 时不可见,
+        // 设置 JALIUM_XAML_TRACE_FILE=<path> 即可把日志落到文件。
+        if (_traceFilePath is not null)
+        {
+            try
+            {
+                lock (_fileLock)
+                {
+                    File.AppendAllText(_traceFilePath, line + Environment.NewLine);
+                }
+            }
+            catch
+            {
+                // 写文件失败不阻塞 XAML 解析。
+            }
         }
     }
 }

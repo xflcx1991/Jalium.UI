@@ -150,6 +150,34 @@ public static class XamlReader
             LoadInternal(xmlReader, component, baseUri, assembly, namedElementsOut: namedElements);
         }
 
+        if (JalxamlDiagnostics.Enabled)
+        {
+            switch (component)
+            {
+                case Jalium.UI.Controls.Window window:
+                    JalxamlDiagnostics.Log("  parse complete: Window.Content = {0}, Width/Height = {1}/{2}",
+                        new object?[] { window.Content?.GetType().FullName ?? "<null>", window.Width, window.Height });
+                    break;
+                case Jalium.UI.Controls.ContentControl cc:
+                    JalxamlDiagnostics.Log("  parse complete: ContentControl.Content = {0}",
+                        cc.Content?.GetType().FullName ?? "<null>");
+                    break;
+                case Jalium.UI.Controls.Panel panel:
+                    JalxamlDiagnostics.Log("  parse complete: Panel.Children.Count = {0}", panel.Children.Count);
+                    break;
+                default:
+                    JalxamlDiagnostics.Log("  parse complete: component type = {0}", component.GetType().Name);
+                    break;
+            }
+
+            if (namedElements != null)
+            {
+                JalxamlDiagnostics.Log("    namedElements({0}): {1}",
+                    namedElements.Count,
+                    string.Join(", ", namedElements.Select(kv => $"{kv.Key}={kv.Value.GetType().Name}")));
+            }
+        }
+
         HotReloadRuntime.RegisterComponent(component);
     }
 

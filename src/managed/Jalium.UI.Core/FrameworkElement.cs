@@ -1539,31 +1539,14 @@ public partial class FrameworkElement : UIElement
     /// </summary>
     private Style? LookupImplicitStyle()
     {
-        var myType = GetType();
-        var currentType = myType;
-        var tried = new System.Collections.Generic.List<string>();
+        var currentType = GetType();
         while (currentType != null && currentType != typeof(FrameworkElement))
         {
-            tried.Add(currentType.Name);
-            var resource = TryFindResource(currentType);
-            if (resource is Style style && IsStyleApplicable(style))
-            {
-                Jalium.UI.Markup.JalxamlDiagnostics.Log(
-                    "LookupImplicitStyle: {0} HIT via key=typeof({1})",
-                    myType.Name, currentType.Name);
+            var style = TryFindResource(currentType) as Style;
+            if (style != null && IsStyleApplicable(style))
                 return style;
-            }
-            if (resource != null)
-            {
-                Jalium.UI.Markup.JalxamlDiagnostics.Log(
-                    "LookupImplicitStyle: {0} found non-Style resource of type {1} at key=typeof({2})",
-                    new object?[] { myType.Name, resource.GetType().Name, currentType.Name });
-            }
             currentType = currentType.BaseType;
         }
-        Jalium.UI.Markup.JalxamlDiagnostics.Log(
-            "LookupImplicitStyle: {0} MISS. Tried types: [{1}]",
-            myType.Name, string.Join(", ", tried));
         return null;
     }
 

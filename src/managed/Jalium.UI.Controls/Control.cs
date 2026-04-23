@@ -470,16 +470,6 @@ public class Control : FrameworkElement
         // Load new template
         var template = Template;
 
-        Jalium.UI.Markup.JalxamlDiagnostics.Log(
-            "Control.ApplyTemplate: {0} Template={1} Style={2} (parent={3})",
-            new object?[]
-            {
-                GetType().Name,
-                template?.GetType().Name ?? "<null>",
-                Style?.TargetType?.Name ?? "<null>",
-                VisualParent?.GetType().Name ?? "<none>"
-            });
-
         if (template != null)
         {
             _templateRoot = template.LoadContent();

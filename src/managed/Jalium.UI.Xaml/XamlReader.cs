@@ -126,7 +126,12 @@ public static class XamlReader
         var stream = GetResourceStream(resourceName, assembly);
         if (stream == null)
         {
-            throw new XamlParseException($"Cannot find embedded resource '{resourceName}' in assembly '{assembly.GetName().Name}'.");
+            // 把实际 manifest 里存在的资源名一并打印,便于定位 "资源没被 embed"、
+            // "RootNamespace 不匹配"、"Build Action 错误" 这类常见问题(与 JalxamlLoader 一致)。
+            var availableResources = assembly.GetManifestResourceNames();
+            throw new XamlParseException(
+                $"Cannot find embedded resource '{resourceName}' in assembly '{assembly.GetName().Name}'. " +
+                $"Available resources: [{string.Join(", ", availableResources)}]");
         }
 
         using (stream)

@@ -3,6 +3,7 @@ using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Reflection;
+using System.Reflection.PortableExecutable;
 
 namespace Jalium.UI.Markup;
 
@@ -120,6 +121,15 @@ public static class XmlnsDefinitionRegistry
 
             foreach (var dllPath in dlls)
             {
+                // 预筛:bin 目录里大量存在 native DLL(jalium.native.*.dll、msvcp140d.dll、
+                // vulkan-1.dll 等),如果直接调 AssemblyName.GetAssemblyName 每个都会抛
+                // BadImageFormatException。即便 catch 住,debugger 的 first-chance 仍会刷屏
+                // 干扰用户。先用 PEReader.HasMetadata 廉价判断是否为托管程序集。
+                if (!HasManagedMetadata(dllPath))
+                {
+                    continue;
+                }
+
                 AssemblyName name;
                 try
                 {
@@ -127,7 +137,7 @@ public static class XmlnsDefinitionRegistry
                 }
                 catch
                 {
-                    // 非托管 DLL / 损坏 / 权限问题 — 跳过。
+                    // managed 头存在但 manifest 读不出 — 损坏或权限问题,跳过。
                     continue;
                 }
 
@@ -151,6 +161,20 @@ public static class XmlnsDefinitionRegistry
                     // 依赖解析失败、TFM 不兼容等 — 跳过,不阻塞 XAML 解析。
                 }
             }
+        }
+    }
+
+    private static bool HasManagedMetadata(string path)
+    {
+        try
+        {
+            using var stream = File.OpenRead(path);
+            using var peReader = new PEReader(stream);
+            return peReader.HasMetadata;
+        }
+        catch
+        {
+            return false;
         }
     }
 

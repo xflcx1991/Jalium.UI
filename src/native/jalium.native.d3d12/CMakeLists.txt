@@ -38,7 +38,7 @@ set(SOURCES
     src/transition_shader_effect.cpp
 )
 
-add_library(${PROJECT_NAME} SHARED ${HEADERS} ${SOURCES})
+add_library(${PROJECT_NAME} ${JALIUM_LIB_TYPE} ${HEADERS} ${SOURCES})
 
 target_include_directories(${PROJECT_NAME}
     PUBLIC
@@ -48,10 +48,12 @@ target_include_directories(${PROJECT_NAME}
         ${CMAKE_CURRENT_SOURCE_DIR}/../jalium.native.core/include
 )
 
-target_compile_definitions(${PROJECT_NAME}
-    PRIVATE
-        JALIUM_D3D12_EXPORTS
-)
+if(NOT JALIUM_BUILD_STATIC)
+    target_compile_definitions(${PROJECT_NAME}
+        PRIVATE
+            JALIUM_D3D12_EXPORTS
+    )
+endif()
 
 # Link against jalium.native.core and Windows libraries
 target_link_libraries(${PROJECT_NAME}

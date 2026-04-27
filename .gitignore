@@ -26,6 +26,11 @@ x86/
 [Ww][Ii][Nn]32/
 [Aa][Rr][Mm]/
 [Aa][Rr][Mm]64/
+
+# WebView2 redistributable static loader — required for NativeAOT single-exe
+# WebView builds. Re-included from the broad x64/ ignore above.
+!src/native/jalium.native.browser/third_party/webview2/lib/
+!src/native/jalium.native.browser/third_party/webview2/lib/**
 bld/
 [Bb]in/
 [Bb]in_*/

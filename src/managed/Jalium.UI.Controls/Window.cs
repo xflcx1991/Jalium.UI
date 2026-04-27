@@ -6683,6 +6683,8 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
     /// <summary>
     /// Opens the DevTools window for this window.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
+        Justification = "DevTools is an opt-in developer surface. Production AOT applications do not call OpenDevTools; consumers that do must keep DevTools reflection roots alive themselves.")]
     public void OpenDevTools()
     {
         if (_devToolsWindow == null)
@@ -9023,8 +9025,15 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
     Button? IInputDispatcherHost.FindButton(UIElement root, Func<Button, bool> predicate) => FindButton(root, predicate);
 
     bool IInputDispatcherHost.CanOpenDevTools => CanOpenDevTools;
+
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
+        Justification = "DevTools opt-in; only reached via explicit F12 / manual host plumbing.")]
     void IInputDispatcherHost.ToggleDevTools() => ToggleDevTools();
+
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
+        Justification = "DevTools opt-in; production AOT consumers do not invoke this path.")]
     void IInputDispatcherHost.OpenDevTools() => OpenDevTools();
+
     void IInputDispatcherHost.ActivateDevToolsPicker() => _devToolsWindow?.ActivatePicker();
 
     bool IInputDispatcherHost.CanToggleDebugHud

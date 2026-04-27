@@ -18,7 +18,7 @@ if(APPLE)
     )
 endif()
 
-add_library(${PROJECT_NAME} SHARED ${HEADERS} ${SOURCES})
+add_library(${PROJECT_NAME} ${JALIUM_LIB_TYPE} ${HEADERS} ${SOURCES})
 
 target_include_directories(${PROJECT_NAME}
     PUBLIC

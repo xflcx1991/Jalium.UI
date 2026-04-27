@@ -8,6 +8,7 @@ set(HEADERS
 if(WIN32)
     set(PLATFORM_SOURCES
         src/platform_win32.cpp
+        src/platform_notification_stubs_win32.cpp
     )
 elseif(ANDROID)
     set(PLATFORM_SOURCES
@@ -28,9 +29,11 @@ set(SOURCES
     ${PLATFORM_SOURCES}
 )
 
-add_library(${PROJECT_NAME} SHARED ${HEADERS} ${SOURCES})
+add_library(${PROJECT_NAME} ${JALIUM_LIB_TYPE} ${HEADERS} ${SOURCES})
 
-target_compile_definitions(${PROJECT_NAME} PRIVATE JALIUM_PLATFORM_EXPORTS)
+if(NOT JALIUM_BUILD_STATIC)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE JALIUM_PLATFORM_EXPORTS)
+endif()
 
 target_include_directories(${PROJECT_NAME}
     PUBLIC

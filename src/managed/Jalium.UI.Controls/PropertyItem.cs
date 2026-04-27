@@ -212,7 +212,11 @@ public class PropertyItem : INotifyPropertyChanged
         }
     }
 
-    private static object? ConvertValue(object? value, Type targetType)
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
+        Justification = "PropertyGrid is a developer/inspector control. Consumers that bind it to user-defined types must keep their property converters preserved (e.g. via DynamicDependency or PreserveCode) — that is a documented prerequisite for using PropertyGrid under AOT, not a defect of this site.")]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
+        Justification = "Convert.ChangeType to a runtime-supplied Type may construct Nullable<T>; same opt-in caveat as above.")]
+    private static object? ConvertValue(object? value, [System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] Type targetType)
     {
         if (value == null)
             return null;

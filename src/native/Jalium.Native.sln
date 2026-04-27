@@ -13,6 +13,22 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "jalium.native.metal", "jali
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "jalium.native.browser", "jalium.native.browser\jalium.native.browser.vcxproj", "{C3D4E5F6-3456-789A-BCDE-F0123456789A}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "jalium.native.core.static", "jalium.native.core\jalium.native.core.static.vcxproj", "{42D22534-5A36-41D5-A4D4-C7E2171C90C0}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "jalium.native.d3d12.static", "jalium.native.d3d12\jalium.native.d3d12.static.vcxproj", "{3FEFEAAB-211A-4E64-B314-7E5B4F3A1AA4}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "jalium.native.browser.static", "jalium.native.browser\jalium.native.browser.static.vcxproj", "{A6DF12F8-7AB8-4A95-B0A4-F8858EDB501A}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "jalium.native.vulkan.static", "jalium.native.vulkan\jalium.native.vulkan.static.vcxproj", "{7A1B0C2D-8A9D-4F31-9C8B-2D5E6F7A8B91}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "jalium.native.software.static", "jalium.native.software\jalium.native.software.static.vcxproj", "{8B2C1D3E-9BAE-4042-AD9C-3E6F708192A2}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "jalium.native.aot.static", "jalium.native.aot\jalium.native.aot.static.vcxproj", "{9C3D4E5F-AC1F-4153-BE0E-4F708192B3C3}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "jalium.native.platform", "jalium.native.platform\jalium.native.platform.vcxproj", "{F1A2B3C4-D5E6-4071-8293-A4B5C6D7E8F9}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "jalium.native.platform.static", "jalium.native.platform\jalium.native.platform.static.vcxproj", "{2C3D4E5F-6071-4283-94A5-B6C7D8E9F0A1}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -37,6 +53,38 @@ Global
 		{C3D4E5F6-3456-789A-BCDE-F0123456789A}.Debug|x64.Build.0 = Debug|x64
 		{C3D4E5F6-3456-789A-BCDE-F0123456789A}.Release|x64.ActiveCfg = Release|x64
 		{C3D4E5F6-3456-789A-BCDE-F0123456789A}.Release|x64.Build.0 = Release|x64
+		{42D22534-5A36-41D5-A4D4-C7E2171C90C0}.Debug|x64.ActiveCfg = Debug|x64
+		{42D22534-5A36-41D5-A4D4-C7E2171C90C0}.Debug|x64.Build.0 = Debug|x64
+		{42D22534-5A36-41D5-A4D4-C7E2171C90C0}.Release|x64.ActiveCfg = Release|x64
+		{42D22534-5A36-41D5-A4D4-C7E2171C90C0}.Release|x64.Build.0 = Release|x64
+		{3FEFEAAB-211A-4E64-B314-7E5B4F3A1AA4}.Debug|x64.ActiveCfg = Debug|x64
+		{3FEFEAAB-211A-4E64-B314-7E5B4F3A1AA4}.Debug|x64.Build.0 = Debug|x64
+		{3FEFEAAB-211A-4E64-B314-7E5B4F3A1AA4}.Release|x64.ActiveCfg = Release|x64
+		{3FEFEAAB-211A-4E64-B314-7E5B4F3A1AA4}.Release|x64.Build.0 = Release|x64
+		{A6DF12F8-7AB8-4A95-B0A4-F8858EDB501A}.Debug|x64.ActiveCfg = Debug|x64
+		{A6DF12F8-7AB8-4A95-B0A4-F8858EDB501A}.Debug|x64.Build.0 = Debug|x64
+		{A6DF12F8-7AB8-4A95-B0A4-F8858EDB501A}.Release|x64.ActiveCfg = Release|x64
+		{A6DF12F8-7AB8-4A95-B0A4-F8858EDB501A}.Release|x64.Build.0 = Release|x64
+		{7A1B0C2D-8A9D-4F31-9C8B-2D5E6F7A8B91}.Debug|x64.ActiveCfg = Debug|x64
+		{7A1B0C2D-8A9D-4F31-9C8B-2D5E6F7A8B91}.Debug|x64.Build.0 = Debug|x64
+		{7A1B0C2D-8A9D-4F31-9C8B-2D5E6F7A8B91}.Release|x64.ActiveCfg = Release|x64
+		{7A1B0C2D-8A9D-4F31-9C8B-2D5E6F7A8B91}.Release|x64.Build.0 = Release|x64
+		{8B2C1D3E-9BAE-4042-AD9C-3E6F708192A2}.Debug|x64.ActiveCfg = Debug|x64
+		{8B2C1D3E-9BAE-4042-AD9C-3E6F708192A2}.Debug|x64.Build.0 = Debug|x64
+		{8B2C1D3E-9BAE-4042-AD9C-3E6F708192A2}.Release|x64.ActiveCfg = Release|x64
+		{8B2C1D3E-9BAE-4042-AD9C-3E6F708192A2}.Release|x64.Build.0 = Release|x64
+		{9C3D4E5F-AC1F-4153-BE0E-4F708192B3C3}.Debug|x64.ActiveCfg = Debug|x64
+		{9C3D4E5F-AC1F-4153-BE0E-4F708192B3C3}.Debug|x64.Build.0 = Debug|x64
+		{9C3D4E5F-AC1F-4153-BE0E-4F708192B3C3}.Release|x64.ActiveCfg = Release|x64
+		{9C3D4E5F-AC1F-4153-BE0E-4F708192B3C3}.Release|x64.Build.0 = Release|x64
+		{F1A2B3C4-D5E6-4071-8293-A4B5C6D7E8F9}.Debug|x64.ActiveCfg = Debug|x64
+		{F1A2B3C4-D5E6-4071-8293-A4B5C6D7E8F9}.Debug|x64.Build.0 = Debug|x64
+		{F1A2B3C4-D5E6-4071-8293-A4B5C6D7E8F9}.Release|x64.ActiveCfg = Release|x64
+		{F1A2B3C4-D5E6-4071-8293-A4B5C6D7E8F9}.Release|x64.Build.0 = Release|x64
+		{2C3D4E5F-6071-4283-94A5-B6C7D8E9F0A1}.Debug|x64.ActiveCfg = Debug|x64
+		{2C3D4E5F-6071-4283-94A5-B6C7D8E9F0A1}.Debug|x64.Build.0 = Debug|x64
+		{2C3D4E5F-6071-4283-94A5-B6C7D8E9F0A1}.Release|x64.ActiveCfg = Release|x64
+		{2C3D4E5F-6071-4283-94A5-B6C7D8E9F0A1}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

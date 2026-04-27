@@ -17,7 +17,7 @@ set(SOURCES
     src/backend_registry.cpp
 )
 
-add_library(${PROJECT_NAME} SHARED ${HEADERS} ${SOURCES})
+add_library(${PROJECT_NAME} ${JALIUM_LIB_TYPE} ${HEADERS} ${SOURCES})
 
 target_include_directories(${PROJECT_NAME}
     PUBLIC
@@ -25,10 +25,12 @@ target_include_directories(${PROJECT_NAME}
         $<INSTALL_INTERFACE:include>
 )
 
-target_compile_definitions(${PROJECT_NAME}
-    PRIVATE
-        JALIUM_EXPORTS
-)
+if(NOT JALIUM_BUILD_STATIC)
+    target_compile_definitions(${PROJECT_NAME}
+        PRIVATE
+            JALIUM_EXPORTS
+    )
+endif()
 
 # Link Windows libraries
 if(WIN32)

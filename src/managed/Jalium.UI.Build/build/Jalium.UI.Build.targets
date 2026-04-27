@@ -350,40 +350,169 @@
     <RemoveDir Directories="$(HlslShaderIntermediateOutputPath)" />
   </Target>
 
+  <!--
+    NativeAOT single-exe configuration entry point.
+
+    Consumer enables it with:
+        <PublishAot>true</PublishAot>
+        <UseJaliumNativeAot>true</UseJaliumNativeAot>
+
+    What this target wires up:
+      - Static archive resolution: prefers $(JaliumNativeAotAssetRoot)$(RuntimeIdentifier)\,
+        falling back to the in-repo build output for source-tree consumers.
+      - DirectPInvoke + NativeLibrary for every Jalium native module
+        (core / d3d12 / software / platform + aggregator) plus optional browser.
+      - LinkerArg for every Win32 / DirectX system import that the static
+        archives depend on (gdi32 etc. — NativeAOT does NOT auto-link these).
+      - StripJaliumNativeDllsAfterPublish: removes the shared-DLL drop-ins that
+        Interop's Content / build-time targets copy by default, so the publish
+        folder really is a single self-contained exe.
+
+    Knobs:
+      <JaliumIncludeBrowserAot>true|false</JaliumIncludeBrowserAot>
+          default false. Set true to include WebView2 browser support — note
+          this requires WebView2Loader.dll alongside the exe (browser is not
+          a true single-exe scenario).
+  -->
   <Target Name="ConfigureJaliumNativeAot"
           BeforeTargets="SetupOSSpecificProps"
           Condition="'$(UseJaliumNativeAot)' == 'true'">
     <PropertyGroup>
       <_JaliumNativeAotAssetDirectory>$([System.IO.Path]::GetFullPath('$(JaliumNativeAotAssetRoot)$(RuntimeIdentifier)\'))</_JaliumNativeAotAssetDirectory>
+      <!-- In-repo / source-tree fallback paths -->
       <_JaliumNativeAotFallbackAssetDirectory>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\..\native\bin\native-static\Release\'))</_JaliumNativeAotFallbackAssetDirectory>
+      <_JaliumNativeAotPackagedAssetDirectory>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)nativeaot\$(RuntimeIdentifier)\'))</_JaliumNativeAotPackagedAssetDirectory>
+      <!-- When the package was restored from NuGet, archives live in build/nativeaot/<rid>/ -->
+      <_JaliumNativeAotAssetDirectory Condition="'$(RuntimeIdentifier)' == 'win-x64' and !Exists('$(_JaliumNativeAotAssetDirectory)jalium.native.core.static.lib') and Exists('$(_JaliumNativeAotPackagedAssetDirectory)jalium.native.core.static.lib')">$(_JaliumNativeAotPackagedAssetDirectory)</_JaliumNativeAotAssetDirectory>
+      <!-- Source-tree fallback (when consumed via ProjectReference inside the repo) -->
       <_JaliumNativeAotAssetDirectory Condition="'$(RuntimeIdentifier)' == 'win-x64' and !Exists('$(_JaliumNativeAotAssetDirectory)jalium.native.core.static.lib') and Exists('$(_JaliumNativeAotFallbackAssetDirectory)jalium.native.core.static.lib')">$(_JaliumNativeAotFallbackAssetDirectory)</_JaliumNativeAotAssetDirectory>
+
+      <JaliumIncludeBrowserAot Condition="'$(JaliumIncludeBrowserAot)' == ''">false</JaliumIncludeBrowserAot>
+
+      <!-- WebView2LoaderStatic.lib resolution: prefer the copy shipped inside
+           Jalium.UI.Build's package, fall back to the source-tree third_party
+           copy for in-repo consumers. -->
+      <_JaliumWebView2LoaderStaticLib Condition="'$(JaliumIncludeBrowserAot)' == 'true' and Exists('$(_JaliumNativeAotAssetDirectory)WebView2LoaderStatic.lib')">$(_JaliumNativeAotAssetDirectory)WebView2LoaderStatic.lib</_JaliumWebView2LoaderStaticLib>
+      <_JaliumWebView2LoaderStaticLib Condition="'$(JaliumIncludeBrowserAot)' == 'true' and '$(_JaliumWebView2LoaderStaticLib)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\..\native\jalium.native.browser\third_party\webview2\lib\x64\WebView2LoaderStatic.lib'))</_JaliumWebView2LoaderStaticLib>
     </PropertyGroup>
+
+    <Error Condition="'$(JaliumIncludeBrowserAot)' == 'true' and ('$(_JaliumWebView2LoaderStaticLib)' == '' or !Exists('$(_JaliumWebView2LoaderStaticLib)'))"
+           Text="JaliumIncludeBrowserAot=true requires WebView2LoaderStatic.lib. Looked at '$(_JaliumNativeAotAssetDirectory)WebView2LoaderStatic.lib' and the source-tree third_party fallback. Restore the Jalium.UI.Build NuGet package or copy WebView2LoaderStatic.lib (from Microsoft.Web.WebView2 NuGet) into src/native/jalium.native.browser/third_party/webview2/lib/x64/." />
 
     <Error Condition="'$(RuntimeIdentifier)' == ''"
            Text="UseJaliumNativeAot requires a RuntimeIdentifier. Set RuntimeIdentifier to a runtime with available static assets before publishing." />
     <Error Condition="'$(PublishAot)' != 'true'"
            Text="UseJaliumNativeAot requires PublishAot=true." />
     <Error Condition="!Exists('$(_JaliumNativeAotAssetDirectory)jalium.native.core.static.lib')"
-           Text="Jalium NativeAOT static assets were not found at '$(_JaliumNativeAotAssetDirectory)'. Restore or rebuild the Jalium.UI.Build package." />
+           Text="Jalium NativeAOT static assets not found at '$(_JaliumNativeAotAssetDirectory)'. Restore the Jalium.UI.Build package, or build src/native/Jalium.Native.sln (Configuration=Release Platform=x64) for in-source consumers." />
+    <Error Condition="!Exists('$(_JaliumNativeAotAssetDirectory)jalium.native.aot.static.lib')"
+           Text="Missing jalium.native.aot.static.lib at '$(_JaliumNativeAotAssetDirectory)'. The package is older than the AOT-aware Jalium.UI.Build — bump Jalium.UI.Build to a version that ships the aggregator archive." />
 
     <ItemGroup>
+      <!-- Managed-side P/Invoke hooks. The strings here MUST match the DLL
+           names that appear in [LibraryImport] / [DllImport] sites. -->
+      <DirectPInvoke Include="jalium.native.aot" />
       <DirectPInvoke Include="jalium.native.core" />
       <DirectPInvoke Include="jalium.native.d3d12" />
-      <DirectPInvoke Include="jalium.native.browser" />
+      <DirectPInvoke Include="jalium.native.software" />
+      <DirectPInvoke Include="jalium.native.platform" />
+      <DirectPInvoke Include="jalium.native.browser" Condition="'$(JaliumIncludeBrowserAot)' == 'true'" />
 
-      <NativeLibrary Include="$(_JaliumNativeAotAssetDirectory)jalium.native.core.static.lib" />
+      <!-- Static archives. Order matters loosely: aggregator first so the
+           linker sees its strong references to per-backend init functions
+           before scanning the per-backend archives. -->
+      <NativeLibrary Include="$(_JaliumNativeAotAssetDirectory)jalium.native.aot.static.lib" />
       <NativeLibrary Include="$(_JaliumNativeAotAssetDirectory)jalium.native.d3d12.static.lib" />
-      <NativeLibrary Include="$(_JaliumNativeAotAssetDirectory)jalium.native.browser.static.lib" />
+      <NativeLibrary Include="$(_JaliumNativeAotAssetDirectory)jalium.native.software.static.lib" />
+      <NativeLibrary Include="$(_JaliumNativeAotAssetDirectory)jalium.native.platform.static.lib" />
+      <NativeLibrary Include="$(_JaliumNativeAotAssetDirectory)jalium.native.core.static.lib" />
+      <NativeLibrary Include="$(_JaliumNativeAotAssetDirectory)jalium.native.browser.static.lib"
+                     Condition="'$(JaliumIncludeBrowserAot)' == 'true'" />
+      <!-- WebView2LoaderStatic.lib is the in-process WebView2 loader: it
+           locates the user-installed Edge WebView2 Runtime through COM/RoGet
+           rather than via WebView2Loader.dll. browser.cpp under JALIUM_STATIC
+           calls CreateCoreWebView2EnvironmentWithOptions /
+           GetAvailableCoreWebView2BrowserVersionString as direct imports,
+           which this archive resolves at link time. -->
+      <NativeLibrary Include="$(_JaliumWebView2LoaderStaticLib)"
+                     Condition="'$(JaliumIncludeBrowserAot)' == 'true'" />
 
-      <LinkerArg Include="&quot;d3d12.lib&quot;" />
-      <LinkerArg Include="&quot;dxgi.lib&quot;" />
-      <LinkerArg Include="&quot;dxguid.lib&quot;" />
-      <LinkerArg Include="&quot;d3dcompiler.lib&quot;" />
-      <LinkerArg Include="&quot;dwrite.lib&quot;" />
-      <LinkerArg Include="&quot;d2d1.lib&quot;" />
-      <LinkerArg Include="&quot;d3d11.lib&quot;" />
-      <LinkerArg Include="&quot;dcomp.lib&quot;" />
+      <!-- Win32 / DirectX system imports. NativeAOT only auto-links the .NET
+           runtime's required set, so anything used by our static archives must
+           be listed explicitly. Mirrors the AdditionalDependencies of the
+           dynamic-DLL vcxproj projects. -->
+      <NativeLibrary Include="d3d12.lib" />
+      <NativeLibrary Include="dxgi.lib" />
+      <NativeLibrary Include="dxguid.lib" />
+      <NativeLibrary Include="d3dcompiler.lib" />
+      <NativeLibrary Include="dwrite.lib" />
+      <NativeLibrary Include="d2d1.lib" />
+      <NativeLibrary Include="d3d11.lib" />
+      <NativeLibrary Include="dcomp.lib" />
+      <!-- GDI / windowing pulled by d3d12 desktop capture, glyph rasterizer,
+           software GDI text path, and platform window/eventloop. -->
+      <NativeLibrary Include="gdi32.lib" />
+      <NativeLibrary Include="user32.lib" />
+      <NativeLibrary Include="kernel32.lib" />
+      <NativeLibrary Include="ole32.lib" />
+      <NativeLibrary Include="oleaut32.lib" />
+      <NativeLibrary Include="shcore.lib" />
+      <NativeLibrary Include="shell32.lib" />
+      <NativeLibrary Include="advapi32.lib" />
+      <NativeLibrary Include="uuid.lib" />
+      <NativeLibrary Include="dwmapi.lib" />
+      <NativeLibrary Include="imm32.lib" />
+      <NativeLibrary Include="winmm.lib" />
+      <NativeLibrary Include="propsys.lib" />
     </ItemGroup>
+  </Target>
+
+  <!--
+    Strip post-publish artifacts that contradict the single-exe goal.
+
+    Even with UseJaliumNativeAot=true, the Jalium.UI.Interop NuGet package's
+    Content / build-time targets copy each per-backend shared DLL into the
+    output. Those copies happen during Interop's own build, where our
+    UseJaliumNativeAot flag doesn't propagate, so the file ends up in the
+    publish folder. We delete them here as the last step of publish.
+
+    Third-party native DLLs that Jalium.UI.Media transitively pulls in
+    (OpenCvSharp, SoundFlow, miniaudio, ffmpeg) are kept by default — they
+    belong to managed dependencies that the consumer may legitimately use.
+    Set <JaliumStripThirdPartyMediaNatives>true</JaliumStripThirdPartyMediaNatives>
+    if your app doesn't touch the video/audio APIs.
+  -->
+  <Target Name="StripJaliumDuplicateNativeDllsAfterPublish"
+          AfterTargets="Publish"
+          Condition="'$(UseJaliumNativeAot)' == 'true'">
+    <ItemGroup>
+      <_JaliumDllsToStrip Include="$(PublishDir)jalium.native.core.dll" />
+      <_JaliumDllsToStrip Include="$(PublishDir)jalium.native.d3d12.dll" />
+      <_JaliumDllsToStrip Include="$(PublishDir)jalium.native.vulkan.dll" />
+      <_JaliumDllsToStrip Include="$(PublishDir)jalium.native.software.dll" />
+      <_JaliumDllsToStrip Include="$(PublishDir)jalium.native.platform.dll" />
+      <!-- jalium.native.browser.dll is removed unconditionally: when
+           JaliumIncludeBrowserAot=false the browser feature is excluded; when
+           true, the .static.lib is linked instead and the .dll alongside is
+           pure dead weight from Interop's Content copy. -->
+      <_JaliumDllsToStrip Include="$(PublishDir)jalium.native.browser.dll" />
+      <!-- WebView2Loader.dll is replaced by WebView2LoaderStatic.lib in the
+           browser-AOT case, and unused entirely in the no-browser case. -->
+      <_JaliumDllsToStrip Include="$(PublishDir)WebView2Loader.dll" />
+      <_JaliumDllsToStrip Include="$(PublishDir)OpenCvSharpExtern.dll"
+                          Condition="'$(JaliumStripThirdPartyMediaNatives)' == 'true'" />
+      <_JaliumDllsToStrip Include="$(PublishDir)opencv_videoio_ffmpeg*.dll"
+                          Condition="'$(JaliumStripThirdPartyMediaNatives)' == 'true'" />
+      <_JaliumDllsToStrip Include="$(PublishDir)miniaudio.dll"
+                          Condition="'$(JaliumStripThirdPartyMediaNatives)' == 'true'" />
+      <_JaliumDllsToStrip Include="$(PublishDir)soundflow-ffmpeg.dll"
+                          Condition="'$(JaliumStripThirdPartyMediaNatives)' == 'true'" />
+    </ItemGroup>
+    <Delete Files="@(_JaliumDllsToStrip)" ContinueOnError="true">
+      <Output TaskParameter="DeletedFiles" ItemName="_JaliumDllsStripped" />
+    </Delete>
+    <Message Importance="High" Condition="'@(_JaliumDllsStripped)' != ''"
+             Text="Jalium NativeAOT: stripped @(_JaliumDllsStripped->'%(Filename)%(Extension)', ', ') (linked statically)." />
   </Target>
 
 </Project>

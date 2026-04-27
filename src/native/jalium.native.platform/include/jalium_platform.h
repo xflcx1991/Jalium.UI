@@ -2,9 +2,13 @@
 
 #include "jalium_types.h"
 
-// Platform-specific export macros
+// Platform-specific export macros.
+// JALIUM_STATIC (set globally for the NativeAOT static-link flavor) takes
+// precedence over the legacy JALIUM_PLATFORM_STATIC; either collapses the
+// macro so the same headers compile cleanly into a .lib without dllimport
+// stubs.
 #ifdef _WIN32
-    #if defined(JALIUM_PLATFORM_STATIC)
+    #if defined(JALIUM_STATIC) || defined(JALIUM_PLATFORM_STATIC)
         #define JALIUM_PLATFORM_API
     #elif defined(JALIUM_PLATFORM_EXPORTS)
         #define JALIUM_PLATFORM_API __declspec(dllexport)

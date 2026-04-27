@@ -32,9 +32,11 @@ elseif(UNIX AND NOT APPLE)
     list(APPEND SOURCES src/font_provider_fontconfig.cpp)
 endif()
 
-add_library(${PROJECT_NAME} SHARED ${HEADERS} ${SOURCES})
+add_library(${PROJECT_NAME} ${JALIUM_LIB_TYPE} ${HEADERS} ${SOURCES})
 
-target_compile_definitions(${PROJECT_NAME} PRIVATE JALIUM_TEXT_EXPORTS)
+if(NOT JALIUM_BUILD_STATIC)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE JALIUM_TEXT_EXPORTS)
+endif()
 
 target_include_directories(${PROJECT_NAME}
     PUBLIC

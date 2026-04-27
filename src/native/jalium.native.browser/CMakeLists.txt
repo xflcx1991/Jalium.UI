@@ -8,7 +8,7 @@ set(SOURCES
     src/browser.cpp
 )
 
-add_library(${PROJECT_NAME} SHARED ${HEADERS} ${SOURCES})
+add_library(${PROJECT_NAME} ${JALIUM_LIB_TYPE} ${HEADERS} ${SOURCES})
 
 target_include_directories(${PROJECT_NAME}
     PUBLIC
@@ -18,10 +18,12 @@ target_include_directories(${PROJECT_NAME}
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party/webview2/include
 )
 
-target_compile_definitions(${PROJECT_NAME}
-    PRIVATE
-        JALIUM_BROWSER_EXPORTS
-)
+if(NOT JALIUM_BUILD_STATIC)
+    target_compile_definitions(${PROJECT_NAME}
+        PRIVATE
+            JALIUM_BROWSER_EXPORTS
+    )
+endif()
 
 if(WIN32)
     target_link_libraries(${PROJECT_NAME}

@@ -1,5 +1,6 @@
 // Orchestrates all LSP features for a single EditControl instance.
 
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using Jalium.UI.Controls.Editor.LanguageServer.Protocol;
 
@@ -10,6 +11,8 @@ namespace Jalium.UI.Controls.Editor.LanguageServer.Client;
 /// Handles initialization, document sync, diagnostics, completion, hover, signature help,
 /// navigation, code actions, formatting, rename, semantic tokens, folding, inlay hints, etc.
 /// </summary>
+[RequiresUnreferencedCode("Drives LspClient/JsonRpcConnection which use System.Text.Json reflection.")]
+[RequiresDynamicCode("Drives LspClient/JsonRpcConnection which use System.Text.Json runtime code generation.")]
 internal sealed class EditControlLspIntegration : IAsyncDisposable
 {
     private readonly EditControl _editor;

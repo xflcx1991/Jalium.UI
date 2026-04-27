@@ -36,8 +36,8 @@ public class DockIndicatorThemeTests
             AssertBrushMatches(app.Resources["DockIndicatorButtonHoverBackground"], InvokeStaticBrushResolver("ResolveButtonBackgroundBrush", true));
             AssertBrushMatches(app.Resources["DockIndicatorButtonBorder"], InvokeStaticBrushResolver("ResolveButtonBorderBrush", false));
             AssertBrushMatches(app.Resources["DockIndicatorButtonHoverBackground"], InvokeStaticBrushResolver("ResolveButtonBorderBrush", true));
-            Assert.Equal(((SolidColorBrush)app.Resources["DockIndicatorIconForeground"]).Color, InvokeStaticColorResolver("ResolveIconColor", false));
-            Assert.Equal(((SolidColorBrush)app.Resources["DockIndicatorIconHoverForeground"]).Color, InvokeStaticColorResolver("ResolveIconColor", true));
+            Assert.Equal(((SolidColorBrush)app.Resources["DockIndicatorIconForeground"]!).Color, InvokeStaticColorResolver("ResolveIconColor", false));
+            Assert.Equal(((SolidColorBrush)app.Resources["DockIndicatorIconHoverForeground"]!).Color, InvokeStaticColorResolver("ResolveIconColor", true));
             AssertBrushMatches(app.Resources["DockIndicatorPreviewBackground"], InvokeStaticBrushResolver("ResolvePreviewBackgroundBrush"));
             AssertBrushMatches(app.Resources["DockIndicatorPreviewBorder"], InvokeStaticBrushResolver("ResolvePreviewBorderBrush"));
         }
@@ -61,7 +61,7 @@ public class DockIndicatorThemeTests
         return Assert.IsType<Color>(method!.Invoke(null, args)!);
     }
 
-    private static void AssertBrushMatches(object expectedObj, Brush actual)
+    private static void AssertBrushMatches(object? expectedObj, Brush actual)
     {
         var expected = Assert.IsAssignableFrom<Brush>(expectedObj);
 

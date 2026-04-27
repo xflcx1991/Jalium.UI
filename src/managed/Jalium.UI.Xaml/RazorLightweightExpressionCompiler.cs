@@ -12,6 +12,7 @@ internal static class RazorLightweightExpressionCompiler
     /// Compiles an expression plan into an evaluator wrapper without Roslyn.
     /// Drop-in replacement for <c>RazorRoslynScriptCompiler.CompileExpression()</c>.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Compiled expression wrapper invokes the lightweight evaluator, which reflects on user types.")]
     public static RazorExpressionRuntimeCompiler.CompiledExpressionWrapper CompileExpression(RazorExpressionPlan plan)
     {
         var expression = plan.Expression;
@@ -34,6 +35,7 @@ internal static class RazorLightweightExpressionCompiler
     /// Compiles a template (with code blocks) into an evaluator without Roslyn.
     /// Drop-in replacement for <c>RazorRoslynScriptCompiler.CompileTemplate()</c>.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Compiled template wrapper invokes the lightweight expression/code-block evaluators, which reflect on user types.")]
     public static RazorTemplateRuntimeCompiler.CompiledTemplateWrapper CompileTemplate(RazorTemplate template)
     {
         return new RazorTemplateRuntimeCompiler.CompiledTemplateWrapper

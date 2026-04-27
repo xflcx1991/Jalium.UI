@@ -229,9 +229,6 @@ public partial class DevToolsWindow
             onClick: () => RevealInInspector(targetFe));
 
         // ── Source box ──
-        UIElement? sourceOnClick = null;
-        if (sourceInstance is Visual srcVisual)
-            sourceOnClick = null; // not used directly; callback captured below
         var sourceFooter = trigger == UpdateSourceTrigger.Default ? "SOURCE" : $"SOURCE · {trigger}";
         var sourceBox = MakeEndpointBox(
             header: sourceTypeName,
@@ -408,6 +405,7 @@ public partial class DevToolsWindow
     // Shared with ElementContextMenu.cs; the definition lives there so that
     // partial files do not redeclare the method.
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("DevTools enumerates DependencyProperty static fields by walking the inheritance chain via reflection.")]
     private static IEnumerable<DependencyProperty> EnumerateDependencyProperties(Type type)
     {
         for (var t = type; t != null; t = t.BaseType)

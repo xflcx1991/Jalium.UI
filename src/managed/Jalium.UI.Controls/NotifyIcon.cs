@@ -11,7 +11,6 @@ public class NotifyIcon : FrameworkElement, IDisposable
     private bool _disposed;
     private bool _isVisible;
     private ContextMenu? _contextMenu;
-    private IntPtr _iconHandle;
 
     #region Dependency Properties
 
@@ -106,6 +105,15 @@ public class NotifyIcon : FrameworkElement, IDisposable
     /// Occurs when the mouse pointer moves while it is over the icon.
     /// </summary>
     public new event MouseEventHandler? MouseMove;
+
+    /// <summary>Raises the <see cref="MouseDown"/> event from a tray-icon message handler.</summary>
+    protected internal void RaiseMouseDown(MouseButtonEventArgs e) => MouseDown?.Invoke(this, e);
+
+    /// <summary>Raises the <see cref="MouseUp"/> event from a tray-icon message handler.</summary>
+    protected internal void RaiseMouseUp(MouseButtonEventArgs e) => MouseUp?.Invoke(this, e);
+
+    /// <summary>Raises the <see cref="MouseMove"/> event from a tray-icon message handler.</summary>
+    protected internal void RaiseMouseMove(MouseEventArgs e) => MouseMove?.Invoke(this, e);
 
     #endregion
 

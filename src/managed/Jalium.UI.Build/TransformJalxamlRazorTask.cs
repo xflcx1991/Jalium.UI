@@ -152,10 +152,7 @@ public sealed class TransformJalxamlRazorTask : Microsoft.Build.Utilities.Task
                         .Replace(escapedSectionPlaceholder, "@@section ")
                         .Replace(escapedRenderSectionPlaceholder, "@@RenderSection(");
                 }
-                else
-                {
-                    content = content; // no expansion needed, keep original with @section/@RenderSection intact
-                }
+                // else: no expansion needed, keep original with @section/@RenderSection intact
             }
             catch (Exception ex)
             {

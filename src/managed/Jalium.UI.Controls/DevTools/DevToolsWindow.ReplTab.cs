@@ -18,6 +18,7 @@ public partial class DevToolsWindow
 
     private const string ReplPrompt = "devtools> ";
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("DevTools REPL evaluates user input via reflection-based runtime member resolution.")]
     private UIElement BuildReplTab()
     {
         _replTerminal = new Terminal
@@ -76,6 +77,7 @@ public partial class DevToolsWindow
         _replTerminal?.Write($"\x1b[1;32m{ReplPrompt}\x1b[0m");
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("DevTools REPL evaluates user input via reflection-based runtime member resolution.")]
     private void OnReplKeyDown(object? sender, RoutedEventArgs e)
     {
         if (_replTerminal == null || e is not KeyEventArgs ke) return;
@@ -194,6 +196,7 @@ public partial class DevToolsWindow
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("DevTools REPL evaluates expressions and assigns to runtime-resolved members via reflection.")]
     private void RunReplLine(string code)
     {
         if (string.IsNullOrWhiteSpace(code) || _replTerminal == null) return;
@@ -242,6 +245,7 @@ public partial class DevToolsWindow
 
     // ── Tiny expression interpreter ──────────────────────────────────────
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("DevTools REPL evaluates expressions and assigns to runtime-resolved members via reflection.")]
     private object? EvaluateStatement(List<ReplTokenizer.Token> tokens)
     {
         if (tokens.Count >= 4 && tokens[0].Kind == ReplTokenizer.TokenKind.Identifier && tokens[0].Text == "let"
@@ -282,6 +286,7 @@ public partial class DevToolsWindow
         return -1;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("DevTools REPL assigns to runtime-resolved properties/fields via reflection.")]
     private void AssignTo(List<ReplTokenizer.Token> tokens, int assignIndex, object? value)
     {
         if (assignIndex < 1) throw new InvalidOperationException("Nothing to assign to");
@@ -328,6 +333,7 @@ public partial class DevToolsWindow
         catch { return value; }
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("DevTools REPL evaluates expressions via reflection-based runtime member resolution.")]
     private object? EvaluateExpression(List<ReplTokenizer.Token> tokens, int start, int end)
     {
         if (start >= end) throw new InvalidOperationException("Empty expression");
@@ -382,6 +388,7 @@ public partial class DevToolsWindow
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("DevTools REPL reads/invokes runtime-resolved members via reflection.")]
     private object? ReadOrInvokeMember(object? target, string memberName, List<ReplTokenizer.Token> tokens, ref int pos, int end)
     {
         if (target == null)

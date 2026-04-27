@@ -108,6 +108,9 @@ public sealed class SystemNotificationManager : IDisposable
     /// </summary>
     public event EventHandler<Exception>? Error;
 
+    /// <summary>Raises the <see cref="Error"/> event from a backend implementation.</summary>
+    internal void RaiseError(Exception ex) => Error?.Invoke(this, ex);
+
     public void Dispose()
     {
         if (_disposed) return;

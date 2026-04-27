@@ -506,6 +506,8 @@ public class DataGrid : Control, IColumnHeaderHost
     }
 
     /// <summary>
+    /// Handles size changes of the data ScrollViewer to keep headers in sync.
+    /// </summary>
     private void OnDataScrollViewerSizeChanged(object sender, SizeChangedEventArgs e)
     {
         // When the ScrollViewer viewport resizes (e.g. DataGrid width changes),
@@ -1841,7 +1843,7 @@ public class DataGrid : Control, IColumnHeaderHost
         {
             if (!Columns[i].IsReadOnly)
             {
-                if (!row.CellsByColumn.TryGetValue(i, out var cell))
+                if (row is null || !row.CellsByColumn.TryGetValue(i, out var cell))
                 {
                     EnsureColumnVisible(i);
                     row = GetOrRealizeRow(SelectedIndex);

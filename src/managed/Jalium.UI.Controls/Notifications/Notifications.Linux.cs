@@ -87,7 +87,7 @@ internal sealed class LinuxNotificationBackend : INotificationBackend
         foreach (var action in content.Actions)
         {
             LibNotify.notify_notification_add_action(
-                notification, action.Id, action.Label,
+                notification, action.Id ?? string.Empty, action.Label ?? string.Empty,
                 LibNotify.ActionCallbackDelegate, nint.Zero, nint.Zero);
         }
 

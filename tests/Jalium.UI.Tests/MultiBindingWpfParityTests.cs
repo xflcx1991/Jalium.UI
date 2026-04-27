@@ -76,9 +76,9 @@ public class MultiBindingWpfParityTests
             return DependencyProperty.UnsetValue;
         }
 
-        public object?[]? ConvertBack(object? value, Type[] targetTypes, object? parameter, System.Globalization.CultureInfo culture)
+        public object?[] ConvertBack(object? value, Type[] targetTypes, object? parameter, System.Globalization.CultureInfo culture)
         {
-            return null;
+            return Array.Empty<object?>();
         }
     }
 
@@ -89,9 +89,9 @@ public class MultiBindingWpfParityTests
             return null;
         }
 
-        public object?[]? ConvertBack(object? value, Type[] targetTypes, object? parameter, System.Globalization.CultureInfo culture)
+        public object?[] ConvertBack(object? value, Type[] targetTypes, object? parameter, System.Globalization.CultureInfo culture)
         {
-            return null;
+            return Array.Empty<object?>();
         }
     }
 }

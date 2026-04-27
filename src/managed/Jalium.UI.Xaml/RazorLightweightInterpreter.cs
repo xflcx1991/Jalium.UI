@@ -15,12 +15,15 @@ internal static class ReflectionCache
     private static readonly ConcurrentDictionary<(Type, string), FieldInfo?> FieldCache = new();
     private static readonly ConcurrentDictionary<(Type, string, int), MethodInfo[]> MethodCache = new();
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Looks up properties on user types via reflection — types must be DAM-preserved by the caller.")]
     public static PropertyInfo? GetProperty(Type type, string name, BindingFlags flags)
         => PropertyCache.GetOrAdd((type, name), static (key, f) => key.Item1.GetProperty(key.Item2, f), flags);
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Looks up fields on user types via reflection — types must be DAM-preserved by the caller.")]
     public static FieldInfo? GetField(Type type, string name, BindingFlags flags)
         => FieldCache.GetOrAdd((type, name), static (key, f) => key.Item1.GetField(key.Item2, f), flags);
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Enumerates methods on user types via reflection — types must be DAM-preserved by the caller.")]
     public static MethodInfo[] GetMethods(Type type, string name, int argCount, BindingFlags flags)
         => MethodCache.GetOrAdd((type, name, argCount), static (key, f) =>
             key.Item1.GetMethods(f)
@@ -484,6 +487,16 @@ internal sealed class RazorTokenizer
 
 // ──────────────────────────── Expression Parser ────────────────────────────
 
+/// <summary>
+/// Reflection-based recursive-descent evaluator for Razor expressions extracted from XAML.
+/// Application authors who want AOT-safe Razor must register typed accessors via
+/// <see cref="RazorExpressionRegistry"/> for every property and method they reference;
+/// otherwise this class falls back to <c>Type.GetProperty</c> / <c>GetMethod</c> on the
+/// runtime type of user data sources. The <see cref="RequiresUnreferencedCodeAttribute"/>
+/// declared here propagates to callers so the analyzer can flag remaining unsafe paths.
+/// </summary>
+[System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Razor expression interpreter reflects on the runtime types of binding sources for any path it cannot resolve through RazorExpressionRegistry.")]
+[System.Diagnostics.CodeAnalysis.RequiresDynamicCode("Razor expression interpreter may construct generic types/methods for runtime-evaluated expressions.")]
 internal sealed class RazorExpressionParser
 {
     private readonly List<RazorToken> _tokens;
@@ -1443,6 +1456,7 @@ internal sealed class RazorExpressionParser
         args.Add(EvalExpression(resolver));
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Reflectively dispatches a method on a runtime type via ReflectionCache.")]
     private static object? InvokeMethodWithOutRef(object? target, string methodName, object?[] args)
     {
         if (target == null) return null;
@@ -1937,6 +1951,7 @@ internal sealed class RazorExpressionParser
         return null;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Reflectively dispatches a static method on the runtime type via ReflectionCache.")]
     private object? EvalStaticMethodCall(Type type, string methodName, Func<string, object?> resolver)
     {
         Consume(); // (
@@ -2177,7 +2192,7 @@ internal sealed class RazorExpressionParser
         return 0;
     }
 
-    private static bool Equals(object? left, object? right)
+    private static new bool Equals(object? left, object? right)
     {
         if (ReferenceEquals(left, right)) return true;
         if (left == null || right == null) return left == null && right == null;
@@ -2369,6 +2384,7 @@ internal sealed class RazorExpressionParser
         return value;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Reflectively reads a member on a runtime type via ReflectionCache.")]
     internal static object? GetMember(object? target, string memberName)
     {
         if (target == null) return null;
@@ -2392,6 +2408,7 @@ internal sealed class RazorExpressionParser
         return null;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Reflectively reads a static member on the runtime type via ReflectionCache.")]
     internal static object? GetStaticMember(Type type, string memberName)
     {
         var prop = ReflectionCache.GetProperty(type, memberName, BindingFlags.Public | BindingFlags.Static);
@@ -2401,6 +2418,7 @@ internal sealed class RazorExpressionParser
         return null;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Reflectively dispatches an instance method on the runtime type via ReflectionCache.")]
     internal static object? InvokeMethod(object? target, string methodName, object?[] args)
     {
         if (target == null) return null;
@@ -2738,9 +2756,12 @@ internal sealed class RazorExpressionParser
 // ────────────────────── Cached Expression Evaluator ────────────────────────
 
 /// <summary>
-/// AOT-safe expression evaluator that uses a recursive-descent parser with
-/// <c>dynamic</c>-free reflection-based evaluation. No Roslyn dependency.
+/// Recursive-descent evaluator entry point. See <see cref="RazorExpressionParser"/> for
+/// trim/AOT requirements: callers must register typed accessors via
+/// <see cref="RazorExpressionRegistry"/> for trim-safe operation.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Razor expression evaluator dispatches to RazorExpressionParser, which may reflect on user types.")]
+[System.Diagnostics.CodeAnalysis.RequiresDynamicCode("Razor expression evaluator dispatches to RazorExpressionParser, which may construct generic types/methods at runtime.")]
 internal static class RazorLightweightExpressionEvaluator
 {
     // Two-generation cache: when current fills up, previous is discarded and current becomes previous.

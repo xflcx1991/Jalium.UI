@@ -48,6 +48,7 @@ public static class HotReloadRuntime
     /// <summary>
     /// Applies a JALXAML patch to all active instances of the specified x:Class.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Hot-reload reflectively mirrors DPs and CLR properties between the patched and current trees.")]
     public static HotReloadPatchResult ApplyPatch(string xClass, string filePath, string content)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(xClass);
@@ -111,6 +112,7 @@ public static class HotReloadRuntime
         return new HotReloadPatchResult(updated, fallback, failed, string.Empty);
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Hot-reload mirrors DPs and CLR properties via reflection.")]
     private static void ApplyElementPatch(FrameworkElement target, FrameworkElement source, PatchCounters counters)
     {
         if (!AreTypesCompatible(target.GetType(), source.GetType()))
@@ -157,6 +159,7 @@ public static class HotReloadRuntime
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Recurses into ApplyElementPatch which mirrors DPs/CLR properties via reflection.")]
     private static void PatchPanelChildren(Panel targetPanel, Panel sourcePanel, PatchCounters counters)
     {
         var existingChildren = targetPanel.Children.ToList();
@@ -228,6 +231,7 @@ public static class HotReloadRuntime
         return null;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Recurses into ApplyElementPatch which mirrors DPs/CLR properties via reflection.")]
     private static void PatchContentControl(ContentControl target, ContentControl source, PatchCounters counters)
     {
         var sourceContent = source.Content;
@@ -248,6 +252,7 @@ public static class HotReloadRuntime
         counters.FallbackReplacements++;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Recurses into ApplyElementPatch which mirrors DPs/CLR properties via reflection.")]
     private static void PatchSingleChildContainer<TContainer>(
         TContainer target,
         TContainer source,
@@ -275,6 +280,7 @@ public static class HotReloadRuntime
         counters.FallbackReplacements++;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Hot-reload mirrors DependencyProperty static fields between matched types via reflection.")]
     private static void CopyDependencyProperties(DependencyObject target, DependencyObject source)
     {
         var dps = DependencyPropertyCache.GetOrAdd(target.GetType(), static type =>
@@ -315,6 +321,7 @@ public static class HotReloadRuntime
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Hot-reload mirrors public CLR properties between matched types via reflection — opt-in development feature.")]
     private static void CopyClrProperties(object target, object source)
     {
         var targetType = target.GetType();

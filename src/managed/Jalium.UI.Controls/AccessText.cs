@@ -82,7 +82,7 @@ public class AccessText : FrameworkElement
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Content)]
     public string Text
     {
-        get => (string)GetValue(TextProperty);
+        get => (string)GetValue(TextProperty)!;
         set => SetValue(TextProperty, value);
     }
 
@@ -102,7 +102,7 @@ public class AccessText : FrameworkElement
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Typography)]
     public double FontSize
     {
-        get => (double)GetValue(FontSizeProperty);
+        get => (double)GetValue(FontSizeProperty)!;
         set => SetValue(FontSizeProperty, value);
     }
 
@@ -112,7 +112,7 @@ public class AccessText : FrameworkElement
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Typography)]
     public FontWeight FontWeight
     {
-        get => (FontWeight)GetValue(FontWeightProperty);
+        get => (FontWeight)GetValue(FontWeightProperty)!;
         set => SetValue(FontWeightProperty, value);
     }
 
@@ -122,7 +122,7 @@ public class AccessText : FrameworkElement
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Typography)]
     public FontStyle FontStyle
     {
-        get => (FontStyle)GetValue(FontStyleProperty);
+        get => (FontStyle)GetValue(FontStyleProperty)!;
         set => SetValue(FontStyleProperty, value);
     }
 
@@ -142,7 +142,7 @@ public class AccessText : FrameworkElement
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Typography)]
     public TextWrapping TextWrapping
     {
-        get => (TextWrapping)GetValue(TextWrappingProperty);
+        get => (TextWrapping)GetValue(TextWrappingProperty)!;
         set => SetValue(TextWrappingProperty, value);
     }
 
@@ -152,7 +152,7 @@ public class AccessText : FrameworkElement
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Typography)]
     public TextTrimming TextTrimming
     {
-        get => (TextTrimming)GetValue(TextTrimmingProperty);
+        get => (TextTrimming)GetValue(TextTrimmingProperty)!;
         set => SetValue(TextTrimmingProperty, value);
     }
 

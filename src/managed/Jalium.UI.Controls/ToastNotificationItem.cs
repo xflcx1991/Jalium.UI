@@ -317,7 +317,6 @@ public class ToastNotificationItem : ContentControl
     // Fade animation state
     private DispatcherTimer? _fadeTimer;
     private double _currentOpacity = 1.0;
-    private bool _isFadingIn;
     private bool _isFadingOut;
 
     #endregion
@@ -421,7 +420,6 @@ public class ToastNotificationItem : ContentControl
 
     private void StartFadeIn()
     {
-        _isFadingIn = true;
         _isFadingOut = false;
         _currentOpacity = 0.0;
 
@@ -433,7 +431,6 @@ public class ToastNotificationItem : ContentControl
             if (_currentOpacity >= 1.0)
             {
                 _currentOpacity = 1.0;
-                _isFadingIn = false;
                 _fadeTimer?.Stop();
                 _fadeTimer = null;
             }
@@ -447,7 +444,6 @@ public class ToastNotificationItem : ContentControl
     private void StartFadeOut()
     {
         _isFadingOut = true;
-        _isFadingIn = false;
 
         _fadeTimer?.Stop();
         _fadeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
@@ -728,7 +724,7 @@ public class ToastNotificationItem : ContentControl
             toast.InvalidateMeasure();
             toast.InvalidateVisual();
 
-            if ((bool)e.NewValue == false)
+            if ((bool)e.NewValue! == false)
             {
                 toast.StopAutoDismissTimer();
                 toast.RaiseEvent(new RoutedEventArgs(ClosedEvent, toast));
@@ -744,7 +740,7 @@ public class ToastNotificationItem : ContentControl
         }
     }
 
-    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static new void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is ToastNotificationItem toast)
         {
@@ -765,7 +761,7 @@ public class ToastNotificationItem : ContentControl
     {
         if (d is ToastNotificationItem toast)
         {
-            if ((bool)e.NewValue)
+            if ((bool)e.NewValue!)
             {
                 toast.StartAutoDismissTimer();
             }

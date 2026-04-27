@@ -180,7 +180,7 @@ public partial class Popup : FrameworkElement
     [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public bool IsOpen
     {
-        get => (bool)GetValue(IsOpenProperty);
+        get => (bool)GetValue(IsOpenProperty)!;
         set => SetValue(IsOpenProperty, value);
     }
 
@@ -210,7 +210,7 @@ public partial class Popup : FrameworkElement
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Behavior)]
     public PlacementMode Placement
     {
-        get => (PlacementMode)GetValue(PlacementProperty);
+        get => (PlacementMode)GetValue(PlacementProperty)!;
         set => SetValue(PlacementProperty, value);
     }
 
@@ -220,7 +220,7 @@ public partial class Popup : FrameworkElement
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public double HorizontalOffset
     {
-        get => (double)GetValue(HorizontalOffsetProperty);
+        get => (double)GetValue(HorizontalOffsetProperty)!;
         set => SetValue(HorizontalOffsetProperty, value);
     }
 
@@ -230,7 +230,7 @@ public partial class Popup : FrameworkElement
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public double VerticalOffset
     {
-        get => (double)GetValue(VerticalOffsetProperty);
+        get => (double)GetValue(VerticalOffsetProperty)!;
         set => SetValue(VerticalOffsetProperty, value);
     }
 
@@ -241,7 +241,7 @@ public partial class Popup : FrameworkElement
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Behavior)]
     public bool StaysOpen
     {
-        get => (bool)GetValue(StaysOpenProperty);
+        get => (bool)GetValue(StaysOpenProperty)!;
         set => SetValue(StaysOpenProperty, value);
     }
 
@@ -253,7 +253,7 @@ public partial class Popup : FrameworkElement
     [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public bool IsLightDismissEnabled
     {
-        get => (bool)GetValue(IsLightDismissEnabledProperty);
+        get => (bool)GetValue(IsLightDismissEnabledProperty)!;
         set => SetValue(IsLightDismissEnabledProperty, value);
     }
 
@@ -263,7 +263,7 @@ public partial class Popup : FrameworkElement
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Other)]
     public PopupOverflowStrategy OverflowStrategy
     {
-        get => (PopupOverflowStrategy)GetValue(OverflowStrategyProperty);
+        get => (PopupOverflowStrategy)GetValue(OverflowStrategyProperty)!;
         set => SetValue(OverflowStrategyProperty, value);
     }
 
@@ -275,7 +275,7 @@ public partial class Popup : FrameworkElement
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Other)]
     public bool ShouldConstrainToRootBounds
     {
-        get => (bool)GetValue(ShouldConstrainToRootBoundsProperty);
+        get => (bool)GetValue(ShouldConstrainToRootBoundsProperty)!;
         set => SetValue(ShouldConstrainToRootBoundsProperty, value);
     }
 
@@ -301,7 +301,7 @@ public partial class Popup : FrameworkElement
     {
         if (d is Popup popup)
         {
-            if ((bool)e.NewValue)
+            if ((bool)e.NewValue!)
                 popup.OpenPopup();
             else
                 popup.ClosePopup();
@@ -333,7 +333,7 @@ public partial class Popup : FrameworkElement
     {
         if (d is Popup popup)
         {
-            popup.StaysOpen = !(bool)e.NewValue;
+            popup.StaysOpen = !(bool)e.NewValue!;
         }
     }
 

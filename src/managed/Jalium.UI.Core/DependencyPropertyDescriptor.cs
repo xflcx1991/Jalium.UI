@@ -66,13 +66,9 @@ public sealed class DependencyPropertyDescriptor : PropertyDescriptor
     /// </summary>
     public static DependencyPropertyDescriptor? FromName(string name, Type ownerType, Type targetType)
     {
-        // Search for the DP on the owner type by looking for a static field
-        var field = ownerType.GetField(name + "Property",
-            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static |
-            System.Reflection.BindingFlags.FlattenHierarchy);
-        if (field?.GetValue(null) is DependencyProperty dp)
-            return new DependencyPropertyDescriptor(dp, targetType);
-        return null;
+        // AOT-safe lookup via the DependencyProperty registry (no reflection).
+        var dp = DependencyProperty.FromName(ownerType, name);
+        return dp != null ? new DependencyPropertyDescriptor(dp, targetType) : null;
     }
 
     /// <summary>

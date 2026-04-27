@@ -64,9 +64,6 @@ public class TextBox : TextBoxBase, IImeSupport
 
     // Spell checking
     private List<SpellingError> _spellingErrors = new();
-    private bool _spellCheckDirty = true;
-    private DateTime _lastSpellCheckTime;
-    private const int SpellCheckDelayMs = 500;
 
     // Auto-formatting
     private List<FormattedRegion> _formattedRegions = new();
@@ -1968,9 +1965,6 @@ public class TextBox : TextBoxBase, IImeSupport
             }
 
             // Invalidate spell check
-            textBox._spellCheckDirty = true;
-            textBox._lastSpellCheckTime = DateTime.Now;
-
             // Raise TextChanged event
             var eventArgs = new TextChangedEventArgs(TextChangedEvent, textBox);
             textBox.RaiseEvent(eventArgs);
@@ -1981,7 +1975,6 @@ public class TextBox : TextBoxBase, IImeSupport
     {
         if (d is TextBox textBox)
         {
-            textBox._spellCheckDirty = true;
             if ((bool)(e.NewValue ?? false))
             {
                 textBox.PerformSpellCheck();
@@ -2013,7 +2006,7 @@ public class TextBox : TextBoxBase, IImeSupport
         }
     }
 
-    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static new void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is TextBox textBox)
         {
@@ -2124,23 +2117,17 @@ public class TextBox : TextBoxBase, IImeSupport
         if (!IsSpellCheckEnabled || SpellChecker.Default == null || !SpellChecker.Default.IsAvailable)
         {
             _spellingErrors.Clear();
-            _spellCheckDirty = false;
             return;
         }
-
         var text = Text;
         if (string.IsNullOrEmpty(text))
         {
             _spellingErrors.Clear();
-            _spellCheckDirty = false;
             return;
         }
 
-        // Perform spell check
         var errors = SpellChecker.Default.Check(text);
         _spellingErrors = errors.ToList();
-        _spellCheckDirty = false;
-
         InvalidateVisual();
     }
 

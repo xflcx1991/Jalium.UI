@@ -23,7 +23,6 @@ public class NumberBox : TextBoxBase, IImeSupport
 
     // Internal text storage
     private string _text = "0";
-    private bool _linesDirty = true;
 
     // Text width measurement cache
     private Dictionary<string, double> _textWidthCache = new();
@@ -41,10 +40,6 @@ public class NumberBox : TextBoxBase, IImeSupport
     private Rect _upButtonRect;
     private Rect _downButtonRect;
     private Rect _textRect;
-    private bool _isUpButtonHovered;
-    private bool _isDownButtonHovered;
-    private bool _isUpButtonPressed;
-    private bool _isDownButtonPressed;
 
     // Template parts
     private RepeatButton? _upSpinButton;
@@ -327,7 +322,6 @@ public class NumberBox : TextBoxBase, IImeSupport
             if (_text != value)
             {
                 _text = value ?? "0";
-                _linesDirty = true;
 
                 // Clamp caret
                 if (_caretIndex > _text.Length)
@@ -813,7 +807,6 @@ public class NumberBox : TextBoxBase, IImeSupport
         // Insert text
         _text = _text.Substring(0, _caretIndex) + filteredText + _text.Substring(_caretIndex);
         _caretIndex += filteredText.Length;
-        _linesDirty = true;
 
         ResetCaretBlink();
         EnsureCaretVisible();
@@ -1313,14 +1306,9 @@ public class NumberBox : TextBoxBase, IImeSupport
 
     private void DrawSpinButton(DrawingContext dc, Rect rect, bool isUp)
     {
-        var isHovered = isUp ? _isUpButtonHovered : _isDownButtonHovered;
-        var isPressed = isUp ? _isUpButtonPressed : _isDownButtonPressed;
-
-        // Button background
-        var buttonBg = isPressed ? s_spinPressedBrush
-            : isHovered ? s_spinHoveredBrush
-            : s_spinNormalBrush;
-        dc.DrawRectangle(buttonBg, null, rect);
+        // Button hover/press state is currently driven by the templated RepeatButton parts; the
+        // direct-rendered fallback here always uses the resting brush.
+        dc.DrawRectangle(s_spinNormalBrush, null, rect);
 
         // Arrow
         var arrowPen = new Pen(ResolveSecondaryTextBrush(), 1.5);
@@ -1366,13 +1354,13 @@ public class NumberBox : TextBoxBase, IImeSupport
             if (!numberBox._isEditing)
             {
                 numberBox._isUpdatingValue = true;
-                numberBox._text = numberBox.FormatValue((double)e.NewValue);
+                numberBox._text = numberBox.FormatValue((double)e.NewValue!);
                 numberBox._caretIndex = numberBox._text.Length;
                 numberBox._isUpdatingValue = false;
             }
 
             numberBox.RaiseEvent(new RoutedPropertyChangedEventArgs<double>(
-                (double)e.OldValue, (double)e.NewValue, ValueChangedEvent));
+                (double)e.OldValue!, (double)e.NewValue!, ValueChangedEvent));
             numberBox.InvalidateVisual();
         }
     }
@@ -1410,7 +1398,7 @@ public class NumberBox : TextBoxBase, IImeSupport
         }
     }
 
-    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static new void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is NumberBox numberBox)
         {

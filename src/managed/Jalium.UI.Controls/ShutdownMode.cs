@@ -16,7 +16,7 @@ public enum ShutdownMode
     OnMainWindowClose = 1,
 
     /// <summary>
-    /// The application only shuts down when <see cref="Application.Shutdown"/> is called.
+    /// The application only shuts down when <see cref="Application.Shutdown()"/> is called.
     /// </summary>
     OnExplicitShutdown = 2
 }

@@ -298,7 +298,7 @@ public sealed class CalendarDayButton : Button
         }
     }
 
-    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static new void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is CalendarDayButton button)
         {

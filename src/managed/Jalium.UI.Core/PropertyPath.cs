@@ -77,6 +77,7 @@ public sealed class PropertyPath
     /// </summary>
     /// <param name="source">The source object.</param>
     /// <returns>The resolved value, or null if resolution fails.</returns>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("PropertyPath walks user object graphs via reflection when no DependencyProperty exists for a segment.")]
     internal object? ResolveValue(object source)
     {
         if (source == null || string.IsNullOrEmpty(_path))
@@ -102,6 +103,7 @@ public sealed class PropertyPath
     /// <param name="source">The source object.</param>
     /// <param name="value">The value to set.</param>
     /// <returns>True if the value was set successfully; otherwise, false.</returns>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("PropertyPath walks user object graphs via reflection when no DependencyProperty exists for a segment.")]
     internal bool SetValue(object source, object? value)
     {
         if (source == null || string.IsNullOrEmpty(_path))
@@ -164,6 +166,7 @@ public sealed class PropertyPath
         return segments.ToArray();
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("PropertyPath segment resolution may walk user types via reflection.")]
     private object? ResolveSegment(object current, string segment)
     {
         // Handle indexer [index]
@@ -198,23 +201,24 @@ public sealed class PropertyPath
         return ResolveProperty(current, segment);
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Walks user object graphs via reflection to resolve property names.")]
     private static object? ResolveProperty(object current, string propertyName)
     {
-        // Check for DependencyProperty
+        // Check for DependencyProperty via the AOT-safe registry (no reflection).
         if (current is DependencyObject depObj)
         {
-            var dpField = current.GetType().GetField(propertyName + "Property", BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy);
-            if (dpField?.GetValue(null) is DependencyProperty dp)
-            {
+            var dp = DependencyProperty.FromName(current.GetType(), propertyName);
+            if (dp != null)
                 return depObj.GetValue(dp);
-            }
         }
 
-        // Regular property
+        // Regular CLR property — the [DynamicallyAccessedMembers] annotation on
+        // 'current' guarantees the trimmer keeps PublicProperties on the runtime type.
         var property = current.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
         return property?.GetValue(current);
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Walks user object graphs via reflection to resolve indexers.")]
     private static object? ResolveIndexer(object current, string indexStr)
     {
         var type = current.GetType();
@@ -251,6 +255,7 @@ public sealed class PropertyPath
         return null;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Falls back to Assembly.GetType(string) inside FindType for trimmed types.")]
     private static object? ResolveAttachedProperty(object current, string attachedProperty)
     {
         // Parse Type.Property
@@ -261,17 +266,15 @@ public sealed class PropertyPath
         var typeName = attachedProperty[..dotIndex];
         var propertyName = attachedProperty[(dotIndex + 1)..];
 
-        // Find the type
+        // Find the owner type and look up the DP via the AOT-safe registry.
         var ownerType = FindType(typeName);
         if (ownerType == null)
             return null;
 
-        // Find the DependencyProperty
-        var dpField = ownerType.GetField(propertyName + "Property", BindingFlags.Public | BindingFlags.Static);
-        if (dpField?.GetValue(null) is not DependencyProperty dp)
+        var dp = DependencyProperty.FromName(ownerType, propertyName);
+        if (dp == null)
             return null;
 
-        // Get the value
         if (current is DependencyObject depObj)
         {
             return depObj.GetValue(dp);
@@ -280,6 +283,7 @@ public sealed class PropertyPath
         return null;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("PropertyPath segment write may walk user types via reflection.")]
     private static bool SetSegmentValue(object current, string segment, object? value)
     {
         // Handle indexer
@@ -300,20 +304,21 @@ public sealed class PropertyPath
         return SetPropertyValue(current, segment, value);
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Walks user object graphs via reflection to resolve property names.")]
     private static bool SetPropertyValue(object current, string propertyName, object? value)
     {
-        // Check for DependencyProperty
+        // Check for DependencyProperty via the AOT-safe registry.
         if (current is DependencyObject depObj)
         {
-            var dpField = current.GetType().GetField(propertyName + "Property", BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy);
-            if (dpField?.GetValue(null) is DependencyProperty dp)
+            var dp = DependencyProperty.FromName(current.GetType(), propertyName);
+            if (dp != null)
             {
                 depObj.SetValue(dp, value);
                 return true;
             }
         }
 
-        // Regular property
+        // Regular CLR property — DAM annotation on 'current' keeps PublicProperties.
         var property = current.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
         if (property != null && property.CanWrite)
         {
@@ -324,6 +329,7 @@ public sealed class PropertyPath
         return false;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Walks user object graphs via reflection to resolve indexers.")]
     private static bool SetIndexerValue(object current, string indexStr, object? value)
     {
         var type = current.GetType();
@@ -360,6 +366,7 @@ public sealed class PropertyPath
         return false;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Falls back to Assembly.GetType(string) inside FindType for trimmed types.")]
     private static bool SetAttachedPropertyValue(object current, string attachedProperty, object? value)
     {
         var dotIndex = attachedProperty.LastIndexOf('.');
@@ -373,8 +380,8 @@ public sealed class PropertyPath
         if (ownerType == null)
             return false;
 
-        var dpField = ownerType.GetField(propertyName + "Property", BindingFlags.Public | BindingFlags.Static);
-        if (dpField?.GetValue(null) is not DependencyProperty dp)
+        var dp = DependencyProperty.FromName(ownerType, propertyName);
+        if (dp == null)
             return false;
 
         if (current is DependencyObject depObj)
@@ -386,6 +393,7 @@ public sealed class PropertyPath
         return false;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Falls back to Assembly.GetType(string) which carries the RUC contract for trimmed types.")]
     private static Type? FindType(string typeName)
     {
         // AOT-safe: Use the registered type resolver (XamlTypeRegistry) first

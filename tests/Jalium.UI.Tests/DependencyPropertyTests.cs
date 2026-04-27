@@ -116,9 +116,9 @@ public class DependencyPropertyTests
             }
         }
 
-        private static object CoerceBoundedValue(DependencyObject d, object baseValue)
+        private static object? CoerceBoundedValue(DependencyObject d, object? baseValue)
         {
-            var value = (int)baseValue;
+            var value = (int)(baseValue ?? 0);
             return Math.Clamp(value, 0, 100);
         }
     }
@@ -131,7 +131,7 @@ public class DependencyPropertyTests
 
         public int CoerceInvocationCount { get; private set; }
 
-        private static object CoerceReentrantValue(DependencyObject d, object baseValue)
+        private static object? CoerceReentrantValue(DependencyObject d, object? baseValue)
         {
             var obj = (ReentrantCoerceDependencyObject)d;
             obj.CoerceInvocationCount++;

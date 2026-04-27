@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using Microsoft.Win32;
 
 namespace Jalium.UI;
@@ -293,6 +294,7 @@ public static class SystemParameters
             value.Contains(signature, StringComparison.OrdinalIgnoreCase));
     }
 
+    [SupportedOSPlatform("windows")]
     private static bool RegistrySubKeyExists(string subKeyPath)
     {
         try
@@ -306,6 +308,7 @@ public static class SystemParameters
         }
     }
 
+    [SupportedOSPlatform("windows")]
     private static string? ReadLocalMachineString(string subKeyPath, string valueName)
     {
         try

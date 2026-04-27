@@ -117,7 +117,7 @@ internal static class DevToolsUi
         /// Change the visual style at runtime. Useful for toggle buttons that
         /// should swap between Primary (start) and Danger (stop) palettes.
         /// </summary>
-        public ButtonStyle Style
+        public new ButtonStyle Style
         {
             get => _style;
             set

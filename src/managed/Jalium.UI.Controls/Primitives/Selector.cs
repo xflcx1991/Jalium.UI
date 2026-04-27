@@ -386,6 +386,7 @@ public abstract class Selector : ItemsControl
         return (-1, null);
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Resolves SelectedValuePath via reflection when set; bound item types must be preserved by the application.")]
     private object? GetSelectedValueForItem(object? item)
     {
         if (item == null)
@@ -401,6 +402,13 @@ public abstract class Selector : ItemsControl
         return TryResolvePathValue(item, SelectedValuePath, out var value) ? value : null;
     }
 
+    /// <summary>
+    /// Walks a dotted property path on a data item, preferring registered AOT-safe accessors
+    /// in <see cref="PropertyAccessorRegistry"/>. Falls back to reflection only when no
+    /// accessor is registered — that fallback carries the RUC contract via
+    /// <see cref="PropertyAccessorRegistry.TryReadProperty"/>.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Falls back to reflection through PropertyAccessorRegistry when items have no registered accessors.")]
     private static bool TryResolvePathValue(object? source, string path, out object? value)
     {
         value = source;
@@ -438,18 +446,9 @@ public abstract class Selector : ItemsControl
                 continue;
             }
 
-            var currentType = current.GetType();
-            var property = currentType.GetProperty(segment, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.IgnoreCase);
-            if (property != null)
+            if (PropertyAccessorRegistry.TryReadProperty(current, segment, out var next))
             {
-                current = property.GetValue(current);
-                continue;
-            }
-
-            var field = currentType.GetField(segment, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.IgnoreCase);
-            if (field != null)
-            {
-                current = field.GetValue(current);
+                current = next;
                 continue;
             }
 

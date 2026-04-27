@@ -88,7 +88,7 @@ public class ToolTip : ContentControl
     [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public bool IsOpen
     {
-        get => (bool)GetValue(IsOpenProperty);
+        get => (bool)GetValue(IsOpenProperty)!;
         set => SetValue(IsOpenProperty, value);
     }
 
@@ -98,7 +98,7 @@ public class ToolTip : ContentControl
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Behavior)]
     public PlacementMode Placement
     {
-        get => (PlacementMode)GetValue(PlacementProperty);
+        get => (PlacementMode)GetValue(PlacementProperty)!;
         set => SetValue(PlacementProperty, value);
     }
 
@@ -108,7 +108,7 @@ public class ToolTip : ContentControl
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public double HorizontalOffset
     {
-        get => (double)GetValue(HorizontalOffsetProperty);
+        get => (double)GetValue(HorizontalOffsetProperty)!;
         set => SetValue(HorizontalOffsetProperty, value);
     }
 
@@ -118,7 +118,7 @@ public class ToolTip : ContentControl
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public double VerticalOffset
     {
-        get => (double)GetValue(VerticalOffsetProperty);
+        get => (double)GetValue(VerticalOffsetProperty)!;
         set => SetValue(VerticalOffsetProperty, value);
     }
 
@@ -128,7 +128,7 @@ public class ToolTip : ContentControl
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Behavior)]
     public int InitialShowDelay
     {
-        get => (int)GetValue(InitialShowDelayProperty);
+        get => (int)GetValue(InitialShowDelayProperty)!;
         set => SetValue(InitialShowDelayProperty, value);
     }
 
@@ -138,7 +138,7 @@ public class ToolTip : ContentControl
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Behavior)]
     public int ShowDuration
     {
-        get => (int)GetValue(ShowDurationProperty);
+        get => (int)GetValue(ShowDurationProperty)!;
         set => SetValue(ShowDurationProperty, value);
     }
 
@@ -211,7 +211,7 @@ public class ToolTip : ContentControl
     {
         if (d is ToolTip toolTip)
         {
-            if ((bool)e.NewValue)
+            if ((bool)e.NewValue!)
             {
                 toolTip.OpenToolTip();
             }

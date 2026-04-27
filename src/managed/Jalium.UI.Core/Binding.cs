@@ -657,7 +657,7 @@ public sealed class BindingExpression : BindingExpressionBase
 
         BindingDiagnostics.NotifyError(this, error?.ErrorContent?.ToString() ?? "<null>");
 
-        if (_binding.NotifyOnValidationError)
+        if (_binding.NotifyOnValidationError && error != null)
         {
             RaiseValidationErrorEvent(error, ValidationErrorEventAction.Added);
         }
@@ -899,8 +899,6 @@ public sealed class BindingExpression : BindingExpressionBase
         return null;
     }
 
-    [UnconditionalSuppressMessage("AOT", "IL2070:Target method argument",
-        Justification = "Data binding source properties are user code and must be preserved by the application")]
     private void ResolveSourceProperty()
     {
         if (ResolvedSource == null || _binding.Path == null)
@@ -910,7 +908,8 @@ public sealed class BindingExpression : BindingExpressionBase
         if (segments.Length == 0)
             return;
 
-        // Navigate to the object containing the final property
+        // Navigate to the object containing the final property using the
+        // AOT-safe PropertyAccessorRegistry (with reflection fallback).
         object? current = ResolvedSource;
         for (int i = 0; i < segments.Length - 1; i++)
         {
@@ -924,11 +923,9 @@ public sealed class BindingExpression : BindingExpressionBase
 
         _effectiveSource = current;
         var lastSegment = segments[segments.Length - 1];
-        _sourceProperty = current.GetType().GetProperty(lastSegment);
+        _sourceProperty = PropertyAccessorRegistry.TryGetPropertyInfo(current, lastSegment);
     }
 
-    [UnconditionalSuppressMessage("AOT", "IL2070:Target method argument",
-        Justification = "Data binding source properties are user code and must be preserved by the application")]
     private object? GetSourceValue()
     {
         if (ResolvedSource == null)
@@ -1079,8 +1076,6 @@ public sealed class BindingExpression : BindingExpressionBase
         }
     }
 
-    [UnconditionalSuppressMessage("AOT", "IL2070:Target method argument",
-        Justification = "Data binding intermediate property navigation uses reflection on user types")]
     private void SubscribeToIntermediates()
     {
         UnsubscribeFromIntermediates();

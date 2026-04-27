@@ -4,21 +4,24 @@ using Jalium.UI.Gpu;
 namespace Jalium.UI.Compiler;
 
 /// <summary>
-/// JALXAML 编译器命令行工具
-/// Usage: jalxamlc [options] <input.jalxaml> [output.uic]
-///
-/// Options:
-///   -o, --output <path>    指定输出文件路径
-///   -d, --output-dir <dir> 指定输出目录
-///   -O, --optimize         启用优化（默认）
-///   -O0                    禁用优化
-///   -g, --debug            生成调试信息
-///   -c, --codegen          生成代码隐藏 (.g.cs)
-///   -n, --namespace <ns>   指定代码生成的根命名空间
-///   -p, --project-dir <dir> 指定项目根目录（用于计算资源名的相对路径）
-///   -h, --help             显示帮助信息
-///   -v, --version          显示版本信息
+/// JALXAML 编译器命令行工具.
 /// </summary>
+/// <remarks>
+/// <para>Usage: <c>jalxamlc [options] &lt;input.jalxaml&gt; [output.uic]</c></para>
+/// <para>Options:</para>
+/// <list type="bullet">
+///   <item><c>-o, --output &lt;path&gt;</c> 指定输出文件路径</item>
+///   <item><c>-d, --output-dir &lt;dir&gt;</c> 指定输出目录</item>
+///   <item><c>-O, --optimize</c> 启用优化（默认）</item>
+///   <item><c>-O0</c> 禁用优化</item>
+///   <item><c>-g, --debug</c> 生成调试信息</item>
+///   <item><c>-c, --codegen</c> 生成代码隐藏 (.g.cs)</item>
+///   <item><c>-n, --namespace &lt;ns&gt;</c> 指定代码生成的根命名空间</item>
+///   <item><c>-p, --project-dir &lt;dir&gt;</c> 指定项目根目录（用于计算资源名的相对路径）</item>
+///   <item><c>-h, --help</c> 显示帮助信息</item>
+///   <item><c>-v, --version</c> 显示版本信息</item>
+/// </list>
+/// </remarks>
 internal sealed class Program
 {
     private static int Main(string[] args)

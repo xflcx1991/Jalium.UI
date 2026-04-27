@@ -14,7 +14,7 @@ public abstract class CustomContentState
     /// <summary>
     /// Called to reapply state to a piece of content when navigation occurs.
     /// </summary>
-    /// <param name="navigationService">The navigation service for the current navigation.</param>
+    /// <param name="content">The content to which state should be re-applied.</param>
     /// <param name="mode">The mode of navigation (Back, Forward, or New).</param>
     public abstract void Replay(object content, NavigationMode mode);
 }

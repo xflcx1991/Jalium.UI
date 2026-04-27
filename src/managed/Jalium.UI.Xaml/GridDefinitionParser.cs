@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Reflection;
 using Jalium.UI.Controls;
 
 namespace Jalium.UI.Markup;
@@ -75,34 +74,31 @@ internal static class GridDefinitionParser
         return propertyName;
     }
 
-    private static void SetProperty(object instance, string propertyName, string value)
+    /// <summary>
+    /// Sets the named property on a Row/ColumnDefinition without reflection by going through the
+    /// AOT-safe <see cref="DependencyProperty.FromName"/> registry. Only the well-known
+    /// length/min/max/name properties of the two DefinitionBase subclasses are supported here —
+    /// any unknown property name throws, matching the previous reflective behavior.
+    /// </summary>
+    private static void SetProperty(DefinitionBase instance, string propertyName, string value)
     {
-        var property = instance.GetType().GetProperty(
-            propertyName,
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase);
-
-        if (property == null || !property.CanWrite)
+        var dp = DependencyProperty.FromName(instance.GetType(), propertyName);
+        if (dp == null)
         {
             throw new FormatException($"Unknown grid definition property '{propertyName}'.");
         }
 
-        object? convertedValue;
-        if (property.PropertyType == typeof(string))
-        {
-            convertedValue = value;
-        }
-        else
-        {
-            convertedValue = TypeConverterRegistry.ConvertValue(value, property.PropertyType);
-        }
+        object? convertedValue = dp.PropertyType == typeof(string)
+            ? value
+            : TypeConverterRegistry.ConvertValue(value, dp.PropertyType);
 
         if (convertedValue == null)
         {
             throw new FormatException(
-                $"Cannot convert '{value}' to '{property.PropertyType.Name}' for grid definition property '{property.Name}'.");
+                $"Cannot convert '{value}' to '{dp.PropertyType.Name}' for grid definition property '{propertyName}'.");
         }
 
-        property.SetValue(instance, convertedValue);
+        instance.SetValue(dp, convertedValue);
     }
 
     private static IEnumerable<(string Name, string Value)> ParsePropertyBag(string text)

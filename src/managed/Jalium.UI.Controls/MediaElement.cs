@@ -790,7 +790,6 @@ public class MediaElement : FrameworkElement, IDisposable
     private bool _isPaused;
     private bool _hasVideo;
     private bool _hasAudio;
-    private double _bufferingProgress;
     private CancellationTokenSource? _playbackCts;
     private Task? _videoDecodeTask;
     private Task? _videoRenderTask;
@@ -907,6 +906,15 @@ public class MediaElement : FrameworkElement, IDisposable
     public event RoutedEventHandler? BufferingEnded;
     public event EventHandler<MediaScriptCommandEventArgs>? ScriptCommand;
 
+    /// <summary>Raises the <see cref="BufferingStarted"/> event. For internal use by media backends.</summary>
+    protected virtual void OnBufferingStarted() => BufferingStarted?.Invoke(this, new RoutedEventArgs());
+
+    /// <summary>Raises the <see cref="BufferingEnded"/> event. For internal use by media backends.</summary>
+    protected virtual void OnBufferingEnded() => BufferingEnded?.Invoke(this, new RoutedEventArgs());
+
+    /// <summary>Raises the <see cref="ScriptCommand"/> event. For internal use by media backends.</summary>
+    protected virtual void OnScriptCommand(MediaScriptCommandEventArgs e) => ScriptCommand?.Invoke(this, e);
+
     #endregion
 
     #region CLR 属性
@@ -991,7 +999,7 @@ public class MediaElement : FrameworkElement, IDisposable
     public int NaturalVideoHeight => _videoHeight;
     public bool HasAudio => _hasAudio;
     public bool HasVideo => _hasVideo;
-    public double BufferingProgress => _bufferingProgress;
+    public double BufferingProgress => 0.0;
     public bool IsBuffering { get; private set; }
     public bool CanPause { get; private set; } = true;
     public bool IsPlaying => _isPlaying;

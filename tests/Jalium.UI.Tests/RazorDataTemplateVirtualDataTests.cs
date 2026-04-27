@@ -185,7 +185,7 @@ public class RazorDataTemplateVirtualDataTests
         Assert.Equal(9, grids.Count);
 
         // Walk grids in DataContext order (they mirror the source order).
-        var byName = grids.ToDictionary(g => ((Person)g.DataContext).Name, g => g);
+        var byName = grids.ToDictionary(g => ((Person)g.DataContext!).Name, g => g);
 
         AssertAge(byName["Person 1"], Visibility.Visible);    // 1 % 3 = 1
         AssertAge(byName["Person 2"], Visibility.Visible);    // 2 % 3 = 2
@@ -199,7 +199,7 @@ public class RazorDataTemplateVirtualDataTests
 
         static void AssertAge(Grid grid, Visibility expected)
         {
-            var person = (Person)grid.DataContext;
+            var person = (Person)grid.DataContext!;
             var ageText = (TextBlock)grid.Children[0];
             Assert.True(
                 ageText.Visibility == expected,

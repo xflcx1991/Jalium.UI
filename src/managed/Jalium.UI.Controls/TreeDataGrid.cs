@@ -390,7 +390,6 @@ public class TreeDataGrid : Control, IColumnHeaderHost
     private DataGridColumn? _dragColumn;
     private int _dragSourceIndex = -1;
     internal bool _isColumnDragging;
-    private bool _isUpdatingColumnWidthFromResize;
 
     // Tracks nodes whose expander arrow needs to animate after RefreshRows rebuilds the visual tree.
     // Key = node, Value = true means expanding (0→90), false means collapsing (90→0).
@@ -1732,15 +1731,7 @@ public class TreeDataGrid : Control, IColumnHeaderHost
         var colIndex = Columns.IndexOf(column);
         if (colIndex < 0) return;
 
-        _isUpdatingColumnWidthFromResize = true;
-        try
-        {
-            column.Width = newWidth;
-        }
-        finally
-        {
-            _isUpdatingColumnWidthFromResize = false;
-        }
+        column.Width = newWidth;
 
         if (_columnHeadersHost != null)
         {

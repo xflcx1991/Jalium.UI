@@ -3496,7 +3496,7 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
             editor.RefreshReactiveHighlighterContext();
     }
 
-    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static new void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is EditControl editor)
             editor.InvalidateVisual();
@@ -3538,6 +3538,8 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
         editor.SetFollowingBottomState(editor.IsAtBottomWithinTolerance());
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("LSP activation uses System.Text.Json reflection — opt-in editor feature.")]
+    [System.Diagnostics.CodeAnalysis.RequiresDynamicCode("LSP activation uses System.Text.Json runtime code generation — opt-in editor feature.")]
     private static void OnLanguageChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is EditControl editor)
@@ -6110,6 +6112,8 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
     /// <summary>
     /// Activates the LSP server for the given language asynchronously.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("LSP integration uses System.Text.Json reflection — opt-in editor feature.")]
+    [System.Diagnostics.CodeAnalysis.RequiresDynamicCode("LSP integration uses System.Text.Json runtime code generation — opt-in editor feature.")]
     private void ActivateLspForLanguage(string language)
     {
         if (!LanguageServerRegistry.TryGetConfig(language, out _))
@@ -6124,6 +6128,8 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
         _ = _lspIntegration!.ActivateAsync(language);
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("LSP integration uses System.Text.Json reflection — opt-in editor feature.")]
+    [System.Diagnostics.CodeAnalysis.RequiresDynamicCode("LSP integration uses System.Text.Json runtime code generation — opt-in editor feature.")]
     private void EnsureLspIntegration()
     {
         if (_lspIntegration != null) return;
@@ -6176,6 +6182,8 @@ public class EditControl : Control, IImeSupport, IEditorViewMetrics
         Dispatcher.BeginInvoke(() => InvalidateVisual());
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("LspFoldingProvider drives JSON-RPC reflection — opt-in editor feature.")]
+    [System.Diagnostics.CodeAnalysis.RequiresDynamicCode("LspFoldingProvider drives JSON-RPC runtime code generation — opt-in editor feature.")]
     internal void SetLspFoldingProvider(LspFoldingProvider provider)
     {
         _lspFoldingStrategy = provider;

@@ -1108,3 +1108,297 @@ public sealed class DataGridAutomationPeer : FrameworkElementAutomationPeer, ISe
 }
 
 #endregion
+
+#region RangeSlider
+
+/// <summary>
+/// Exposes RangeSlider types to UI Automation as a value-based control whose
+/// <see cref="IValueProvider.Value"/> string encodes both range bounds.
+/// </summary>
+public sealed class RangeSliderAutomationPeer : FrameworkElementAutomationPeer, IValueProvider
+{
+    /// <summary>
+    /// Initializes a new instance of the RangeSliderAutomationPeer class.
+    /// </summary>
+    public RangeSliderAutomationPeer(RangeSlider owner) : base(owner)
+    {
+    }
+
+    private RangeSlider RangeSliderOwner => (RangeSlider)Owner;
+
+    /// <inheritdoc />
+    protected override AutomationControlType GetAutomationControlTypeCore()
+    {
+        return AutomationControlType.Slider;
+    }
+
+    /// <inheritdoc />
+    protected override string GetClassNameCore()
+    {
+        return nameof(RangeSlider);
+    }
+
+    /// <inheritdoc />
+    protected override object? GetPatternCore(PatternInterface patternInterface)
+    {
+        if (patternInterface == PatternInterface.Value)
+            return this;
+
+        return base.GetPatternCore(patternInterface);
+    }
+
+    #region IValueProvider
+
+    /// <inheritdoc />
+    public string Value => string.Create(System.Globalization.CultureInfo.InvariantCulture,
+        $"{RangeSliderOwner.RangeStart}..{RangeSliderOwner.RangeEnd}");
+
+    /// <inheritdoc />
+    public bool IsReadOnly => !IsEnabled();
+
+    /// <inheritdoc />
+    public void SetValue(string value)
+    {
+        if (!IsEnabled())
+            throw new InvalidOperationException("Cannot set value on a disabled RangeSlider.");
+        if (string.IsNullOrWhiteSpace(value))
+            throw new ArgumentException("Value must be a 'start..end' pair.", nameof(value));
+
+        var parts = value.Split("..", 2, StringSplitOptions.TrimEntries);
+        if (parts.Length != 2)
+            throw new ArgumentException("Value must be a 'start..end' pair.", nameof(value));
+
+        if (!double.TryParse(parts[0], System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var start) ||
+            !double.TryParse(parts[1], System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var end))
+        {
+            throw new ArgumentException("Value parts must be numeric.", nameof(value));
+        }
+
+        if (start > end)
+            (start, end) = (end, start);
+
+        // Setting the upper bound first guarantees the start coercion has the new headroom available.
+        RangeSliderOwner.RangeEnd = end;
+        RangeSliderOwner.RangeStart = start;
+    }
+
+    #endregion
+}
+
+#endregion
+
+#region TreeSelector
+
+/// <summary>
+/// Exposes TreeSelector types to UI Automation.
+/// </summary>
+public sealed class TreeSelectorAutomationPeer : FrameworkElementAutomationPeer, ISelectionProvider
+{
+    /// <summary>
+    /// Initializes a new instance of the TreeSelectorAutomationPeer class.
+    /// </summary>
+    public TreeSelectorAutomationPeer(TreeSelector owner) : base(owner)
+    {
+    }
+
+    private TreeSelector SelectorOwner => (TreeSelector)Owner;
+
+    /// <inheritdoc />
+    protected override AutomationControlType GetAutomationControlTypeCore()
+    {
+        return AutomationControlType.Tree;
+    }
+
+    /// <inheritdoc />
+    protected override string GetClassNameCore()
+    {
+        return nameof(TreeSelector);
+    }
+
+    /// <inheritdoc />
+    protected override object? GetPatternCore(PatternInterface patternInterface)
+    {
+        if (patternInterface == PatternInterface.Selection)
+            return this;
+
+        return base.GetPatternCore(patternInterface);
+    }
+
+    #region ISelectionProvider
+
+    /// <inheritdoc />
+    public AutomationPeer[] GetSelection() => Array.Empty<AutomationPeer>();
+
+    /// <inheritdoc />
+    public bool IsSelectionRequired => false;
+
+    /// <inheritdoc />
+    public bool CanSelectMultiple => SelectorOwner.SelectionMode != SelectionMode.Single;
+
+    #endregion
+}
+
+/// <summary>
+/// Exposes TreeSelectorItem types to UI Automation.
+/// </summary>
+public sealed class TreeSelectorItemAutomationPeer : FrameworkElementAutomationPeer,
+    IExpandCollapseProvider, ISelectionItemProvider, IToggleProvider, IScrollItemProvider
+{
+    /// <summary>
+    /// Initializes a new instance of the TreeSelectorItemAutomationPeer class.
+    /// </summary>
+    public TreeSelectorItemAutomationPeer(TreeSelectorItem owner) : base(owner)
+    {
+    }
+
+    private TreeSelectorItem ItemOwner => (TreeSelectorItem)Owner;
+
+    /// <inheritdoc />
+    protected override AutomationControlType GetAutomationControlTypeCore()
+    {
+        return AutomationControlType.TreeItem;
+    }
+
+    /// <inheritdoc />
+    protected override string GetClassNameCore()
+    {
+        return nameof(TreeSelectorItem);
+    }
+
+    /// <inheritdoc />
+    protected override string GetNameCore()
+    {
+        var header = ItemOwner.Header;
+        if (header is string text) return text;
+        return header?.ToString() ?? base.GetNameCore();
+    }
+
+    /// <inheritdoc />
+    protected override object? GetPatternCore(PatternInterface patternInterface)
+    {
+        if (patternInterface == PatternInterface.ExpandCollapse && ItemOwner.HasItems)
+            return this;
+
+        if (patternInterface == PatternInterface.SelectionItem)
+            return this;
+
+        if (patternInterface == PatternInterface.Toggle &&
+            (ItemOwner.ParentSelector?.ShowCheckBoxes ?? false))
+            return this;
+
+        if (patternInterface == PatternInterface.ScrollItem)
+            return this;
+
+        return base.GetPatternCore(patternInterface);
+    }
+
+    #region IExpandCollapseProvider
+
+    /// <inheritdoc />
+    public ExpandCollapseState ExpandCollapseState
+    {
+        get
+        {
+            if (!ItemOwner.HasItems) return ExpandCollapseState.LeafNode;
+            return ItemOwner.IsExpanded ? ExpandCollapseState.Expanded : ExpandCollapseState.Collapsed;
+        }
+    }
+
+    /// <inheritdoc />
+    public void Expand()
+    {
+        if (!IsEnabled())
+            throw new InvalidOperationException("Cannot expand a disabled TreeSelectorItem.");
+        ItemOwner.IsExpanded = true;
+    }
+
+    /// <inheritdoc />
+    public void Collapse()
+    {
+        if (!IsEnabled())
+            throw new InvalidOperationException("Cannot collapse a disabled TreeSelectorItem.");
+        ItemOwner.IsExpanded = false;
+    }
+
+    #endregion
+
+    #region ISelectionItemProvider
+
+    /// <inheritdoc />
+    public bool IsSelected => ItemOwner.IsSelected;
+
+    /// <inheritdoc />
+    public AutomationPeer SelectionContainer
+    {
+        get
+        {
+            var selector = ItemOwner.ParentSelector;
+            if (selector != null)
+                return selector.GetAutomationPeer() ?? new TreeSelectorAutomationPeer(selector);
+            return null!;
+        }
+    }
+
+    /// <inheritdoc />
+    public void Select()
+    {
+        ItemOwner.ParentSelector?.HandleItemActivated(ItemOwner, isCtrlPressed: false, isShiftPressed: false);
+    }
+
+    /// <inheritdoc />
+    public void AddToSelection()
+    {
+        ItemOwner.ParentSelector?.HandleItemActivated(ItemOwner, isCtrlPressed: true, isShiftPressed: false);
+    }
+
+    /// <inheritdoc />
+    public void RemoveFromSelection()
+    {
+        if (ItemOwner.IsSelected)
+        {
+            ItemOwner.ParentSelector?.HandleItemActivated(ItemOwner, isCtrlPressed: true, isShiftPressed: false);
+        }
+    }
+
+    #endregion
+
+    #region IToggleProvider
+
+    /// <inheritdoc />
+    public ToggleState ToggleState
+    {
+        get
+        {
+            return ItemOwner.IsChecked switch
+            {
+                true => ToggleState.On,
+                false => ToggleState.Off,
+                _ => ToggleState.Indeterminate
+            };
+        }
+    }
+
+    /// <inheritdoc />
+    public void Toggle()
+    {
+        if (!IsEnabled())
+            throw new InvalidOperationException("Cannot toggle a disabled TreeSelectorItem.");
+        ItemOwner.IsChecked = ItemOwner.IsChecked != true;
+    }
+
+    #endregion
+
+    #region IScrollItemProvider
+
+    /// <inheritdoc />
+    public void ScrollIntoView()
+    {
+        ItemOwner.BringIntoView();
+    }
+
+    #endregion
+}
+
+#endregion

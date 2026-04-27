@@ -95,6 +95,53 @@
     </Style>
 
     <!-- ============================================== -->
+    <!-- RangeSlider Style -->
+    <!-- ============================================== -->
+    <Style TargetType="RangeSlider">
+        <Setter Property="Background" Value="{ThemeResource SliderTrack}" />
+        <Setter Property="Foreground" Value="{ThemeResource AccentBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource ControlBorder}" />
+        <Setter Property="MinHeight" Value="24" />
+        <Setter Property="Height" Value="24" />
+        <Setter Property="Template">
+            <ControlTemplate TargetType="RangeSlider">
+                <Grid>
+                    <Border Name="PART_Track"
+                            Background="{TemplateBinding Background}"
+                            Height="4"
+                            CornerRadius="2"
+                            VerticalAlignment="Center"
+                            Margin="8,0,8,0" />
+                    <Border Name="PART_SelectionRange"
+                            Background="{TemplateBinding Foreground}"
+                            Height="4"
+                            CornerRadius="2"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Left" />
+                    <Border Name="PART_StartThumb"
+                            Width="16"
+                            Height="16"
+                            CornerRadius="8"
+                            Background="{TemplateBinding Foreground}"
+                            BorderBrush="{ThemeResource WindowBackground}"
+                            BorderThickness="2"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center" />
+                    <Border Name="PART_EndThumb"
+                            Width="16"
+                            Height="16"
+                            CornerRadius="8"
+                            Background="{TemplateBinding Foreground}"
+                            BorderBrush="{ThemeResource WindowBackground}"
+                            BorderThickness="2"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center" />
+                </Grid>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+
+    <!-- ============================================== -->
     <!-- TickBar Style -->
     <!-- ============================================== -->
     <Style TargetType="TickBar">

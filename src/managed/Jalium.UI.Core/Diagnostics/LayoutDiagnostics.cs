@@ -90,16 +90,27 @@ public static class LayoutDiagnostics
         public InvalidationKind Kind { get; }
         public string? StackSummary { get; }
 
-        internal InvalidationEntry(UIElement element, InvalidationKind kind, bool captureStack)
+        internal InvalidationEntry(UIElement element, InvalidationKind kind)
         {
             Timestamp = DateTime.Now;
             ElementRef = new WeakReference<UIElement>(element);
             TypeName = element.GetType().Name;
             ElementName = element is FrameworkElement fe && !string.IsNullOrEmpty(fe.Name) ? fe.Name : "";
             Kind = kind;
-            StackSummary = captureStack ? CaptureStackSummary() : null;
+            StackSummary = null;
         }
 
+        [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Forwards to CaptureStackSummary which uses StackFrame.GetMethod (may be incomplete after trimming).")]
+        internal InvalidationEntry(UIElement element, InvalidationKind kind, bool captureStack)
+            : this(element, kind)
+        {
+            if (captureStack)
+            {
+                StackSummary = CaptureStackSummary();
+            }
+        }
+
+        [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("StackFrame.GetMethod metadata may be incomplete after trimming.")]
         private static string? CaptureStackSummary()
         {
             try
@@ -191,10 +202,33 @@ public static class LayoutDiagnostics
         if (Volatile.Read(ref s_recording) == 0) return;
         if (DiagnosticsScope.ShouldIgnore(element)) return;
         GetOrCreateStats(element).RecordInvalidation(kind);
-        var entry = new InvalidationEntry(element, kind, CaptureStackTraces);
+        // Hot path: bind to the cheap entry. The RUC stack-capture overload is invoked
+        // through the static delegate below, which is set by DevTools when stack tracing
+        // is opted in. Keeping the RUC call out of UIElement's hot loop keeps the layout
+        // engine AOT-safe by default.
+        var enrich = s_stackCaptureEnricher;
+        var entry = enrich != null && Volatile.Read(ref s_captureStack) != 0
+            ? enrich(element, kind)
+            : new InvalidationEntry(element, kind);
         s_invalidations.Enqueue(entry);
         while (s_invalidations.Count > MaxInvalidationEntries && s_invalidations.TryDequeue(out _)) { }
     }
+
+    /// <summary>
+    /// Optional enricher invoked when <see cref="CaptureStackTraces"/> is true. DevTools
+    /// installs <see cref="CreateInvalidationEntryWithStack"/> here under its RUC scope so
+    /// the layout hot path can stay non-RUC and AOT-safe.
+    /// </summary>
+    public static Func<UIElement, InvalidationKind, InvalidationEntry>? StackCaptureEnricher
+    {
+        get => s_stackCaptureEnricher;
+        set => s_stackCaptureEnricher = value;
+    }
+    private static Func<UIElement, InvalidationKind, InvalidationEntry>? s_stackCaptureEnricher;
+
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Stack capture uses StackFrame.GetMethod, whose metadata may be incomplete after trimming.")]
+    public static InvalidationEntry CreateInvalidationEntryWithStack(UIElement element, InvalidationKind kind)
+        => new InvalidationEntry(element, kind, captureStack: true);
 
     /// <summary>
     /// Snapshot of per-element stats for display. We iterate the weak table

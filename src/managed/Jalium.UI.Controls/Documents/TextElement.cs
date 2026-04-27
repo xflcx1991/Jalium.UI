@@ -192,7 +192,8 @@ public abstract class TextElement : DependencyObject
 
         if (Parent != null)
         {
-            return (T)(Parent.GetValue(property) ?? defaultValue);
+            var parentValue = Parent.GetValue(property);
+            return parentValue != null ? (T)parentValue : defaultValue;
         }
 
         return defaultValue;

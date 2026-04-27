@@ -58,6 +58,8 @@ public sealed class LanguageServerConfig
 /// <summary>
 /// Manages the lifecycle of a language server child process.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Constructs JsonRpcConnection which uses System.Text.Json reflection.")]
+[System.Diagnostics.CodeAnalysis.RequiresDynamicCode("Constructs JsonRpcConnection which uses System.Text.Json runtime code generation.")]
 internal sealed class LanguageServerProcess : IAsyncDisposable
 {
     private readonly LanguageServerConfig _config;

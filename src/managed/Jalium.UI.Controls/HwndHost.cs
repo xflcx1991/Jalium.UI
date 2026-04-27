@@ -8,13 +8,17 @@ namespace Jalium.UI.Controls;
 /// </summary>
 public abstract class HwndHost : FrameworkElement, IDisposable
 {
-    private IntPtr _hwnd;
     private bool _disposed;
 
     /// <summary>
-    /// Gets the window handle of the hosted window.
+    /// Gets the window handle of the hosted window. Set by derived classes via <see cref="SetHandle"/>.
     /// </summary>
-    public IntPtr Handle => _hwnd;
+    public IntPtr Handle { get; private set; }
+
+    /// <summary>
+    /// Sets the hosted window handle. Called by derived classes after <see cref="BuildWindowCore"/>.
+    /// </summary>
+    protected void SetHandle(IntPtr hwnd) => Handle = hwnd;
 
     /// <summary>
     /// When overridden in a derived class, creates the window to be hosted.

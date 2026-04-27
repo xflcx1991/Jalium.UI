@@ -1838,7 +1838,7 @@ public partial class ScrollViewer : Control
     /// <summary>
     /// Handles mouse wheel events for scrolling.
     /// </summary>
-    protected void OnMouseWheel(MouseWheelEventArgs e)
+    protected override void OnMouseWheel(MouseWheelEventArgs e)
     {
         if (e.Handled)
             return;
@@ -2038,7 +2038,7 @@ public partial class ScrollViewer : Control
     /// <summary>
     /// Handles key down events for keyboard scrolling.
     /// </summary>
-    protected void OnKeyDown(KeyEventArgs e)
+    protected override void OnKeyDown(KeyEventArgs e)
     {
         if (e.Handled)
             return;

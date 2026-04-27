@@ -15,6 +15,7 @@ namespace Jalium.UI.Markup;
 /// <summary>
 /// Provides methods for parsing XAML and creating object trees.
 /// </summary>
+[RequiresUnreferencedCode("XAML loading uses XamlTypeRegistry types whose ctors / overrides may use reflection on user-supplied targets, and may invoke Razor reflection.")]
 public static class XamlReader
 {
     private sealed class RazorIfBlockEntry
@@ -153,21 +154,34 @@ public static class XamlReader
 
     private static Stream? GetResourceStream(string resourceName, Assembly assembly)
     {
+
         var stream = assembly.GetManifestResourceStream(resourceName);
-        if (stream != null) return stream;
+        if (stream != null)
+        {
+            return stream;
+        }
 
         // Try with assembly name prefix
         var assemblyName = assembly.GetName().Name;
         stream = assembly.GetManifestResourceStream($"{assemblyName}.{resourceName}");
-        if (stream != null) return stream;
+        if (stream != null)
+        {
+            return stream;
+        }
 
         // Try replacing path separators
         var normalizedName = resourceName.Replace('/', '.').Replace('\\', '.');
         stream = assembly.GetManifestResourceStream(normalizedName);
-        if (stream != null) return stream;
+        if (stream != null)
+        {
+            return stream;
+        }
 
         stream = assembly.GetManifestResourceStream($"{assemblyName}.{normalizedName}");
-        if (stream != null) return stream;
+        if (stream != null)
+        {
+            return stream;
+        }
 
         // Fallback: use cached manifest name set for O(1) case-insensitive lookup
         // instead of linear scanning GetManifestResourceNames() on every call.
@@ -187,7 +201,10 @@ public static class XamlReader
             if (nameSet.TryGetValue(candidate, out var actual))
             {
                 stream = assembly.GetManifestResourceStream(actual);
-                if (stream != null) return stream;
+                if (stream != null)
+                {
+                    return stream;
+                }
             }
         }
 
@@ -207,7 +224,10 @@ public static class XamlReader
                 if (name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
                 {
                     stream = assembly.GetManifestResourceStream(name);
-                    if (stream != null) return stream;
+                    if (stream != null)
+                    {
+                        return stream;
+                    }
                     break;
                 }
             }
@@ -234,6 +254,7 @@ public static class XamlReader
     private static object LoadInternal(XmlReader reader, object? existingInstance, Uri? baseUri, Assembly? sourceAssembly,
         ResourceDictionary? parentResourceDictionary = null, Dictionary<string, object>? namedElementsOut = null)
     {
+
         var context = new XamlParserContext
         {
             BaseUri = baseUri,
@@ -249,6 +270,7 @@ public static class XamlReader
                 case XmlNodeType.Element:
                     var result = ParseElement(reader, context, existingInstance);
                     RegisterNamedElementsInScope(result, context.NamedElements);
+
                     if (existingInstance != null)
                     {
                         if (namedElementsOut != null)
@@ -256,6 +278,7 @@ public static class XamlReader
                             // AOT-safe path: return named elements to caller for explicit wiring
                             foreach (var (name, element) in context.NamedElements)
                                 namedElementsOut[name] = element;
+
                         }
                         else
                         {
@@ -301,14 +324,12 @@ public static class XamlReader
         }
     }
 
-    [UnconditionalSuppressMessage("AOT", "IL2070:Target method argument",
-        Justification = "Types are registered in XamlTypeRegistry with DynamicallyAccessedMembers")]
-    [UnconditionalSuppressMessage("AOT", "IL2075:Target method argument",
-        Justification = "Types are registered in XamlTypeRegistry with DynamicallyAccessedMembers")]
+    [RequiresUnreferencedCode("Wires named XAML elements onto fields/properties of the component runtime type via reflection. Code-behind types reachable from XAML are preserved via XamlTypeRegistry/DAM annotations.")]
     private static void WireUpNamedElements(object component, Dictionary<string, object> namedElements)
     {
         var type = component.GetType();
         var bindingFlags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+
 
         foreach (var (name, element) in namedElements)
         {
@@ -326,13 +347,12 @@ public static class XamlReader
             {
                 property.SetValue(component, element);
             }
+            else
+            {
+            }
         }
     }
 
-    [UnconditionalSuppressMessage("AOT", "IL2067:Target parameter argument",
-        Justification = "Types are registered in XamlTypeRegistry with DynamicallyAccessedMembers")]
-    [UnconditionalSuppressMessage("AOT", "IL2072:Target parameter argument",
-        Justification = "Types are registered in XamlTypeRegistry with DynamicallyAccessedMembers")]
     private static object ParseElement(XmlReader reader, XamlParserContext context, object? existingInstance = null)
     {
         var elementName = reader.LocalName;
@@ -358,14 +378,22 @@ public static class XamlReader
                 throw new XamlParseException($"Cannot resolve type '{elementName}' in namespace '{namespaceUri}'.");
             }
 
+
             if (resolvedType == typeof(string))
             {
                 instance = string.Empty;
             }
             else
             {
-                instance = Activator.CreateInstance(resolvedType)
-                    ?? throw new XamlParseException($"Failed to create instance of type '{resolvedType.FullName}'.");
+                try
+                {
+                    instance = Activator.CreateInstance(resolvedType)
+                        ?? throw new XamlParseException($"Failed to create instance of type '{resolvedType.FullName}'.");
+                }
+                catch (Exception ex)
+                {
+                    throw;
+                }
             }
         }
 
@@ -471,6 +499,7 @@ public static class XamlReader
         return currentInstance;
     }
 
+    [RequiresUnreferencedCode("Sets a Name property on an instance via reflection when the instance is not a FrameworkElement.")]
     private static void HandleXDirective(object instance, string directive, string value, XamlParserContext context)
     {
         switch (directive)
@@ -501,10 +530,7 @@ public static class XamlReader
         }
     }
 
-    [UnconditionalSuppressMessage("AOT", "IL2070:Target method argument",
-        Justification = "Types are registered in XamlTypeRegistry with DynamicallyAccessedMembers")]
-    [UnconditionalSuppressMessage("AOT", "IL2075:Target method argument",
-        Justification = "Types are registered in XamlTypeRegistry with DynamicallyAccessedMembers")]
+    [RequiresUnreferencedCode("Resolves attached property setters via reflection on the owner type.")]
     private static void SetAttachedProperty(object instance, string propertyPath, string value, XamlParserContext context)
     {
         var parts = propertyPath.Split('.');
@@ -528,6 +554,7 @@ public static class XamlReader
         {
             throw new XamlParseException($"Cannot resolve attached property owner type: {ownerTypeName}");
         }
+
 
         // Find the Set method (e.g., Grid.SetRow)
         var setMethod = ownerType.GetMethod($"Set{propertyName}", BindingFlags.Public | BindingFlags.Static);
@@ -576,16 +603,13 @@ public static class XamlReader
             }
         }
 
-        // Try DependencyProperty directly
-        var dpField = ownerType.GetField($"{propertyName}Property", BindingFlags.Public | BindingFlags.Static);
-        if (dpField != null && instance is DependencyObject depObj)
+        // Try DependencyProperty directly via the AOT-safe registry.
+        var dp = DependencyProperty.FromName(ownerType, propertyName);
+        if (dp != null && instance is DependencyObject depObj)
         {
-            if (dpField.GetValue(null) is DependencyProperty dp)
-            {
-                var convertedValue = TypeConverterRegistry.ConvertValue(value, dp.PropertyType);
-                depObj.SetValue(dp, convertedValue);
-                return;
-            }
+            var convertedValue = TypeConverterRegistry.ConvertValue(value, dp.PropertyType);
+            depObj.SetValue(dp, convertedValue);
+            return;
         }
 
         throw new XamlParseException($"Cannot find attached property setter for: {propertyPath}");
@@ -690,6 +714,7 @@ public static class XamlReader
         return parts.Length == 1 ? parts[0] : string.Join(" && ", parts);
     }
 
+    [RequiresUnreferencedCode("Reads ContentPropertyAttribute and the matching property via reflection on the runtime type.")]
     private static bool SupportsRazorIfDirectives(object instance)
     {
         if (instance is Panel or ItemsControl or Border or Window)
@@ -977,10 +1002,7 @@ public static class XamlReader
         return true;
     }
 
-    [UnconditionalSuppressMessage("AOT", "IL2070:Target method argument",
-        Justification = "Types are registered in XamlTypeRegistry with DynamicallyAccessedMembers")]
-    [UnconditionalSuppressMessage("AOT", "IL2075:Target method argument",
-        Justification = "Types are registered in XamlTypeRegistry with DynamicallyAccessedMembers")]
+    [RequiresUnreferencedCode("Resolves property element setters via reflection on the runtime instance type.")]
     private static void ParsePropertyElement(XmlReader reader, object instance, XamlParserContext context)
     {
         var parts = reader.LocalName.Split('.');
@@ -1047,7 +1069,33 @@ public static class XamlReader
 
                 if (property.PropertyType == typeof(ResourceDictionary) && childValue is ResourceDictionary dictionaryValue)
                 {
-                    property.SetValue(instance, dictionaryValue);
+                    // WPF 语义:<Foo.Resources><ResourceDictionary>…</ResourceDictionary></Foo.Resources>
+                    // 是把子 dict 的 MergedDictionaries 和 items 合并到 existing Resources,不是整块替换。
+                    //
+                    // 最关键的实际场景:Application ctor 里 ThemeManager.Initialize 把 Generic theme /
+                    // accent / typography 三个 dict 挂到 app.Resources.MergedDictionaries;如果 user
+                    // App.jalxaml 紧接着声明 <Application.Resources><ResourceDictionary>…</ResourceDictionary>
+                    // </Application.Resources>,整块替换会把 Generic theme 丢掉,所有控件 Template=null,
+                    // 窗口整片黑。Window.Resources / UserControl.Resources 同理。
+                    //
+                    // 只有 existing 为 null (property 从未 get 过、没有懒初始化) 或者 user 显式用了
+                    // 同一 dict 实例时才直接 SetValue。
+                    var existing = property.GetValue(instance) as ResourceDictionary;
+                    if (existing == null || ReferenceEquals(existing, dictionaryValue))
+                    {
+                        property.SetValue(instance, dictionaryValue);
+                    }
+                    else
+                    {
+                        foreach (var merged in dictionaryValue.MergedDictionaries)
+                        {
+                            existing.MergedDictionaries.Add(merged);
+                        }
+                        foreach (KeyValuePair<object, object?> entry in dictionaryValue)
+                        {
+                            existing[entry.Key] = entry.Value;
+                        }
+                    }
                 }
                 else if (isCollection && propertyValue != null)
                 {
@@ -1093,10 +1141,6 @@ public static class XamlReader
         return false;
     }
 
-    [UnconditionalSuppressMessage("AOT", "IL2070:Target method argument",
-        Justification = "Attached property owner types are registered with PublicMethods/PublicFields so Set{Name} and {Name}Property stay reachable")]
-    [UnconditionalSuppressMessage("AOT", "IL2075:Target method argument",
-        Justification = "Attached property owner types are registered with PublicMethods/PublicFields so Set{Name} and {Name}Property stay reachable")]
     private static void ParseAttachedPropertyElement(
         XmlReader reader,
         object instance,
@@ -1135,8 +1179,8 @@ public static class XamlReader
 
         if (setMethod == null)
         {
-            var dpField = ownerType.GetField($"{propertyName}Property", BindingFlags.Public | BindingFlags.Static);
-            if (dpField?.GetValue(null) is DependencyProperty dp)
+            var dp = DependencyProperty.FromName(ownerType, propertyName);
+            if (dp != null)
             {
                 attachedDp = dp;
                 targetType = dp.PropertyType;
@@ -1260,6 +1304,7 @@ public static class XamlReader
         return typeof(System.Collections.IList).IsAssignableFrom(type);
     }
 
+    [RequiresUnreferencedCode("Falls back to reflection to invoke Add on non-IList collections.")]
     private static void AddToCollection(object collection, object item)
     {
         if (collection is System.Collections.IList list)
@@ -1829,8 +1874,7 @@ public static class XamlReader
         yield return $"{assemblyName}.{dottedPath}";
     }
 
-    [UnconditionalSuppressMessage("AOT", "IL2070:Target method argument",
-        Justification = "Types are registered in XamlTypeRegistry with DynamicallyAccessedMembers")]
+    [RequiresUnreferencedCode("Sets a CLR property on the runtime type of an instance via reflection. Types reachable from XAML are preserved via XamlTypeRegistry/DAM annotations.")]
     private static object SetProperty(object instance, string propertyName, object? value, XamlParserContext context, XmlReader? reader = null)
     {
         var type = instance.GetType();
@@ -1840,7 +1884,9 @@ public static class XamlReader
         {
             // Check if it's an event (e.g., Click="OnClick")
             if (value is string handlerName && TryWireEvent(instance, propertyName, handlerName, context))
+            {
                 return instance;
+            }
 
             return instance;
         }
@@ -1939,8 +1985,18 @@ public static class XamlReader
         {
             SetPropertyValueWithResourceFallback(instance, property, value, context);
         }
+        else
+        {
+        }
 
         return instance;
+    }
+
+    private static string Truncate(object? value)
+    {
+        if (value == null) return "<null>";
+        var s = value as string ?? value.ToString() ?? "<null>";
+        return s.Length <= 80 ? s : s.Substring(0, 77) + "...";
     }
 
     private static bool TryPopulateReadOnlyCollectionProperty(
@@ -2060,6 +2116,7 @@ public static class XamlReader
         return string.Empty;
     }
 
+    [RequiresUnreferencedCode("Resolves events and code-behind handler methods via reflection on runtime types.")]
     private static bool TryWireEvent(object instance, string eventName, string handlerName, XamlParserContext context)
     {
         var codeBehind = context.CodeBehindInstance;
@@ -2091,8 +2148,7 @@ public static class XamlReader
         return true;
     }
 
-    [UnconditionalSuppressMessage("AOT", "IL2070:Target method argument",
-        Justification = "Types are registered in XamlTypeRegistry with DynamicallyAccessedMembers")]
+    [RequiresUnreferencedCode("Reads ContentPropertyAttribute and the matching property via reflection on the runtime type.")]
     private static object SetContentProperty(object instance, string content, XamlParserContext context)
     {
         content = content.Trim();
@@ -2328,8 +2384,7 @@ public static class XamlReader
         }
     }
 
-    [UnconditionalSuppressMessage("AOT", "IL2070:Target method argument",
-        Justification = "Types are registered in XamlTypeRegistry with DynamicallyAccessedMembers")]
+    [RequiresUnreferencedCode("Resolves ContentPropertyAttribute and Add methods via reflection on parent runtime types.")]
     private static void AddChild(object parent, object child, XamlParserContext context, string? resourceKey = null)
     {
         if (parent is ResourceDictionary resourceDict)
@@ -2681,23 +2736,8 @@ internal sealed class XamlParserContext : IAmbientResourceProvider
         if (string.IsNullOrEmpty(propertyName) || targetType == null)
             return null;
 
-        var fieldName = $"{propertyName}Property";
-
-        // Search in target type and its base types explicitly
-        // Using DeclaredOnly to search each type individually for reliability
-        var currentType = targetType;
-        while (currentType != null && currentType != typeof(object))
-        {
-            var dpField = currentType.GetField(fieldName,
-                BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly);
-            if (dpField != null && dpField.FieldType == typeof(DependencyProperty))
-            {
-                return dpField.GetValue(null) as DependencyProperty;
-            }
-            currentType = currentType.BaseType;
-        }
-
-        return null;
+        // AOT-safe lookup via the DependencyProperty registry — walks the inheritance chain.
+        return DependencyProperty.FromName(targetType, propertyName);
     }
 
     /// <summary>
@@ -2842,8 +2882,6 @@ internal sealed class XamlParserContext : IAmbientResourceProvider
         return ResolveTypeInNamespace(ns, typeName, assembly);
     }
 
-    [UnconditionalSuppressMessage("AOT", "IL2026:RequiresUnreferencedCode",
-        Justification = "Assembly names are matched by simple name; we never load new assemblies here.")]
     private static Assembly? FindAssemblyBySimpleName(string assemblyName)
     {
         foreach (var candidate in AppDomain.CurrentDomain.GetAssemblies())
@@ -2917,10 +2955,7 @@ public static class XamlTypeRegistry
     // AOT-safe type registry - types are preserved at compile time
     private static readonly Dictionary<string, Type> _types = InitializeTypes();
 
-    [UnconditionalSuppressMessage("AOT", "IL2026:RequiresUnreferencedCode",
-        Justification = "Types are statically registered and preserved")]
-    [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
-        Justification = "Types are statically registered and preserved")]
+    [UnconditionalSuppressMessage("Trimming", "IL2026:Static field initializer cannot itself declare RequiresUnreferencedCode.", Justification = "This initializer registers Type tokens only; reflective construction happens in XamlReader.Load which carries the RUC contract.")]
     private static Dictionary<string, Type> InitializeTypes()
     {
         var types = new Dictionary<string, Type>(StringComparer.Ordinal);
@@ -2938,6 +2973,7 @@ public static class XamlTypeRegistry
         return types;
     }
 
+    [RequiresUnreferencedCode("Registers core types whose markup-extension ProvideValue overrides are themselves annotated with RequiresUnreferencedCode.")]
     private static void RegisterCoreTypes(Dictionary<string, Type> types)
     {
         // Jalium.UI namespace (Core types)
@@ -2962,6 +2998,7 @@ public static class XamlTypeRegistry
         Register<BindingExtension>(types);
         Register<StaticResourceExtension>(types);
         Register<DynamicResourceExtension>(types);
+        Register<ThemeResourceExtension>(types);
         Register<TemplateBindingExtension>(types);
         Register<NullExtension>(types);
         Register<TypeExtension>(types);
@@ -2978,6 +3015,7 @@ public static class XamlTypeRegistry
         Register<Markup.RazorSectionHost>(types);
     }
 
+    [RequiresUnreferencedCode("Registers control types whose ctors / ProvideValue overrides are themselves annotated with RequiresUnreferencedCode.")]
     private static void RegisterControlTypes(Dictionary<string, Type> types)
     {
         // Jalium.UI.Controls namespace
@@ -3018,6 +3056,7 @@ public static class XamlTypeRegistry
         Register<TreeDataGrid>(types);
         Register<TreeDataGridRow>(types);
         Register<Slider>(types);
+        Register<RangeSlider>(types);
         Register<ProgressBar>(types);
         Register<TabControl>(types);
         Register<TabItem>(types);
@@ -3036,6 +3075,8 @@ public static class XamlTypeRegistry
         Register<Popup>(types);
         Register<TreeView>(types);
         Register<TreeViewItem>(types);
+        Register<TreeSelector>(types);
+        Register<TreeSelectorItem>(types);
         Register<NavigationView>(types);
         Register<NavigationViewItem>(types);
         Register<NavigationViewItemHeader>(types);
@@ -3129,8 +3170,6 @@ public static class XamlTypeRegistry
         RegisterStaticOwner(types, typeof(ContextMenuService));
     }
 
-    [UnconditionalSuppressMessage("AOT", "IL2111:Method with parameters or return value with DynamicallyAccessedMembersAttribute",
-        Justification = "Attached property owner types expose public static Set/Get methods discovered at runtime; trimming is handled by explicit descriptors or by the owning assembly's linker configuration.")]
     private static void RegisterStaticOwner(
         Dictionary<string, Type> types,
         [DynamicallyAccessedMembers(
@@ -3244,7 +3283,11 @@ public static class XamlTypeRegistry
         DynamicallyAccessedMemberTypes.NonPublicFields)]
     public static Type? GetType(string typeName)
     {
-        return _types.GetValueOrDefault(typeName);
+        var result = _types.GetValueOrDefault(typeName);
+        if (result == null)
+        {
+        }
+        return result;
     }
 
     /// <summary>
@@ -3277,13 +3320,68 @@ public static class XamlTypeRegistry
     /// <summary>
     /// Registers a type by name for runtime-discovered types (e.g., from clr-namespace resolution).
     /// </summary>
-    [UnconditionalSuppressMessage("AOT", "IL2026:RequiresUnreferencedCode",
-        Justification = "Used for runtime clr-namespace type resolution; types are kept alive by user reference")]
-    [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
-        Justification = "Used for runtime clr-namespace type resolution")]
     internal static void RegisterType(string name, Type type)
     {
         _types[name] = type;
+    }
+
+    // Full-name index for x:Class types (e.g. "Jalium.UI.Gallery.Modules.Main.Views.MainWindow").
+    // Keyed by the CLR full name because x:Class is always fully qualified; the simple-name
+    // _types dictionary would collide on duplicate leaf names across namespaces.
+    //
+    // Populated by source-generator-emitted ModuleInitializer stubs so that every jalxaml
+    // x:Class is both (a) referenced via typeof(T) in IL — preventing the trimmer from
+    // removing the type — and (b) discoverable by full name at runtime. StartupUri and any
+    // other string→Type lookup path consults this registry first, which is the only
+    // AOT-reliable way to recover a user type from a string after trimming.
+    private static readonly Dictionary<string, Type> _classFullNameTypes = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Registers a user x:Class type by its CLR full name so StartupUri / string-based lookups
+    /// can find it after AOT trimming. Emitted automatically by the JALXAML source generator
+    /// (one <c>[ModuleInitializer]</c> per jalxaml file) — manual calls are rarely needed.
+    /// </summary>
+    /// <param name="fullName">The type's CLR full name (e.g. namespace + "." + class name).</param>
+    /// <param name="type">
+    /// The type itself. Must be supplied as <c>typeof(TYourClass)</c> so the call site
+    /// becomes a static reference that the trimmer preserves.
+    /// </param>
+    public static void RegisterStartupType(
+        string fullName,
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicConstructors |
+            DynamicallyAccessedMemberTypes.NonPublicConstructors |
+            DynamicallyAccessedMemberTypes.PublicProperties |
+            DynamicallyAccessedMemberTypes.PublicFields |
+            DynamicallyAccessedMemberTypes.PublicMethods |
+            DynamicallyAccessedMemberTypes.NonPublicFields)]
+        Type type)
+    {
+        ArgumentNullException.ThrowIfNull(fullName);
+        ArgumentNullException.ThrowIfNull(type);
+        _classFullNameTypes[fullName] = type;
+    }
+
+    /// <summary>
+    /// Looks up a type previously registered via <see cref="RegisterStartupType"/> by CLR full name.
+    /// Returns <c>null</c> if no type with that full name was registered.
+    /// </summary>
+    [return: DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicConstructors |
+        DynamicallyAccessedMemberTypes.NonPublicConstructors |
+        DynamicallyAccessedMemberTypes.PublicProperties |
+        DynamicallyAccessedMemberTypes.PublicFields |
+        DynamicallyAccessedMemberTypes.PublicMethods |
+        DynamicallyAccessedMemberTypes.NonPublicFields)]
+    public static Type? GetStartupType(string fullName)
+    {
+        ArgumentNullException.ThrowIfNull(fullName);
+        if (_classFullNameTypes.TryGetValue(fullName, out var type))
+        {
+            return type;
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -3299,6 +3397,7 @@ public static class XamlTypeRegistry
     /// Applies a compiled UI bundle with AOT-safe named element output.
     /// Named elements are collected into the provided dictionary instead of being wired via reflection.
     /// </summary>
+    [RequiresUnreferencedCode("When namedElements is null this method walks the component runtime type via reflection to assign named fields. Pass a non-null namedElements dictionary for AOT-safe operation.")]
     public static void ApplyBundle(object component, Gpu.CompiledUIBundle bundle, Dictionary<string, object>? namedElements)
     {
         ArgumentNullException.ThrowIfNull(component);
@@ -3360,6 +3459,7 @@ public static class XamlTypeRegistry
     /// <summary>
     /// Gets the name of a node from the bundle's metadata (if available).
     /// </summary>
+    [RequiresUnreferencedCode("Speculative reflection probe for future SceneNode metadata Name/XName properties.")]
     private static string? GetNodeName(Gpu.CompiledUIBundle bundle, Gpu.SceneNode node)
     {
         // Future-compatible reflection probe:
@@ -3480,6 +3580,7 @@ public static class XamlTypeRegistry
         }
     }
 
+    [RequiresUnreferencedCode("Reads ContentPropertyAttribute and the matching property via reflection on the parent runtime type.")]
     private static void TryAttachFallbackChild(object parent, UIElement child)
     {
         var parentType = parent.GetType();

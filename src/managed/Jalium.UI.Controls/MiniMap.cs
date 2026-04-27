@@ -156,13 +156,13 @@ public class MiniMap : FrameworkElement
 
     public Thickness BorderThickness
     {
-        get => (Thickness)GetValue(BorderThicknessProperty);
+        get => (Thickness)GetValue(BorderThicknessProperty)!;
         set => SetValue(BorderThicknessProperty, value);
     }
 
     public CornerRadius CornerRadius
     {
-        get => (CornerRadius)GetValue(CornerRadiusProperty);
+        get => (CornerRadius)GetValue(CornerRadiusProperty)!;
         set => SetValue(CornerRadiusProperty, value);
     }
 

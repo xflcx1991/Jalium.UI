@@ -565,6 +565,12 @@ public sealed class NavigationService
     /// </summary>
     public event EventHandler<FragmentNavigationEventArgs>? FragmentNavigation;
 
+    /// <summary>Raises the <see cref="NavigationProgress"/> event during a content download.</summary>
+    internal void RaiseNavigationProgress(NavigationProgressEventArgs e) => NavigationProgress?.Invoke(this, e);
+
+    /// <summary>Raises the <see cref="FragmentNavigation"/> event when a fragment is requested.</summary>
+    internal void RaiseFragmentNavigation(FragmentNavigationEventArgs e) => FragmentNavigation?.Invoke(this, e);
+
     #endregion
 
     #region Private Methods

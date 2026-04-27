@@ -17,9 +17,11 @@ internal static class BindingValueCoercion
         {
             // For non-nullable value types (double, int, bool, etc.), return the
             // type's default rather than null to prevent NullReferenceException
-            // when the DP getter unboxes the stored value.
+            // when the DP getter unboxes the stored value. Uses a TypeCode switch
+            // and known framework-type table so AOT/trim does not need to keep
+            // any constructor reflectively (no Activator.CreateInstance).
             if (targetType.IsValueType && Nullable.GetUnderlyingType(targetType) == null)
-                return Activator.CreateInstance(targetType);
+                return DefaultValueTypeBox(targetType);
             return null;
         }
 
@@ -68,4 +70,74 @@ internal static class BindingValueCoercion
 
         return value.ToString() ?? string.Empty;
     }
+
+    /// <summary>
+    /// Returns a boxed default for the given non-nullable value type without using reflection.
+    /// Covers all primitives via <see cref="Type.GetTypeCode"/> and the framework value types
+    /// commonly used as DP types (Thickness/CornerRadius/GridLength/Point/Rect/Size/Color, etc.).
+    /// Enums dispatch through <see cref="Enum.ToObject(Type, long)"/>, which has no AOT
+    /// reflection requirements. Unknown user-defined value types fall back to <c>null</c>;
+    /// callers that need a typed default must register a coercion converter or supply a
+    /// non-null PropertyMetadata default.
+    /// </summary>
+    private static object? DefaultValueTypeBox(Type targetType)
+    {
+        if (targetType.IsEnum)
+            return Enum.ToObject(targetType, 0L);
+
+        switch (Type.GetTypeCode(targetType))
+        {
+            case TypeCode.Boolean: return BoxedFalse;
+            case TypeCode.Byte: return BoxedByteZero;
+            case TypeCode.SByte: return BoxedSByteZero;
+            case TypeCode.Char: return BoxedCharZero;
+            case TypeCode.Int16: return BoxedShortZero;
+            case TypeCode.UInt16: return BoxedUShortZero;
+            case TypeCode.Int32: return BoxedIntZero;
+            case TypeCode.UInt32: return BoxedUIntZero;
+            case TypeCode.Int64: return BoxedLongZero;
+            case TypeCode.UInt64: return BoxedULongZero;
+            case TypeCode.Single: return BoxedFloatZero;
+            case TypeCode.Double: return BoxedDoubleZero;
+            case TypeCode.Decimal: return BoxedDecimalZero;
+            case TypeCode.DateTime: return BoxedDateTimeDefault;
+        }
+
+        if (targetType == typeof(TimeSpan)) return BoxedTimeSpanZero;
+        if (targetType == typeof(Guid)) return BoxedGuidEmpty;
+        if (targetType == typeof(DateTimeOffset)) return BoxedDateTimeOffsetDefault;
+        if (targetType == typeof(Thickness)) return BoxedThicknessDefault;
+        if (targetType == typeof(CornerRadius)) return BoxedCornerRadiusDefault;
+        if (targetType == typeof(Size)) return BoxedSizeEmpty;
+        if (targetType == typeof(Point)) return BoxedPointZero;
+        if (targetType == typeof(Rect)) return BoxedRectEmpty;
+
+        // Unknown user-defined value type: framework cannot synthesize a default
+        // without reflection. Return null and let downstream metadata defaults
+        // or coercion callbacks supply a value if needed.
+        return null;
+    }
+
+    private static readonly object BoxedFalse = false;
+    private static readonly object BoxedByteZero = (byte)0;
+    private static readonly object BoxedSByteZero = (sbyte)0;
+    private static readonly object BoxedCharZero = '\0';
+    private static readonly object BoxedShortZero = (short)0;
+    private static readonly object BoxedUShortZero = (ushort)0;
+    private static readonly object BoxedIntZero = 0;
+    private static readonly object BoxedUIntZero = 0u;
+    private static readonly object BoxedLongZero = 0L;
+    private static readonly object BoxedULongZero = 0UL;
+    private static readonly object BoxedFloatZero = 0f;
+    private static readonly object BoxedDoubleZero = 0d;
+    private static readonly object BoxedDecimalZero = 0m;
+    private static readonly object BoxedDateTimeDefault = default(DateTime);
+    private static readonly object BoxedTimeSpanZero = TimeSpan.Zero;
+    private static readonly object BoxedGuidEmpty = Guid.Empty;
+    private static readonly object BoxedDateTimeOffsetDefault = default(DateTimeOffset);
+    private static readonly object BoxedThicknessDefault = default(Thickness);
+    private static readonly object BoxedCornerRadiusDefault = default(CornerRadius);
+    private static readonly object BoxedSizeEmpty = default(Size);
+    private static readonly object BoxedPointZero = default(Point);
+    private static readonly object BoxedRectEmpty = default(Rect);
 }

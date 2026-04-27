@@ -75,7 +75,7 @@ internal sealed class AndroidNotificationBackend : INotificationBackend
         foreach (var action in content.Actions)
         {
             AndroidNotify.jalium_notification_add_action(
-                (int)id, action.Id, action.Label);
+                (int)id, action.Id ?? string.Empty, action.Label ?? string.Empty);
         }
 
         return handle;

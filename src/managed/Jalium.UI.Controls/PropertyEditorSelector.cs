@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
@@ -25,6 +26,7 @@ internal class PropertyEditorSelector
     /// <summary>
     /// Creates an appropriate editor <see cref="FrameworkElement"/> for the given property item.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Numeric/string editors use TypeDescriptor.GetConverter for the property's runtime type — generic TypeConverters require their generic types to be DAM-preserved.")]
     public FrameworkElement CreateEditor(PropertyItem item, PropertyGrid owner)
     {
         // 1. Check for custom editors registered on the owner
@@ -192,6 +194,7 @@ internal class PropertyEditorSelector
         return colorPicker;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Uses TypeDescriptor.GetConverter for the property's runtime type — generic TypeConverters require their generic types to be DAM-preserved.")]
     private static FrameworkElement CreateNumericEditor(PropertyItem item, PropertyGrid owner)
     {
         var textBox = new TextBox
@@ -225,6 +228,7 @@ internal class PropertyEditorSelector
         return textBox;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Uses TypeDescriptor.GetConverter for the property's runtime type — generic TypeConverters require their generic types to be DAM-preserved.")]
     private static FrameworkElement CreateStringEditor(PropertyItem item, PropertyGrid owner)
     {
         var textBox = new TextBox

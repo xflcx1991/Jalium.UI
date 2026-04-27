@@ -325,8 +325,6 @@ public class Track : FrameworkElement
     /// <inheritdoc />
     protected override Size MeasureOverride(Size availableSize)
     {
-        var desiredSize = new Size();
-
         _decreaseButton?.Measure(availableSize);
         _thumb?.Measure(availableSize);
         _increaseButton?.Measure(availableSize);

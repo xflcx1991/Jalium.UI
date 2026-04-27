@@ -78,8 +78,8 @@ public class TreeView : ItemsControl
     /// </summary>
     public event RoutedPropertyChangedEventHandler<object?>? SelectedItemChanged
     {
-        add => AddHandler(SelectedItemChangedEvent, value);
-        remove => RemoveHandler(SelectedItemChangedEvent, value);
+        add { if (value is not null) AddHandler(SelectedItemChangedEvent, value); }
+        remove { if (value is not null) RemoveHandler(SelectedItemChangedEvent, value); }
     }
 
     #endregion
@@ -1341,7 +1341,7 @@ public class TreeViewItem : HeaderedItemsControl
     {
         if (d is TreeViewItem tvi)
         {
-            var expanded = (bool)e.NewValue;
+            var expanded = (bool)e.NewValue!;
 
             // Realize deferred children on first expand
             if (expanded)
@@ -1376,7 +1376,7 @@ public class TreeViewItem : HeaderedItemsControl
     {
         if (d is TreeViewItem tvi)
         {
-            if ((bool)e.NewValue && tvi.ParentTreeView != null)
+            if ((bool)e.NewValue! && tvi.ParentTreeView != null)
             {
                 tvi.ParentTreeView.SelectItem(tvi);
             }
@@ -1538,15 +1538,16 @@ public class TreeViewItem : HeaderedItemsControl
         InvalidateMeasure();
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("HierarchicalDataTemplate ItemsSource path is resolved against runtime types via PropertyAccessorRegistry.")]
     private static object? ResolvePropertyPath(object obj, string path)
     {
         var current = obj;
         foreach (var part in path.Split('.'))
         {
             if (current == null) return null;
-            var prop = current.GetType().GetProperty(part, BindingFlags.Public | BindingFlags.Instance);
-            if (prop == null) return null;
-            current = prop.GetValue(current);
+            if (!PropertyAccessorRegistry.TryReadProperty(current, part, out var next))
+                return null;
+            current = next;
         }
         return current;
     }

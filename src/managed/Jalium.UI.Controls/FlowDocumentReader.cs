@@ -143,7 +143,7 @@ public class FlowDocumentReader : Control
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Data)]
     public FlowDocumentReaderViewingMode ViewingMode
     {
-        get => (FlowDocumentReaderViewingMode)GetValue(ViewingModeProperty);
+        get => (FlowDocumentReaderViewingMode)GetValue(ViewingModeProperty)!;
         set => SetValue(ViewingModeProperty, value);
     }
 
@@ -153,7 +153,7 @@ public class FlowDocumentReader : Control
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Behavior)]
     public double Zoom
     {
-        get => (double)GetValue(ZoomProperty);
+        get => (double)GetValue(ZoomProperty)!;
         set => SetValue(ZoomProperty, value);
     }
 
@@ -163,7 +163,7 @@ public class FlowDocumentReader : Control
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public double MinZoom
     {
-        get => (double)GetValue(MinZoomProperty);
+        get => (double)GetValue(MinZoomProperty)!;
         set => SetValue(MinZoomProperty, value);
     }
 
@@ -173,7 +173,7 @@ public class FlowDocumentReader : Control
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public double MaxZoom
     {
-        get => (double)GetValue(MaxZoomProperty);
+        get => (double)GetValue(MaxZoomProperty)!;
         set => SetValue(MaxZoomProperty, value);
     }
 
@@ -183,7 +183,7 @@ public class FlowDocumentReader : Control
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Behavior)]
     public double ZoomIncrement
     {
-        get => (double)GetValue(ZoomIncrementProperty);
+        get => (double)GetValue(ZoomIncrementProperty)!;
         set => SetValue(ZoomIncrementProperty, value);
     }
 
@@ -193,7 +193,7 @@ public class FlowDocumentReader : Control
     [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public bool IsPageViewEnabled
     {
-        get => (bool)GetValue(IsPageViewEnabledProperty);
+        get => (bool)GetValue(IsPageViewEnabledProperty)!;
         set => SetValue(IsPageViewEnabledProperty, value);
     }
 
@@ -203,7 +203,7 @@ public class FlowDocumentReader : Control
     [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public bool IsTwoPageViewEnabled
     {
-        get => (bool)GetValue(IsTwoPageViewEnabledProperty);
+        get => (bool)GetValue(IsTwoPageViewEnabledProperty)!;
         set => SetValue(IsTwoPageViewEnabledProperty, value);
     }
 
@@ -213,7 +213,7 @@ public class FlowDocumentReader : Control
     [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public bool IsScrollViewEnabled
     {
-        get => (bool)GetValue(IsScrollViewEnabledProperty);
+        get => (bool)GetValue(IsScrollViewEnabledProperty)!;
         set => SetValue(IsScrollViewEnabledProperty, value);
     }
 
@@ -223,7 +223,7 @@ public class FlowDocumentReader : Control
     [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public bool IsFindEnabled
     {
-        get => (bool)GetValue(IsFindEnabledProperty);
+        get => (bool)GetValue(IsFindEnabledProperty)!;
         set => SetValue(IsFindEnabledProperty, value);
     }
 
@@ -233,7 +233,7 @@ public class FlowDocumentReader : Control
     [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public bool IsPrintEnabled
     {
-        get => (bool)GetValue(IsPrintEnabledProperty);
+        get => (bool)GetValue(IsPrintEnabledProperty)!;
         set => SetValue(IsPrintEnabledProperty, value);
     }
 
@@ -243,7 +243,7 @@ public class FlowDocumentReader : Control
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public int PageCount
     {
-        get => (int)GetValue(PageCountProperty);
+        get => (int)GetValue(PageCountProperty)!;
         private set => SetValue(PageCountPropertyKey.DependencyProperty, value);
     }
 
@@ -253,7 +253,7 @@ public class FlowDocumentReader : Control
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public int PageNumber
     {
-        get => (int)GetValue(PageNumberProperty);
+        get => (int)GetValue(PageNumberProperty)!;
         private set => SetValue(PageNumberPropertyKey.DependencyProperty, value);
     }
 

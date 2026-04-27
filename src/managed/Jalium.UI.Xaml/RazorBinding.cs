@@ -130,6 +130,7 @@ internal static class RazorValueResolver
         return true;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Razor binding falls back to reflection when no PropertyAccessor is registered for the source type. Register accessors via RazorExpressionRegistry.RegisterPropertyAccessor for AOT-safe usage.")]
     private static bool TryReadMember(object source, string memberName, out object? value)
     {
         // AOT-safe: try pre-registered accessor first (no reflection)
@@ -140,26 +141,28 @@ internal static class RazorValueResolver
             return true;
         }
 
+        // DependencyProperty path uses the AOT-safe registry (no field reflection).
         if (source is DependencyObject dependencyObject)
         {
-            var dpField = source.GetType().GetField(
-                memberName + "Property",
-                BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy);
-            if (dpField?.GetValue(null) is DependencyProperty dependencyProperty)
+            var dependencyProperty = DependencyProperty.FromName(sourceType, memberName);
+            if (dependencyProperty != null)
             {
                 value = dependencyObject.GetValue(dependencyProperty);
                 return true;
             }
         }
 
-        var property = source.GetType().GetProperty(memberName, BindingFlags.Public | BindingFlags.Instance);
+        // CLR property/field fallback — requires reflection on the runtime source type.
+        // Mark via [RequiresUnreferencedCode] above so the analyzer flags any caller that
+        // hasn't supplied trim-safe registrations for its data sources.
+        var property = sourceType.GetProperty(memberName, BindingFlags.Public | BindingFlags.Instance);
         if (property != null)
         {
             value = property.GetValue(source);
             return true;
         }
 
-        var field = source.GetType().GetField(memberName, BindingFlags.Public | BindingFlags.Instance);
+        var field = sourceType.GetField(memberName, BindingFlags.Public | BindingFlags.Instance);
         if (field != null)
         {
             value = field.GetValue(source);
@@ -731,18 +734,11 @@ internal static class RazorBindingEngine
 
     private static bool TryFindDependencyProperty(Type type, string propertyName, out DependencyProperty dependencyProperty)
     {
-        var current = type;
-        var fieldName = propertyName + "Property";
-        while (current != null)
+        var dp = DependencyProperty.FromName(type, propertyName);
+        if (dp != null)
         {
-            var field = current.GetField(fieldName, BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy);
-            if (field?.GetValue(null) is DependencyProperty dp)
-            {
-                dependencyProperty = dp;
-                return true;
-            }
-
-            current = current.BaseType;
+            dependencyProperty = dp;
+            return true;
         }
 
         dependencyProperty = null!;

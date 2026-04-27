@@ -212,7 +212,8 @@ public sealed class SpellChecker : IDisposable
         {
             if (_spellChecker != null)
             {
-                Marshal.ReleaseComObject(_spellChecker);
+                if (OperatingSystem.IsWindows())
+                    Marshal.ReleaseComObject(_spellChecker);
                 _spellChecker = null;
             }
             _disposed = true;

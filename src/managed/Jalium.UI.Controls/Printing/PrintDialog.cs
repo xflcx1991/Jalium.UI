@@ -1264,6 +1264,9 @@ public sealed class XpsDocumentWriter
     /// </summary>
     public event EventHandler<WritingPrintTicketRequiredEventArgs>? WritingPrintTicketRequired;
 
+    /// <summary>Raises the <see cref="WritingPrintTicketRequired"/> event from a print pipeline implementation.</summary>
+    internal void RaiseWritingPrintTicketRequired(WritingPrintTicketRequiredEventArgs e) => WritingPrintTicketRequired?.Invoke(this, e);
+
     private void WriteInternal(Visual visual, PrintTicket? printTicket)
     {
         // Platform-specific implementation

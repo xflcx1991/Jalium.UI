@@ -103,7 +103,7 @@ public class DockTabPanel : Selector
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Input)]
     public double TabStripHeight
     {
-        get => (double)GetValue(TabStripHeightProperty);
+        get => (double)GetValue(TabStripHeightProperty)!;
         set => SetValue(TabStripHeightProperty, value);
     }
 
@@ -517,7 +517,7 @@ public class DockTabPanel : Selector
         }
     }
 
-    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static new void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is DockTabPanel panel)
             panel.InvalidateVisual();

@@ -985,7 +985,7 @@ public class MapView : Control
         {
             return Math.Clamp(zoom, map.MinZoomLevel, map.MaxZoomLevel);
         }
-        return value;
+        return value ?? 0.0;
     }
 
     #endregion

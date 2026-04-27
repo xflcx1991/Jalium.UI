@@ -73,6 +73,7 @@ public sealed class JumpList
     public static void AddToRecentCategory(JumpPath jumpPath)
     {
         ArgumentNullException.ThrowIfNull(jumpPath);
+        if (jumpPath.Path is null) return;
         AddToRecentCategory(jumpPath.Path);
     }
 

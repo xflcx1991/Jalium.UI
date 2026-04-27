@@ -530,7 +530,7 @@ public class DatePicker : Control
     {
         if (d is DatePicker datePicker)
         {
-            if ((bool)e.NewValue)
+            if ((bool)e.NewValue!)
                 datePicker.OpenDropDown();
             else
                 datePicker.CloseDropDown();
@@ -545,7 +545,7 @@ public class DatePicker : Control
         }
     }
 
-    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static new void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is DatePicker datePicker)
         {

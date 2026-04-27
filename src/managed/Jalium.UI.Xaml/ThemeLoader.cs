@@ -5,6 +5,7 @@ using System.Xml;
 using Jalium.UI;
 using Jalium.UI.Controls;
 using Jalium.UI.Controls.Themes;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Jalium.UI.Markup;
 
@@ -24,9 +25,9 @@ public static class ThemeLoader
     /// </summary>
     [ModuleInitializer]
     [SuppressMessage("Usage", "CA2255:The 'ModuleInitializer' attribute should not be used in libraries")]
+    [SuppressMessage("Trimming", "IL2026:ModuleInitializer cannot declare RequiresUnreferencedCode by design.", Justification = "Module initializer is invoked by the runtime; downstream public callers (XamlReader.Load, ThemeManager.Initialize) carry the RUC contract.")]
     public static void Initialize()
     {
-        // Register XamlReader.Load as the theme loader callback
         ThemeManager.XamlLoader = LoadResourceDictionaryFromStream;
         ResourceDictionary.SourceLoader = LoadReferencedResourceDictionary;
         Application.StartupObjectLoader = LoadStartupObjectFromUri;
@@ -41,6 +42,7 @@ public static class ThemeLoader
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to LoadResourceDictionaryFromPayload which uses XamlReader (RUC).")]
     private static ResourceDictionary? LoadResourceDictionaryFromStream(
         Stream stream, string resourceName, Assembly sourceAssembly)
     {
@@ -56,6 +58,7 @@ public static class ThemeLoader
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to LoadResourceDictionaryFromPayload which uses XamlReader (RUC).")]
     private static ResourceDictionary? LoadReferencedResourceDictionary(
         ResourceDictionary owner,
         Uri sourceUri,
@@ -121,6 +124,7 @@ public static class ThemeLoader
     /// </summary>
     /// <param name="stream">The stream containing the XAML content.</param>
     /// <returns>The loaded ResourceDictionary, or null if loading failed.</returns>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to XamlReader.Load which carries the same RUC contract.")]
     public static ResourceDictionary? LoadResourceDictionary(Stream stream)
     {
         try
@@ -137,6 +141,7 @@ public static class ThemeLoader
     /// Loads the Generic theme ResourceDictionary.
     /// </summary>
     /// <returns>The Generic theme ResourceDictionary, or null if loading failed.</returns>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to LoadResourceDictionary which carries the same RUC contract.")]
     public static ResourceDictionary? LoadGenericTheme()
     {
         using var stream = ThemeManager.GetGenericThemeStream();
@@ -146,12 +151,7 @@ public static class ThemeLoader
         return LoadResourceDictionary(stream);
     }
 
-    [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
-        Justification = "Startup types are registered in XamlTypeRegistry or preserved by the application")]
-    [UnconditionalSuppressMessage("Trimming", "IL2072:Target parameter argument",
-        Justification = "Startup types are registered in XamlTypeRegistry or preserved by the application")]
-    [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
-        Justification = "Startup types are registered in XamlTypeRegistry or preserved by the application")]
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Loads a startup XAML object from a stream via XamlReader, which carries the RUC contract.")]
     private static object? LoadStartupObjectFromUri(Application app, Uri startupUri)
     {
         ArgumentNullException.ThrowIfNull(app);
@@ -215,7 +215,7 @@ public static class ThemeLoader
             var className = TryReadRootClassName(payload);
             if (!string.IsNullOrWhiteSpace(className))
             {
-                var startupType = ResolveStartupType(className!, assembly, appAssembly);
+                var startupType = ResolveStartupType(className!, assembly, appAssembly, out var fromSourceGenerator);
                 if (startupType == null)
                 {
                     throw new InvalidOperationException(
@@ -225,8 +225,7 @@ public static class ThemeLoader
                 object instance;
                 try
                 {
-                    instance = Activator.CreateInstance(startupType)
-                        ?? throw new InvalidOperationException($"Failed to create startup type '{startupType.FullName}'.");
+                    instance = CreateStartupInstance(startupType);
                 }
                 catch (Exception ex)
                 {
@@ -234,13 +233,58 @@ public static class ThemeLoader
                         $"StartupUri '{startupUriText}' failed to instantiate startup type '{startupType.FullName}'.", ex);
                 }
 
-                XamlReader.LoadComponent(instance, resolvedResourceName, assembly);
+                // 按 WPF 约定,x:Class 的 codebehind ctor 已调用 SG 生成的 InitializeComponent() 完成
+                // XAML 加载。再调一次 LoadComponent 会 double-load:Content/子控件会被重新创建并替换掉
+                // 旧实例,用户在 ctor 里对旧 named element 做的事件订阅、DataContext、binding 全部失效。
+                //
+                // SG 注册过的 startup type 一定已经在 ctor 里加载过 XAML — fromSourceGenerator 就是这个
+                // 权威信号。仅当类型不是 SG 注册的(裸 partial、第三方手写 x:Class)才退到反射探测
+                // InitializeComponent 作为兜底;反射在 AOT trim 之后会失效,SG 路径必须直跳过。
+                if (!fromSourceGenerator && !HasInitializeComponent(startupType))
+                {
+                    XamlReader.LoadComponent(instance, resolvedResourceName, assembly);
+                }
+
                 return instance;
             }
 
             using var parseStream = new MemoryStream(payload);
             return XamlReader.Load(parseStream, resolvedResourceName, assembly);
         }
+    }
+
+    private static object CreateStartupInstance(
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors)]
+        Type startupType)
+    {
+        // WPF 原版 StartupUri 只用 Activator.CreateInstance,因为 WPF 没有 DI 集成。
+        // Jalium.UI 通过 AppBuilder 挂载 Microsoft.Extensions.DependencyInjection,允许
+        // StartupUri 目标类型声明 DI 构造函数(如 public MainWindow(IMessageService svc))。
+        // Activator.CreateInstance 要求 public parameterless ctor,遇到 DI ctor 直接抛
+        // MissingMethodException — 这正是 "Jalium.UI.Gallery.*.MainWindow" 黑屏/崩溃的根因。
+        // ActivatorUtilities.CreateInstance 既能从 IServiceProvider 解析 DI 参数,也能处理
+        // 无参 ctor,是 Activator.CreateInstance 的严格超集。有 Services 时统一走它,没有
+        // (纯 Jalium.UI.Controls 直连、无 AppBuilder)则 fallback 保持兼容。
+        var services = Application.Current?.Services;
+        if (services != null)
+        {
+            return ActivatorUtilities.CreateInstance(services, startupType);
+        }
+
+        return Activator.CreateInstance(startupType)
+            ?? throw new InvalidOperationException($"Failed to create startup type '{startupType.FullName}'.");
+    }
+
+    private static bool HasInitializeComponent(
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)]
+        Type type)
+    {
+        return type.GetMethod(
+            "InitializeComponent",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            binder: null,
+            types: Type.EmptyTypes,
+            modifiers: null) != null;
     }
 
     private static IEnumerable<string> BuildPathCandidates(string path)
@@ -393,12 +437,29 @@ public static class ThemeLoader
         return null;
     }
 
-    [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
-        Justification = "Startup types are registered in XamlTypeRegistry or preserved by the application")]
-    [UnconditionalSuppressMessage("Trimming", "IL2072:Target parameter argument",
-        Justification = "Startup types are registered in XamlTypeRegistry or preserved by the application")]
-    private static Type? ResolveStartupType(string className, Assembly preferredAssembly, Assembly appAssembly)
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Falls back to Assembly.GetType(string) which carries the RUC contract for trimmed types.")]
+    private static Type? ResolveStartupType(string className, Assembly preferredAssembly, Assembly appAssembly, out bool fromSourceGenerator)
     {
+        // AOT root: after trimming, Assembly.GetType(string) returns null for any x:Class type
+        // that has no static reference in IL. The JALXAML source generator emits a
+        // [ModuleInitializer] for every jalxaml file that calls XamlTypeRegistry.RegisterStartupType
+        // with typeof(T) — that typeof reference keeps the trimmer honest AND gives us a
+        // string-keyed lookup that survives AOT. Consult the registry before reflection.
+        //
+        // Registry hit doubles as the authoritative "this type has SG-emitted InitializeComponent"
+        // signal: the same ModuleInitializer that registers the type is generated alongside the
+        // InitializeComponent body, so registry presence ⇒ ctor already loaded the XAML. Reflection
+        // probing for InitializeComponent fails after AOT trim (private method metadata pruned),
+        // so callers must rely on this flag to avoid a double-load.
+        var registered = XamlTypeRegistry.GetStartupType(className);
+        if (registered != null)
+        {
+            fromSourceGenerator = true;
+            return registered;
+        }
+
+        fromSourceGenerator = false;
+
         var startupType = preferredAssembly.GetType(className, throwOnError: false);
         if (startupType != null)
             return startupType;
@@ -407,10 +468,9 @@ public static class ThemeLoader
         if (startupType != null)
             return startupType;
 
-        startupType = Type.GetType(className, throwOnError: false);
-        if (startupType != null)
-            return startupType;
-
+        // Type.GetType(string) is intentionally omitted: it carries IL2057 because the
+        // string is dynamic, and the loop below already covers every assembly Type.GetType
+        // would have searched. The registry path above is the AOT-safe fast path.
         foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
         {
             startupType = assembly.GetType(className, throwOnError: false);
@@ -421,12 +481,7 @@ public static class ThemeLoader
         return null;
     }
 
-    [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
-        Justification = "ResourceDictionary types are preserved by XamlTypeRegistry and ILLink descriptors")]
-    [UnconditionalSuppressMessage("Trimming", "IL2072:Target parameter argument",
-        Justification = "ResourceDictionary types are preserved by XamlTypeRegistry and ILLink descriptors")]
-    [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
-        Justification = "ResourceDictionary types are preserved by XamlTypeRegistry and ILLink descriptors")]
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to ResolveStartupType and XamlReader.Load, both RUC.")]
     private static ResourceDictionary? LoadResourceDictionaryFromPayload(
         byte[] payload,
         string resourceName,
@@ -440,7 +495,7 @@ public static class ThemeLoader
         var className = TryReadRootClassName(payload);
         if (!string.IsNullOrWhiteSpace(className))
         {
-            var dictionaryType = ResolveStartupType(className!, assembly, assembly);
+            var dictionaryType = ResolveStartupType(className!, assembly, assembly, out _);
             if (dictionaryType != null &&
                 typeof(ResourceDictionary).IsAssignableFrom(dictionaryType) &&
                 Activator.CreateInstance(dictionaryType) is ResourceDictionary typedDictionary)

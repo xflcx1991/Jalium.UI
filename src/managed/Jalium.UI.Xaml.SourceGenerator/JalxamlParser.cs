@@ -99,9 +99,14 @@ public static class JalxamlParser
         }
         catch
         {
-            // Fallback: use regex to extract x:Class and x:Name from the ORIGINAL content.
-            // Clear partial results from the failed XML parse to avoid duplicates.
+            // Fallback: use regex to extract x:Class, x:Name, AND every element name from the
+            // ORIGINAL content. Clear partial results from the failed XML parse to avoid
+            // duplicates and stale partial state — the streaming reader may have appended
+            // entries before the parser hit the malformed region (typical trigger: Razor
+            // <c>@{ ... }</c> code blocks containing XML fragments that confuse XmlReader
+            // once the literal <c>}</c> escapes from the strip pass).
             result.NamedElements.Clear();
+            result.ReferencedElements.Clear();
             result.ClassName = null;
             result.RootElementType = null;
             ParseWithRegexFallback(content, result);
@@ -117,6 +122,12 @@ public static class JalxamlParser
             content, @"x:Class\s*=\s*[""'](?<cls>[^""']+)[""']");
         if (classMatch.Success)
             result.ClassName = classMatch.Groups["cls"].Value;
+
+        // Extract the document's default xmlns from the root element so AOT pinning
+        // resolves element names against the correct XML namespace. Prefix-qualified
+        // elements like <ui:Foo> are resolved separately below using their xmlns:ui mapping.
+        var defaultXmlns = ExtractDefaultXmlns(content);
+        var prefixToXmlns = ExtractPrefixToXmlns(content);
 
         // Extract x:Name
         var nameMatches = System.Text.RegularExpressions.Regex.Matches(
@@ -141,12 +152,80 @@ public static class JalxamlParser
 
             result.NamedElements.Add(new NamedElement { Name = name, TypeName = typeName });
         }
+
+        // Collect every <Element ...> opening tag for AOT pinning. Property elements
+        // (foo.Bar) and end tags (</foo>) are filtered. Razor code blocks were stripped
+        // by the streaming pass before XmlReader ran; if the document still triggered the
+        // fallback the original markup still contains those tags, which is fine — pinning
+        // an unused type is harmless, but missing one breaks AOT at runtime.
+        var elementMatches = System.Text.RegularExpressions.Regex.Matches(
+            content, @"<(?<elem>[A-Za-z_][\w.]*?)(?<prefix>:[A-Za-z_][\w]*)?\b");
+        foreach (System.Text.RegularExpressions.Match m in elementMatches)
+        {
+            var raw = m.Value.Substring(1); // strip leading '<'
+            if (raw.Length == 0) continue;
+
+            string elementName;
+            string namespaceUri;
+
+            var colonIdx = raw.IndexOf(':');
+            if (colonIdx > 0)
+            {
+                var prefix = raw.Substring(0, colonIdx);
+                elementName = raw.Substring(colonIdx + 1);
+                if (!prefixToXmlns.TryGetValue(prefix, out namespaceUri!))
+                    namespaceUri = string.Empty;
+            }
+            else
+            {
+                elementName = raw;
+                namespaceUri = defaultXmlns;
+            }
+
+            // Skip property elements (e.g. Grid.Row="0" property element form Grid.RowDefinitions).
+            if (elementName.IndexOf('.') >= 0)
+                continue;
+
+            // Skip XAML markup-namespace tokens (x:Class etc. are attributes; x:Element types
+            // are rare and the resolver returns null for them anyway).
+            AddReferencedElement(result, elementName, namespaceUri);
+        }
+    }
+
+    private static string ExtractDefaultXmlns(string content)
+    {
+        // Match xmlns="..." that is NOT prefixed (xmlns:foo would have a colon before =).
+        var match = System.Text.RegularExpressions.Regex.Match(
+            content, @"\bxmlns\s*=\s*[""'](?<ns>[^""']*)[""']");
+        return match.Success ? match.Groups["ns"].Value : string.Empty;
+    }
+
+    private static Dictionary<string, string> ExtractPrefixToXmlns(string content)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        var matches = System.Text.RegularExpressions.Regex.Matches(
+            content, @"\bxmlns:(?<prefix>[A-Za-z_][\w]*)\s*=\s*[""'](?<ns>[^""']*)[""']");
+        foreach (System.Text.RegularExpressions.Match m in matches)
+        {
+            var prefix = m.Groups["prefix"].Value;
+            var ns = m.Groups["ns"].Value;
+            if (!string.IsNullOrEmpty(prefix) && !map.ContainsKey(prefix))
+            {
+                map[prefix] = ns;
+            }
+        }
+        return map;
     }
 
     private static void ParseElement(XmlReader reader, JalxamlParseResult result)
     {
         var elementName = reader.LocalName;
         var typeName = GetTypeName(elementName, reader.NamespaceURI);
+
+        // Track every element type for AOT pinning. The generator emits typeof()
+        // references in a ModuleInitializer so the trimmer keeps the constructors
+        // that XamlReader.ParseElement → Activator.CreateInstance needs at runtime.
+        AddReferencedElement(result, elementName, reader.NamespaceURI);
 
         // Check for x:Name attribute (legacy/new namespace + prefix fallback)
         var nameAttr = GetNameAttributeValue(reader);
@@ -185,6 +264,30 @@ public static class JalxamlParser
                 }
             }
         }
+    }
+
+    private static void AddReferencedElement(JalxamlParseResult result, string elementName, string namespaceUri)
+    {
+        if (string.IsNullOrEmpty(elementName))
+            return;
+
+        // De-dup by (elementName, namespaceUri) — same type referenced many times across
+        // the document only needs one typeof() pin.
+        for (var i = 0; i < result.ReferencedElements.Count; i++)
+        {
+            var existing = result.ReferencedElements[i];
+            if (string.Equals(existing.ElementName, elementName, StringComparison.Ordinal) &&
+                string.Equals(existing.NamespaceUri, namespaceUri, StringComparison.Ordinal))
+            {
+                return;
+            }
+        }
+
+        result.ReferencedElements.Add(new ReferencedElement
+        {
+            ElementName = elementName,
+            NamespaceUri = namespaceUri ?? string.Empty
+        });
     }
 
     private static void ParsePropertyElementContent(XmlReader reader, JalxamlParseResult result)

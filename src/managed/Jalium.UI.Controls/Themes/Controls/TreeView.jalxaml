@@ -45,6 +45,197 @@
     </Style>
 
     <!-- ============================================== -->
+    <!-- TreeSelector Style (drop-down with tree popup) -->
+    <!-- ============================================== -->
+    <Style TargetType="TreeSelector">
+        <Setter Property="Background" Value="{ThemeResource SurfaceBackground}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource ControlBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="8,4,4,4" />
+        <Setter Property="MinHeight" Value="34" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Template">
+            <ControlTemplate TargetType="TreeSelector">
+                <Grid>
+                    <!-- Trigger row -->
+                    <Border Name="PART_TriggerBorder"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Padding="{TemplateBinding Padding}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Content area (column 0): chips / display text / search box / placeholder, layered. -->
+                            <Grid Grid.Column="0" VerticalAlignment="Center">
+                                <!-- Multi-select chip list -->
+                                <WrapPanel Name="PART_TagsPanel"
+                                           Orientation="Horizontal"
+                                           VerticalAlignment="Center"
+                                           Visibility="Collapsed" />
+
+                                <!-- Single-select path display -->
+                                <TextBlock Name="PART_DisplayText"
+                                           VerticalAlignment="Center"
+                                           Visibility="Collapsed"
+                                           TextTrimming="CharacterEllipsis"
+                                           TextWrapping="NoWrap" />
+
+                                <!-- Optional search input -->
+                                <TextBox Name="PART_SearchTextBox"
+                                         BorderThickness="0"
+                                         Background="Transparent"
+                                         Padding="0"
+                                         MinHeight="0"
+                                         VerticalAlignment="Center"
+                                         Visibility="Collapsed" />
+
+                                <!-- Placeholder when nothing selected and no search text -->
+                                <TextBlock Name="PART_PlaceholderText"
+                                           Text="{TemplateBinding PlaceholderText}"
+                                           VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextSecondary}"
+                                           IsHitTestVisible="False" />
+                            </Grid>
+
+                            <!-- Clear button (column 1) -->
+                            <Button Name="PART_ClearButton"
+                                    Grid.Column="1"
+                                    Width="20"
+                                    Height="20"
+                                    Margin="4,0,0,0"
+                                    Padding="0"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    VerticalAlignment="Center"
+                                    Visibility="Collapsed">
+                                <Path Data="M 0,0 L 8,8 M 8,0 L 0,8"
+                                      Stroke="{ThemeResource TextSecondary}"
+                                      StrokeThickness="1.4"
+                                      Width="8"
+                                      Height="8"
+                                      Stretch="Uniform"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center" />
+                            </Button>
+
+                            <!-- Drop-down arrow (column 2) -->
+                            <Path Name="PART_DropDownArrow"
+                                  Grid.Column="2"
+                                  Data="M 0,0 L 8,0 L 4,5 Z"
+                                  Fill="{ThemeResource TextSecondary}"
+                                  Width="10"
+                                  Height="6"
+                                  Stretch="Uniform"
+                                  Margin="6,0,4,0"
+                                  VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+
+                    <!-- Popup containing the tree -->
+                    <Popup Name="PART_Popup"
+                           IsOpen="{TemplateBinding IsDropDownOpen}"
+                           StaysOpen="False"
+                           Placement="Bottom"
+                           PlacementTarget="{Binding RelativeSource={RelativeSource AncestorType=TreeSelector}}">
+                        <Border Background="{ThemeResource SurfaceBackground}"
+                                BorderBrush="{ThemeResource ControlBorder}"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                MinWidth="200"
+                                Padding="4">
+                            <ScrollViewer MaxHeight="{Binding MaxDropDownHeight, RelativeSource={RelativeSource AncestorType=TreeSelector}}"
+                                          HorizontalScrollBarVisibility="Auto"
+                                          VerticalScrollBarVisibility="Auto">
+                                <ItemsPresenter />
+                            </ScrollViewer>
+                        </Border>
+                    </Popup>
+                </Grid>
+            </ControlTemplate>
+        </Setter>
+
+        <Style.Triggers>
+            <PropertyTrigger Property="IsKeyboardFocused" Value="True">
+                <Setter Property="BorderBrush" Value="{ThemeResource ControlBorderFocused}" />
+            </PropertyTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ============================================== -->
+    <!-- TreeSelectorItem Style -->
+    <!-- ============================================== -->
+    <Style TargetType="TreeSelectorItem">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Padding" Value="4,2,4,2" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="Template">
+            <ControlTemplate TargetType="TreeSelectorItem">
+                <StackPanel>
+                    <!-- Header Row -->
+                    <Border Name="PART_HeaderBorder"
+                            Background="{TemplateBinding Background}"
+                            Height="24">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Indent Spacer -->
+                            <Border Name="PART_IndentSpacer"
+                                    Grid.Column="0"
+                                    Width="0" />
+
+                            <!-- Expander Arrow -->
+                            <Border Name="PART_ExpanderBorder"
+                                    Grid.Column="1"
+                                    Width="16"
+                                    Visibility="Collapsed">
+                                <Path Name="PART_ExpanderArrow"
+                                      Data="M 841.90,426.67 L 273.07,0 A 170.67,170.67,0,0,0,0,136.53 V 989.87 A 170.67,170.67,0,0,0,273.07,1126.40 L 841.90,699.73 A 170.67,170.67,0,0,0,841.90,426.67 Z"
+                                      Fill="{TemplateBinding Foreground}"
+                                      Width="8"
+                                      Height="8"
+                                      Stretch="Uniform"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center" />
+                            </Border>
+
+                            <!-- Optional Check Box (visibility driven by TreeSelector.ShowCheckBoxes) -->
+                            <CheckBox Name="PART_CheckBox"
+                                      Grid.Column="2"
+                                      Margin="0,0,4,0"
+                                      VerticalAlignment="Center"
+                                      Visibility="Collapsed" />
+
+                            <!-- Header Content -->
+                            <ContentPresenter Name="PART_Header"
+                                              Grid.Column="3"
+                                              Content="{TemplateBinding Header}"
+                                              ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                              HorizontalAlignment="Left"
+                                              VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}" />
+                        </Grid>
+                    </Border>
+
+                    <!-- Children Panel -->
+                    <ItemsPresenter Name="PART_ItemsHost"
+                                    Visibility="Collapsed" />
+                </StackPanel>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+
+    <!-- ============================================== -->
     <!-- TreeViewItem Style -->
     <!-- ============================================== -->
     <Style TargetType="TreeViewItem">

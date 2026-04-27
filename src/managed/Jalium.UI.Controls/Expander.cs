@@ -236,7 +236,7 @@ public class Expander : ContentControl
     {
         if (d is Expander expander)
         {
-            expander.OnExpandedChanged((bool)e.OldValue, (bool)e.NewValue);
+            expander.OnExpandedChanged((bool)e.OldValue!, (bool)e.NewValue!);
         }
     }
 
@@ -256,7 +256,7 @@ public class Expander : ContentControl
         }
     }
 
-    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static new void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is Expander expander)
         {

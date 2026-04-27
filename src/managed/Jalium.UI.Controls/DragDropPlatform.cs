@@ -43,15 +43,10 @@ internal static partial class DragDropPlatform
         Visual? current = sourceElement;
         while (current != null)
         {
-            if (current is IWindowHost)
+            if (current is IWindowHost windowHost)
             {
-                var type = current.GetType();
-                var handleProp = type.GetProperty("Handle");
-                var dpiProp = type.GetProperty("DpiScale");
-                if (handleProp != null)
-                    hwnd = (nint)(handleProp.GetValue(current) ?? nint.Zero);
-                if (dpiProp != null)
-                    dpiScale = (double)(dpiProp.GetValue(current) ?? 1.0);
+                hwnd = windowHost.Handle;
+                dpiScale = windowHost.DpiScale;
                 rootVisual = current as FrameworkElement;
                 break;
             }

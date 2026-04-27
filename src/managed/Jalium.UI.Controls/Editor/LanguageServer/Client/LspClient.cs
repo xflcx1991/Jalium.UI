@@ -1,6 +1,7 @@
 // High-level LSP client wrapping JsonRpcConnection with typed methods for all LSP features.
 
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using Jalium.UI.Controls.Editor.LanguageServer.Protocol;
 
@@ -10,6 +11,13 @@ namespace Jalium.UI.Controls.Editor.LanguageServer.Client;
 /// A full-featured LSP client that manages the server lifecycle, initialization handshake,
 /// and provides typed async methods for every LSP request/notification.
 /// </summary>
+/// <remarks>
+/// LSP request/response payloads are serialized through reflection-based <see cref="System.Text.Json.JsonSerializer"/>
+/// overloads. Trim/AOT-safe usage requires consumers to register a generated
+/// <see cref="System.Text.Json.Serialization.JsonSerializerContext"/> that covers every LSP type they exchange.
+/// </remarks>
+[RequiresUnreferencedCode("LSP request/response (de)serialization uses reflection-based System.Text.Json overloads.")]
+[RequiresDynamicCode("LSP request/response (de)serialization may use runtime code generation in System.Text.Json.")]
 internal sealed class LspClient : IAsyncDisposable
 {
     private readonly LanguageServerConfig _config;

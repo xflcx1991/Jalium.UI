@@ -147,7 +147,7 @@ public static class ContextMenuService
     public static bool GetIsEnabled(DependencyObject element)
     {
         ArgumentNullException.ThrowIfNull(element);
-        return (bool)element.GetValue(IsEnabledProperty);
+        return (bool)element.GetValue(IsEnabledProperty)!;
     }
 
     /// <summary>
@@ -167,7 +167,7 @@ public static class ContextMenuService
     public static PlacementMode GetPlacement(DependencyObject element)
     {
         ArgumentNullException.ThrowIfNull(element);
-        return (PlacementMode)element.GetValue(PlacementProperty);
+        return (PlacementMode)element.GetValue(PlacementProperty)!;
     }
 
     /// <summary>
@@ -207,7 +207,7 @@ public static class ContextMenuService
     public static double GetHorizontalOffset(DependencyObject element)
     {
         ArgumentNullException.ThrowIfNull(element);
-        return (double)element.GetValue(HorizontalOffsetProperty);
+        return (double)element.GetValue(HorizontalOffsetProperty)!;
     }
 
     /// <summary>
@@ -227,7 +227,7 @@ public static class ContextMenuService
     public static double GetVerticalOffset(DependencyObject element)
     {
         ArgumentNullException.ThrowIfNull(element);
-        return (double)element.GetValue(VerticalOffsetProperty);
+        return (double)element.GetValue(VerticalOffsetProperty)!;
     }
 
     /// <summary>
@@ -247,7 +247,7 @@ public static class ContextMenuService
     public static bool GetHasDropShadow(DependencyObject element)
     {
         ArgumentNullException.ThrowIfNull(element);
-        return (bool)element.GetValue(HasDropShadowProperty);
+        return (bool)element.GetValue(HasDropShadowProperty)!;
     }
 
     /// <summary>
@@ -267,7 +267,7 @@ public static class ContextMenuService
     public static bool GetShowOnDisabled(DependencyObject element)
     {
         ArgumentNullException.ThrowIfNull(element);
-        return (bool)element.GetValue(ShowOnDisabledProperty);
+        return (bool)element.GetValue(ShowOnDisabledProperty)!;
     }
 
     /// <summary>

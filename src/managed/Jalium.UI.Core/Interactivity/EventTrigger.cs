@@ -106,11 +106,13 @@ public sealed class EventTrigger : TriggerBase<FrameworkElement>
     /// Called when the event occurs.
     /// </summary>
     /// <param name="eventArgs">The event arguments.</param>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Forwards to InvokeActions which may invoke reflection-based actions.")]
     private void OnEvent(object? eventArgs)
     {
         InvokeActions(eventArgs);
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Reflectively binds an event handler to a runtime-resolved event on the source object.")]
     private void RegisterEvent()
     {
         UnregisterEvent();
@@ -152,7 +154,9 @@ public sealed class EventTrigger : TriggerBase<FrameworkElement>
         }
     }
 
-    private Delegate CreateEventHandler(Type eventHandlerType)
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Constructs a delegate that ultimately calls reflection-based action invocations.")]
+    private Delegate CreateEventHandler(
+        [System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] Type eventHandlerType)
     {
         // For standard event handlers like RoutedEventHandler, EventHandler, etc.
         Action<object?, object?> handler = (sender, args) => OnEvent(args);
@@ -165,12 +169,14 @@ public sealed class EventTrigger : TriggerBase<FrameworkElement>
         return Delegate.CreateDelegate(eventHandlerType, this, GetType().GetMethod(nameof(HandleEvent), BindingFlags.NonPublic | BindingFlags.Instance)!);
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Constructs a delegate that ultimately calls reflection-based action invocations.")]
     private Delegate CreateParameterlessEventHandler(Type eventHandlerType)
     {
         Action handler = () => OnEvent(null);
         return Delegate.CreateDelegate(eventHandlerType, handler.Target!, handler.Method);
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Forwards to OnEvent which dispatches reflection-based actions.")]
     private void HandleEvent(object? sender, object? args)
     {
         OnEvent(args);

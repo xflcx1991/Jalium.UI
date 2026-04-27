@@ -585,6 +585,8 @@ public sealed class CoreWebView2CompositionController : CoreWebView2Controller
                     }
                     else
                     {
+                        if (!OperatingSystem.IsWindows())
+                            throw new PlatformNotSupportedException("CoreWebView2 requires Windows.");
                         target = Marshal.GetIUnknownForObject(value);
                         releaseTarget = true;
                     }

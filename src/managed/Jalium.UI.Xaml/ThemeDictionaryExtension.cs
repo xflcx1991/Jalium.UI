@@ -31,6 +31,8 @@ public sealed class ThemeDictionaryExtension : MarkupExtension
     /// <summary>
     /// Returns the URI of the theme dictionary based on the current system theme.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Override of a base member that is annotated with RequiresUnreferencedCode.")]
+    [System.Diagnostics.CodeAnalysis.RequiresDynamicCode("Override of a base member that is annotated with RequiresDynamicCode.")]
     public override object? ProvideValue(IServiceProvider serviceProvider)
     {
         if (string.IsNullOrEmpty(AssemblyName))
@@ -81,6 +83,8 @@ public sealed class ColorConvertedBitmapExtension : MarkupExtension
     /// <summary>
     /// Returns the color-converted bitmap.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Override of a base member that is annotated with RequiresUnreferencedCode.")]
+    [System.Diagnostics.CodeAnalysis.RequiresDynamicCode("Override of a base member that is annotated with RequiresDynamicCode.")]
     public override object? ProvideValue(IServiceProvider serviceProvider)
     {
         // Simplified: return the source as-is (full implementation would do ICC profile conversion)

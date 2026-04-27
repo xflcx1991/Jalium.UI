@@ -281,8 +281,8 @@ internal sealed unsafe class WindowsNotificationBackend : INotificationBackend
             sb.Append("<actions>");
             foreach (var action in content.Actions)
             {
-                sb.Append("<action content=\"").Append(Escape(action.Label)).Append('"');
-                sb.Append(" arguments=\"actionId=").Append(Escape(action.Id));
+                sb.Append("<action content=\"").Append(Escape(action.Label ?? string.Empty)).Append('"');
+                sb.Append(" arguments=\"actionId=").Append(Escape(action.Id ?? string.Empty));
                 if (action.Arguments != null)
                 {
                     foreach (var kv in action.Arguments)
@@ -329,7 +329,7 @@ internal sealed unsafe class WindowsNotificationBackend : INotificationBackend
 
         // QI for IXmlDocumentIO to call LoadXml
         var xmlDocIoIid = WinRT.IID_IXmlDocumentIO;
-        hr = Marshal.QueryInterface(xmlDocInspectable, ref xmlDocIoIid, out nint xmlDocIoPtr);
+        hr = Marshal.QueryInterface(xmlDocInspectable, in xmlDocIoIid, out nint xmlDocIoPtr);
         Marshal.ThrowExceptionForHR(hr);
 
         try
@@ -387,7 +387,7 @@ internal sealed unsafe class WindowsNotificationBackend : INotificationBackend
     {
         // QI for IToastNotification2 to set Tag
         var iid = WinRT.IID_IToastNotification2;
-        int hr = Marshal.QueryInterface(toastPtr, ref iid, out nint toast2Ptr);
+        int hr = Marshal.QueryInterface(toastPtr, in iid, out nint toast2Ptr);
         if (hr < 0) return;
 
         try
@@ -411,7 +411,7 @@ internal sealed unsafe class WindowsNotificationBackend : INotificationBackend
     private static void SetToastGroup(nint toastPtr, string group)
     {
         var iid = WinRT.IID_IToastNotification2;
-        int hr = Marshal.QueryInterface(toastPtr, ref iid, out nint toast2Ptr);
+        int hr = Marshal.QueryInterface(toastPtr, in iid, out nint toast2Ptr);
         if (hr < 0) return;
 
         try
@@ -477,7 +477,7 @@ internal sealed unsafe class WindowsNotificationBackend : INotificationBackend
 
                 // QI for IPropertyStore to set AppUserModelID
                 var propStoreIid = new Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99");
-                hr = Marshal.QueryInterface(shellLinkPtr, ref propStoreIid, out nint propStorePtr);
+                hr = Marshal.QueryInterface(shellLinkPtr, in propStoreIid, out nint propStorePtr);
                 if (hr >= 0)
                 {
                     try
@@ -492,7 +492,7 @@ internal sealed unsafe class WindowsNotificationBackend : INotificationBackend
 
                 // QI for IPersistFile and save
                 var persistFileIid = new Guid("0000010b-0000-0000-C000-000000000046");
-                hr = Marshal.QueryInterface(shellLinkPtr, ref persistFileIid, out nint persistFilePtr);
+                hr = Marshal.QueryInterface(shellLinkPtr, in persistFileIid, out nint persistFilePtr);
                 if (hr >= 0)
                 {
                     try

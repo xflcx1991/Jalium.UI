@@ -140,12 +140,13 @@ public class ButtonTests
         // Arrange
         var button = new Button();
         button.IsEnabled = false;
-        var clicked = false;
-        button.Click += (s, e) => clicked = true;
+        var clickFlag = new[] { false };
+        button.Click += (s, e) => clickFlag[0] = true;
 
         // Act - We cannot easily simulate disabled behavior without mouse events
         // But we can verify the IsEnabled property
         Assert.False(button.IsEnabled);
+        Assert.False(clickFlag[0]);
 
         // Note: In a real scenario, the input handler checks IsEnabled before raising click
     }

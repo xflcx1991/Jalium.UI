@@ -155,7 +155,7 @@ public class Thumb : Control
         AddHandler(MouseMoveEvent, new MouseEventHandler(OnMouseMoveHandler));
     }
 
-    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static new void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is Thumb thumb)
         {

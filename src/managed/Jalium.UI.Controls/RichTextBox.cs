@@ -1802,7 +1802,7 @@ public class RichTextBox : Control, IImeSupport
     /// <summary>
     /// Handles key down events.
     /// </summary>
-    protected void OnKeyDown(KeyEventArgs e)
+    protected override void OnKeyDown(KeyEventArgs e)
     {
         var shift = e.IsShiftDown;
         var ctrl = e.IsControlDown;
@@ -2983,7 +2983,7 @@ public class RichTextBox : Control, IImeSupport
 
     #region Property Changed
 
-    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static new void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is RichTextBox richTextBox)
         {

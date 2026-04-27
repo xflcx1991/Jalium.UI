@@ -1029,19 +1029,22 @@ public sealed class CompileHlslShadersTask : Microsoft.Build.Utilities.Task
         var sdkPaths = new List<string>();
 
         // Try registry first for custom SDK install paths
-        try
+        if (OperatingSystem.IsWindows())
         {
-            using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows Kits\Installed Roots");
-            if (key?.GetValue("KitsRoot10") is string kitsRoot)
+            try
             {
-                var binPath = Path.Combine(kitsRoot, "bin");
-                if (Directory.Exists(binPath))
-                    sdkPaths.Add(binPath);
+                using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows Kits\Installed Roots");
+                if (key?.GetValue("KitsRoot10") is string kitsRoot)
+                {
+                    var binPath = Path.Combine(kitsRoot, "bin");
+                    if (Directory.Exists(binPath))
+                        sdkPaths.Add(binPath);
+                }
             }
-        }
-        catch
-        {
-            // Registry access may fail on non-Windows or restricted environments
+            catch
+            {
+                // Registry access may fail in restricted environments
+            }
         }
 
         // Fallback to well-known installation paths

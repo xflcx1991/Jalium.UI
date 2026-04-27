@@ -26,6 +26,7 @@ public static class JalxamlLoader
     /// </summary>
     /// <param name="component">The component instance to load into.</param>
     /// <param name="resourceName">The name of the embedded .uic resource (e.g., "AssemblyName.ClassName.uic").</param>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("May fall back to XamlReader runtime parsing for Razor-directive jalxaml; see overload remarks.")]
     public static void LoadFromCompiledResource(object component, string resourceName)
     {
         LoadFromCompiledResource(component, resourceName, null);
@@ -35,6 +36,7 @@ public static class JalxamlLoader
     /// Loads compiled JALXAML from an embedded .uic resource with AOT-safe named element output.
     /// Named elements are collected into the provided dictionary instead of being wired via reflection.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Falls back to XamlReader.LoadComponent for jalxaml that contains Razor directives, which carries the RUC contract.")]
     public static void LoadFromCompiledResource(object component, string resourceName, Dictionary<string, object>? namedElements)
     {
         var assembly = component.GetType().Assembly;
@@ -46,6 +48,7 @@ public static class JalxamlLoader
         if (TryFindJalxamlSourceResource(assembly, jalxamlResourceName) is { } sourceResourceName
             && HasRazorDirectives(assembly, sourceResourceName))
         {
+
             if (namedElements != null)
                 XamlReader.LoadComponent(component, sourceResourceName, namedElements, assembly);
             else
@@ -75,6 +78,7 @@ public static class JalxamlLoader
         {
             var buffer = new byte[stream.Length];
             stream.ReadExactly(buffer, 0, buffer.Length);
+
 
             var bundle = BundleSerializer.Load(buffer);
             XamlTypeRegistry.ApplyBundle(component, bundle, namedElements);
@@ -143,6 +147,7 @@ public static class JalxamlLoader
     /// <param name="resourceName">The name of the embedded resource (e.g., "Pages/HomePage.jalxaml").</param>
     /// <param name="assembly">The assembly containing the resource. If null, uses the calling assembly.</param>
     /// <returns>The root object created from the JALXAML.</returns>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to XamlReader.Load which carries the RUC contract.")]
     public static object LoadFromResource(string resourceName, Assembly? assembly = null)
     {
         assembly ??= Assembly.GetCallingAssembly();
@@ -240,6 +245,7 @@ public static class JalxamlLoader
     /// </summary>
     /// <param name="filePath">The path to the JALXAML file.</param>
     /// <returns>The root object created from the JALXAML.</returns>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to XamlReader.Parse which carries the RUC contract.")]
     public static object LoadFromFile(string filePath)
     {
         if (!File.Exists(filePath))
@@ -256,6 +262,7 @@ public static class JalxamlLoader
     /// </summary>
     /// <param name="jalxaml">The JALXAML content string.</param>
     /// <returns>The root object created from the JALXAML.</returns>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to XamlReader.Parse which carries the RUC contract.")]
     public static object Parse(string jalxaml)
     {
         return XamlReader.Parse(jalxaml);
@@ -268,6 +275,7 @@ public static class JalxamlLoader
     /// <param name="resourceName">The name of the embedded resource.</param>
     /// <param name="assembly">The assembly containing the resource. If null, uses the calling assembly.</param>
     /// <returns>The root object cast to type T.</returns>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to XamlReader.Load which carries the RUC contract.")]
     public static T LoadFromResource<T>(string resourceName, Assembly? assembly = null) where T : class
     {
         assembly ??= Assembly.GetCallingAssembly();
@@ -288,6 +296,7 @@ public static class JalxamlLoader
     /// <typeparam name="T">The expected type of the root element.</typeparam>
     /// <param name="filePath">The path to the JALXAML file.</param>
     /// <returns>The root object cast to type T.</returns>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to XamlReader.Parse which carries the RUC contract.")]
     public static T LoadFromFile<T>(string filePath) where T : class
     {
         var result = LoadFromFile(filePath);
@@ -308,6 +317,7 @@ public static class JalxamlLoader
     /// <param name="component">The component instance to load into.</param>
     /// <param name="resourceName">The embedded resource name of the JALXAML file.</param>
     /// <param name="assembly">The assembly containing the resource. If null, uses the assembly of the component type.</param>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to XamlReader.LoadComponent which carries the RUC contract.")]
     public static void LoadComponent(object component, string resourceName, Assembly? assembly = null)
     {
         XamlReader.LoadComponent(component, resourceName, assembly);
@@ -321,6 +331,7 @@ public static class JalxamlLoader
     /// <param name="resourceName">The embedded resource name of the JALXAML file.</param>
     /// <param name="namedElements">Dictionary to populate with named elements.</param>
     /// <param name="assembly">The assembly containing the resource. If null, uses the assembly of the component type.</param>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to XamlReader.LoadComponent which carries the RUC contract.")]
     public static void LoadComponent(object component, string resourceName, Dictionary<string, object> namedElements, Assembly? assembly = null)
     {
         XamlReader.LoadComponent(component, resourceName, namedElements, assembly);
@@ -336,8 +347,10 @@ public static class JalxamlLoader
     /// Pack URI format: /AssemblyName;component/relative/path/file.jalxaml
     /// Example: /Jalium.UI.Gallery;component/Views/ButtonPage.jalxaml
     /// </remarks>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to XamlReader.LoadComponent which carries the RUC contract.")]
     public static void LoadComponent(object component, Uri resourceUri)
     {
+
         var (assemblyName, componentPath) = ParsePackUri(resourceUri);
 
         // Find the assembly by name (AOT-safe: prefer component's own assembly)
@@ -357,7 +370,7 @@ public static class JalxamlLoader
                 {
                     assembly = Assembly.Load(new AssemblyName(assemblyName));
                 }
-                catch
+                catch (Exception ex)
                 {
                     assembly = componentAssembly;
                 }
@@ -372,6 +385,7 @@ public static class JalxamlLoader
         // Views/ButtonPage.jalxaml -> AssemblyName.Views.ButtonPage.jalxaml
         var resourceName = componentPath.Replace('/', '.');
         var fullResourceName = $"{assembly.GetName().Name}.{resourceName}";
+
 
         XamlReader.LoadComponent(component, fullResourceName, assembly);
     }

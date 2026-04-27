@@ -64,6 +64,7 @@ public abstract class TriggerAction : DependencyObject, IAttachedObject
     /// Invokes the action.
     /// </summary>
     /// <param name="parameter">The parameter to the action.</param>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Forwards to abstract Invoke whose overrides may use reflection on user-supplied targets.")]
     internal void CallInvoke(object? parameter)
     {
         if (IsEnabled)
@@ -73,9 +74,12 @@ public abstract class TriggerAction : DependencyObject, IAttachedObject
     }
 
     /// <summary>
-    /// Invokes the action.
+    /// Invokes the action. Implementations may use reflection on user-supplied targets
+    /// (see <see cref="CallMethodAction"/> / <see cref="InvokeCommandAction"/>); marked
+    /// accordingly so callers / overrides can declare AOT contracts.
     /// </summary>
     /// <param name="parameter">The parameter to the action. If the Action does not require a parameter, the parameter may be set to a null reference.</param>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Some actions (e.g. CallMethodAction, InvokeCommandAction with a property path) reflectively invoke members on user-supplied targets.")]
     protected abstract void Invoke(object? parameter);
 
     /// <summary>

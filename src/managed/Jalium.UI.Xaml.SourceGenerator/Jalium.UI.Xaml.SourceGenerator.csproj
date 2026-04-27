@@ -8,6 +8,25 @@
     <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
     <IsRoslynComponent>true</IsRoslynComponent>
     <IncludeBuildOutput>false</IncludeBuildOutput>
+    <!-- Roslyn analyzers/source-generators run in the compiler host (.NET Standard 2.0) and
+         can never be AOT-compiled. When a consuming project publishes with PublishAot=true,
+         the SDK still walks ProjectReferences and tries to apply the same publish settings
+         here, which fails with NETSDK1207 ("framework doesn't support AOT"). We override
+         every publish/trim global property to false so the SDK skips those checks. The
+         consuming projects MUST also use UndefineProperties on their ProjectReference to
+         this csproj (e.g. UndefineProperties="PublishAot;PublishTrimmed;PublishSingleFile")
+         so global properties do not propagate into the inner build at all. -->
+    <PublishAot>false</PublishAot>
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <SelfContained>false</SelfContained>
+    <IsTrimmable>false</IsTrimmable>
+    <IsAotCompatible>false</IsAotCompatible>
+  </PropertyGroup>
+
+
+  <PropertyGroup>
 
     <!-- NuGet Package Configuration -->
     <IsPackable>true</IsPackable>

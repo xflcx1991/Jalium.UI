@@ -96,7 +96,7 @@ public class TabControl : Selector
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Input)]
     public Dock TabStripPlacement
     {
-        get => (Dock)GetValue(TabStripPlacementProperty);
+        get => (Dock)GetValue(TabStripPlacementProperty)!;
         set => SetValue(TabStripPlacementProperty, value);
     }
 
@@ -126,7 +126,7 @@ public class TabControl : Selector
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Input)]
     public double TabStripHeight
     {
-        get => (double)GetValue(TabStripHeightProperty);
+        get => (double)GetValue(TabStripHeightProperty)!;
         set => SetValue(TabStripHeightProperty, value);
     }
 
@@ -278,7 +278,7 @@ public class TabControl : Selector
         }
     }
 
-    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static new void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is TabControl tabControl)
         {
@@ -650,7 +650,7 @@ public class TabItem : HeaderedContentControl
     [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public bool IsSelected
     {
-        get => (bool)GetValue(IsSelectedProperty);
+        get => (bool)GetValue(IsSelectedProperty)!;
         set => SetValue(IsSelectedProperty, value);
     }
 
@@ -670,7 +670,7 @@ public class TabItem : HeaderedContentControl
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Other)]
     public double IndicatorHeight
     {
-        get => (double)GetValue(IndicatorHeightProperty);
+        get => (double)GetValue(IndicatorHeightProperty)!;
         set => SetValue(IndicatorHeightProperty, value);
     }
 
@@ -725,7 +725,7 @@ public class TabItem : HeaderedContentControl
         throw new ArgumentOutOfRangeException(nameof(index));
     }
 
-    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static new void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is TabItem tabItem)
         {

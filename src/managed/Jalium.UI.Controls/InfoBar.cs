@@ -532,7 +532,7 @@ public class InfoBar : ContentControl
             infoBar.InvalidateMeasure();
             infoBar.InvalidateVisual();
 
-            if ((bool)e.NewValue == false)
+            if ((bool)e.NewValue! == false)
             {
                 infoBar.RaiseEvent(new RoutedEventArgs(ClosedEvent, infoBar));
             }
@@ -547,7 +547,7 @@ public class InfoBar : ContentControl
         }
     }
 
-    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static new void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is InfoBar infoBar)
         {

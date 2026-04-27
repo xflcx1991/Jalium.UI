@@ -349,8 +349,6 @@ public sealed class Setter
     /// This handles the case where the property was resolved against the Style's TargetType
     /// but the setter targets a different element type via TargetName.
     /// </summary>
-    [UnconditionalSuppressMessage("AOT", "IL2070:Target method argument",
-        Justification = "DependencyProperty static fields are public static readonly and preserved by static initialization")]
     private static DependencyProperty? ResolvePropertyForTarget(DependencyProperty originalProperty, FrameworkElement target)
     {
         var targetType = target.GetType();
@@ -361,47 +359,18 @@ public sealed class Setter
             return originalProperty;
         }
 
-        // Try to find the property by name on the target type
-        var propertyName = originalProperty.Name;
-        var fieldName = $"{propertyName}Property";
-
-        var currentType = targetType;
-        while (currentType != null && currentType != typeof(object))
-        {
-            var dpField = currentType.GetField(fieldName,
-                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.DeclaredOnly);
-            if (dpField != null && dpField.FieldType == typeof(DependencyProperty))
-            {
-                return dpField.GetValue(null) as DependencyProperty;
-            }
-            currentType = currentType.BaseType;
-        }
-
-        // Fallback to the original property
-        return originalProperty;
+        // Resolve via the AOT-safe DependencyProperty registry (no reflection).
+        return DependencyProperty.FromName(targetType, originalProperty.Name) ?? originalProperty;
     }
 
     /// <summary>
     /// Resolves a DependencyProperty by name on the target type.
     /// Used for deferred resolution when the property couldn't be resolved at parse time.
     /// </summary>
-    [UnconditionalSuppressMessage("AOT", "IL2070:Target method argument",
-        Justification = "DependencyProperty static fields are public static readonly and preserved by static initialization")]
     internal static DependencyProperty? ResolveDependencyPropertyByName(string propertyName, Type targetType)
     {
-        var fieldName = $"{propertyName}Property";
-        var currentType = targetType;
-        while (currentType != null && currentType != typeof(object))
-        {
-            var dpField = currentType.GetField(fieldName,
-                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.DeclaredOnly);
-            if (dpField != null && dpField.FieldType == typeof(DependencyProperty))
-            {
-                return dpField.GetValue(null) as DependencyProperty;
-            }
-            currentType = currentType.BaseType;
-        }
-        return null;
+        // AOT-safe lookup via the DependencyProperty registry.
+        return DependencyProperty.FromName(targetType, propertyName);
     }
 
     private FrameworkElement? GetTarget(FrameworkElement element)
@@ -553,8 +522,6 @@ public abstract class Trigger
     /// This handles the case where the property was resolved against the Style's TargetType
     /// but the setter targets a different element type via TargetName.
     /// </summary>
-    [UnconditionalSuppressMessage("AOT", "IL2070:Target method argument",
-        Justification = "DependencyProperty static fields are public static readonly and preserved by static initialization")]
     private static DependencyProperty? ResolvePropertyForTarget(DependencyProperty originalProperty, FrameworkElement target)
     {
         var targetType = target.GetType();
@@ -565,24 +532,8 @@ public abstract class Trigger
             return originalProperty;
         }
 
-        // Try to find the property by name on the target type
-        var propertyName = originalProperty.Name;
-        var fieldName = $"{propertyName}Property";
-
-        var currentType = targetType;
-        while (currentType != null && currentType != typeof(object))
-        {
-            var dpField = currentType.GetField(fieldName,
-                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.DeclaredOnly);
-            if (dpField != null && dpField.FieldType == typeof(DependencyProperty))
-            {
-                return dpField.GetValue(null) as DependencyProperty;
-            }
-            currentType = currentType.BaseType;
-        }
-
-        // Fallback to the original property
-        return originalProperty;
+        // Resolve via the AOT-safe DependencyProperty registry (no reflection).
+        return DependencyProperty.FromName(targetType, originalProperty.Name) ?? originalProperty;
     }
 
     /// <summary>

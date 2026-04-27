@@ -68,7 +68,7 @@ public partial class DockItem : HeaderedContentControl
     [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public bool IsSelected
     {
-        get => (bool)GetValue(IsSelectedProperty);
+        get => (bool)GetValue(IsSelectedProperty)!;
         set => SetValue(IsSelectedProperty, value);
     }
 
@@ -181,7 +181,7 @@ public partial class DockItem : HeaderedContentControl
         throw new ArgumentOutOfRangeException(nameof(index));
     }
 
-    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static new void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is DockItem item)
             item.InvalidateVisual();
@@ -394,6 +394,9 @@ public partial class DockItem : HeaderedContentControl
             if (Math.Abs(dx) > DragThreshold || Math.Abs(dy) > DragThreshold)
             {
                 _isMouseDown = false;
+
+                if (OwnerPanel is null)
+                    return;
 
                 // Primary-axis drag (X for horizontal strip, Y for vertical strip) enters reorder mode.
                 var isPrimaryDrag = OwnerPanel.IsVerticalTabStrip

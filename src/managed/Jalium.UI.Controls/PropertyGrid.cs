@@ -509,7 +509,7 @@ public class PropertyGrid : Control
         grid.RebuildView();
     }
 
-    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static new void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var grid = (PropertyGrid)d;
         grid.UpdateVisibility();
@@ -545,6 +545,7 @@ public class PropertyGrid : Control
     /// <summary>
     /// Rebuilds the property view from the current selected object.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Discovers properties on SelectedObject via reflection.")]
     public void RefreshProperties()
     {
         OnSelectedObjectChanged();
@@ -572,6 +573,7 @@ public class PropertyGrid : Control
     /// Creates a property row (Grid with name label and editor) for the given property item.
     /// This is also used by <see cref="PropertyEditorSelector"/> for expandable sub-properties.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to CreatePropertyRowInternal which uses TypeDescriptor.GetConverter for the property's runtime type.")]
     internal FrameworkElement CreatePropertyRow(PropertyItem item)
     {
         return CreatePropertyRowInternal(item);
@@ -581,6 +583,7 @@ public class PropertyGrid : Control
 
     #region Private Methods
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Discovers properties on SelectedObject via reflection and builds editor rows that use TypeDescriptor.GetConverter.")]
     private void OnSelectedObjectChanged()
     {
         _allPropertyItems.Clear();
@@ -697,6 +700,7 @@ public class PropertyGrid : Control
         return base.ArrangeOverride(finalSize);
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Builds rows that use TypeDescriptor.GetConverter for the property's runtime type.")]
     private void RebuildView()
     {
         EnsurePropertiesPanel();
@@ -726,6 +730,7 @@ public class PropertyGrid : Control
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Builds rows that use TypeDescriptor.GetConverter for the property's runtime type.")]
     private void BuildCategorizedView()
     {
         if (_propertiesPanel == null)
@@ -805,6 +810,7 @@ public class PropertyGrid : Control
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Builds rows that use TypeDescriptor.GetConverter for the property's runtime type.")]
     private void BuildAlphabeticalView()
     {
         if (_propertiesPanel == null)
@@ -822,6 +828,7 @@ public class PropertyGrid : Control
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("CreateEditor uses TypeDescriptor.GetConverter for the property's runtime type — generic TypeConverters require their generic types to be DAM-preserved.")]
     private FrameworkElement CreatePropertyRowInternal(PropertyItem item)
     {
         // Row container: Border supports IsMouseOver-style background; we use

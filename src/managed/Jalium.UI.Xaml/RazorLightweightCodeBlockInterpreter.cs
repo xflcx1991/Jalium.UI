@@ -7,11 +7,18 @@ using System.Threading.Tasks;
 namespace Jalium.UI.Markup;
 
 /// <summary>
-/// AOT-safe code block interpreter that replaces Roslyn-based <c>CSharpScript.EvaluateAsync</c>
-/// for expanding <c>@{ }</c> code blocks mixed with XML markup.
-/// Interprets C# statements (for, foreach, while, do-while, if/else, switch, try/catch,
-/// variable declarations, assignments) and emits XML markup to a StringBuilder.
+/// Code block interpreter that replaces Roslyn-based <c>CSharpScript.EvaluateAsync</c>
+/// for expanding <c>@{ }</c> code blocks mixed with XML markup. Interprets C# statements
+/// (for, foreach, while, do-while, if/else, switch, try/catch, variable declarations,
+/// assignments) and emits XML markup to a StringBuilder.
 /// </summary>
+/// <remarks>
+/// Dispatches expressions to <see cref="RazorLightweightExpressionEvaluator"/>, which uses
+/// reflection on user-supplied types when no <see cref="RazorExpressionRegistry"/> entry is
+/// registered. Trim/AOT-safe usage requires applications to register typed accessors.
+/// </remarks>
+[System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Razor code-block interpreter dispatches to the lightweight expression evaluator, which reflects on user types.")]
+[System.Diagnostics.CodeAnalysis.RequiresDynamicCode("Razor code-block interpreter may construct generic types/methods at runtime via the expression evaluator.")]
 internal static class RazorLightweightCodeBlockInterpreter
 {
     /// <summary>

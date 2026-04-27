@@ -23,7 +23,6 @@ internal sealed class WindowInputDispatcher
 
     // ── Keyboard state ──
     private readonly List<UIElement> _keyboardPressedChain = [];
-    private bool _keyboardPressActive;
     private long _suppressEscapeUntilTick;
     private const int EscapeReactivateSuppressionMs = 250;
 
@@ -806,7 +805,6 @@ internal sealed class WindowInputDispatcher
         ClearKeyboardPressedChain();
         BuildAncestorChain(target, _keyboardPressedChain);
         ApplyPressedState(_keyboardPressedChain, true);
-        _keyboardPressActive = true;
     }
 
     internal void ClearKeyboardPressedChain()
@@ -816,7 +814,6 @@ internal sealed class WindowInputDispatcher
             ApplyPressedState(_keyboardPressedChain, false);
             _keyboardPressedChain.Clear();
         }
-        _keyboardPressActive = false;
     }
 
     internal void ClearPressedChains()

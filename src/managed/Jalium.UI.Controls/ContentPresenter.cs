@@ -334,8 +334,6 @@ public class ContentPresenter : FrameworkElement
         }
     }
 
-    [UnconditionalSuppressMessage("AOT", "IL2070:Target method argument",
-        Justification = "TemplatedParent types are UI controls registered in XamlTypeRegistry with preserved members")]
     private void ApplyTemplateBindings()
     {
         if (TemplatedParent == null)
@@ -351,76 +349,44 @@ public class ContentPresenter : FrameworkElement
         // Find the property on the templated parent
         var parentType = TemplatedParent.GetType();
 
-        // Try to find Content property and bind it
-        // Only apply if no explicit binding or local value is set
+        // Use the AOT-safe DependencyProperty registry instead of GetField reflection.
         if (!HasLocalValue(ContentProperty) && GetBindingExpression(ContentProperty) == null)
         {
-            var contentPropInfo = parentType.GetProperty(contentSource);
-            if (contentPropInfo != null)
+            var contentDp = DependencyProperty.FromName(parentType, contentSource);
+            if (contentDp != null)
             {
-                // Get the DependencyProperty
-                var dpField = parentType.GetField($"{contentSource}Property",
-                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.FlattenHierarchy);
-                if (dpField?.GetValue(null) is DependencyProperty contentDp)
-                {
-                    this.SetTemplateBinding(ContentProperty, contentDp);
-                }
+                this.SetTemplateBinding(ContentProperty, contentDp);
             }
         }
 
-        // Try to find ContentTemplate property
-        // Only apply if no explicit binding or local value is set
         if (!HasLocalValue(ContentTemplateProperty) && GetBindingExpression(ContentTemplateProperty) == null)
         {
-            var templatePropInfo = parentType.GetProperty($"{contentSource}Template");
-            if (templatePropInfo != null)
-            {
-                var dpField = parentType.GetField($"{contentSource}TemplateProperty",
-                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.FlattenHierarchy);
-                if (dpField?.GetValue(null) is DependencyProperty templateDp)
-                {
-                    this.SetTemplateBinding(ContentTemplateProperty, templateDp);
-                }
-            }
+            var templateDp = DependencyProperty.FromName(parentType, $"{contentSource}Template");
+            if (templateDp != null)
+                this.SetTemplateBinding(ContentTemplateProperty, templateDp);
         }
 
-        // Try to find ContentTemplateSelector property
         if (!HasLocalValue(ContentTemplateSelectorProperty) && GetBindingExpression(ContentTemplateSelectorProperty) == null)
         {
-            var selectorPropInfo = parentType.GetProperty($"{contentSource}TemplateSelector");
-            if (selectorPropInfo != null)
-            {
-                var dpField = parentType.GetField($"{contentSource}TemplateSelectorProperty",
-                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.FlattenHierarchy);
-                if (dpField?.GetValue(null) is DependencyProperty selectorDp)
-                {
-                    this.SetTemplateBinding(ContentTemplateSelectorProperty, selectorDp);
-                }
-            }
+            var selectorDp = DependencyProperty.FromName(parentType, $"{contentSource}TemplateSelector");
+            if (selectorDp != null)
+                this.SetTemplateBinding(ContentTemplateSelectorProperty, selectorDp);
         }
 
         // Bind HorizontalContentAlignment -> HorizontalAlignment
-        // Only apply if no explicit binding or local value is set
         if (!HasLocalValue(HorizontalAlignmentProperty) && GetBindingExpression(HorizontalAlignmentProperty) == null)
         {
-            var hcaDpField = parentType.GetField("HorizontalContentAlignmentProperty",
-                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.FlattenHierarchy);
-            if (hcaDpField?.GetValue(null) is DependencyProperty hcaDp)
-            {
+            var hcaDp = DependencyProperty.FromName(parentType, "HorizontalContentAlignment");
+            if (hcaDp != null)
                 this.SetTemplateBinding(HorizontalAlignmentProperty, hcaDp);
-            }
         }
 
         // Bind VerticalContentAlignment -> VerticalAlignment
-        // Only apply if no explicit binding or local value is set
         if (!HasLocalValue(VerticalAlignmentProperty) && GetBindingExpression(VerticalAlignmentProperty) == null)
         {
-            var vcaDpField = parentType.GetField("VerticalContentAlignmentProperty",
-                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.FlattenHierarchy);
-            if (vcaDpField?.GetValue(null) is DependencyProperty vcaDp)
-            {
+            var vcaDp = DependencyProperty.FromName(parentType, "VerticalContentAlignment");
+            if (vcaDp != null)
                 this.SetTemplateBinding(VerticalAlignmentProperty, vcaDp);
-            }
         }
     }
 

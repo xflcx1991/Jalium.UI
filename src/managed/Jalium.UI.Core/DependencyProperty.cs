@@ -8,6 +8,7 @@ namespace Jalium.UI;
 public sealed class DependencyProperty
 {
     private static readonly ConcurrentDictionary<(Type, string), DependencyProperty> _registered = new();
+    private static readonly ConcurrentDictionary<Type, byte> _cctorPrimed = new();
     private static int _globalIndex;
 
     /// <summary>
@@ -142,6 +143,60 @@ public sealed class DependencyProperty
     {
         // For now, attached properties are implemented the same as regular properties
         return Register(name, propertyType, ownerType, metadata);
+    }
+
+    /// <summary>
+    /// AOT-safe lookup: walks the type hierarchy of <paramref name="ownerType"/> and returns the
+    /// first registered <see cref="DependencyProperty"/> with the given <paramref name="name"/>.
+    /// Avoids reflection over <c>NameProperty</c> static fields. Returns <c>null</c> if none is found.
+    /// </summary>
+    /// <param name="ownerType">Owner type to start the search from. Walks up the inheritance chain.</param>
+    /// <param name="name">Property name (without the trailing "Property" suffix).</param>
+    /// <remarks>
+    /// In NativeAOT / PublishTrimmed builds a type's static field initializers — which are how
+    /// every framework <c>FooProperty = DependencyProperty.Register(...)</c> populates the
+    /// registry — only run on first static access of that type. Pure XAML-driven workloads
+    /// (StartupUri Window, framework Themes loaded by name, &lt;Style TargetType="Button"&gt; in
+    /// a ResourceDictionary) reach a type only as a string-resolved <c>System.Type</c> handle,
+    /// which does NOT trigger the cctor. The registry is therefore empty for that type and
+    /// every Setter / Trigger / Binding lookup returns null, leaving the visual tree unstyled.
+    /// On a cache miss we walk the inheritance chain once per type and force the cctor via
+    /// <see cref="System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor"/>, then
+    /// retry. JIT builds are unaffected — RunClassConstructor is a no-op when the cctor has
+    /// already run, and the priming flag short-circuits subsequent calls.
+    /// </remarks>
+    public static DependencyProperty? FromName(Type ownerType, string name)
+    {
+        ArgumentNullException.ThrowIfNull(ownerType);
+        ArgumentNullException.ThrowIfNull(name);
+
+        for (Type? type = ownerType; type != null; type = type.BaseType)
+        {
+            if (_registered.TryGetValue((type, name), out var dp))
+                return dp;
+        }
+
+        // Cache miss — prime the static constructors along the inheritance chain.
+        var primedAny = false;
+        for (Type? type = ownerType; type != null; type = type.BaseType)
+        {
+            if (_cctorPrimed.TryAdd(type, 0))
+            {
+                System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(type.TypeHandle);
+                primedAny = true;
+            }
+        }
+
+        if (!primedAny)
+            return null;
+
+        for (Type? type = ownerType; type != null; type = type.BaseType)
+        {
+            if (_registered.TryGetValue((type, name), out var dp))
+                return dp;
+        }
+
+        return null;
     }
 
     /// <summary>

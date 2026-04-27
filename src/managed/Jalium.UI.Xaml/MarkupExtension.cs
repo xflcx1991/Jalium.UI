@@ -11,10 +11,14 @@ namespace Jalium.UI.Markup;
 public abstract class MarkupExtension
 {
     /// <summary>
-    /// Returns the value to use for the target property.
+    /// Returns the value to use for the target property. Implementations may use reflection
+    /// on user-supplied types (see <see cref="StaticExtension"/> and <see cref="ArrayExtension"/>);
+    /// marked accordingly so callers / overrides can declare AOT contracts.
     /// </summary>
     /// <param name="serviceProvider">A service provider that can provide services for the markup extension.</param>
     /// <returns>The value to use for the property where the extension is applied.</returns>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Some extensions (e.g. x:Static) reflect on the resolved Type to read fields/properties.")]
+    [System.Diagnostics.CodeAnalysis.RequiresDynamicCode("Some extensions (e.g. x:Array) construct arrays of a runtime-supplied element Type.")]
     public abstract object? ProvideValue(IServiceProvider serviceProvider);
 }
 
@@ -192,6 +196,8 @@ public sealed class BindingExtension : MarkupExtension
     }
 
     /// <inheritdoc />
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Override of a base member that is annotated with RequiresUnreferencedCode.")]
+    [System.Diagnostics.CodeAnalysis.RequiresDynamicCode("Override of a base member that is annotated with RequiresDynamicCode.")]
     public override object? ProvideValue(IServiceProvider serviceProvider)
     {
         var binding = new Binding
@@ -252,6 +258,8 @@ public sealed class StaticResourceExtension : MarkupExtension
     }
 
     /// <inheritdoc />
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Override of a base member that is annotated with RequiresUnreferencedCode.")]
+    [System.Diagnostics.CodeAnalysis.RequiresDynamicCode("Override of a base member that is annotated with RequiresDynamicCode.")]
     public override object? ProvideValue(IServiceProvider serviceProvider)
     {
         if (ResourceKey == null)
@@ -380,6 +388,8 @@ public sealed class DynamicResourceExtension : MarkupExtension
     }
 
     /// <inheritdoc />
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Override of a base member that is annotated with RequiresUnreferencedCode.")]
+    [System.Diagnostics.CodeAnalysis.RequiresDynamicCode("Override of a base member that is annotated with RequiresDynamicCode.")]
     public override object? ProvideValue(IServiceProvider serviceProvider)
     {
         if (ResourceKey == null)
@@ -426,11 +436,73 @@ public sealed class DynamicResourceReference : IDynamicResourceReference
 }
 
 /// <summary>
+/// XAML markup extension for theme-aware resources.
+/// Semantically equivalent to DynamicResource but specifically indicates a resource
+/// defined in <see cref="ResourceDictionary.ThemeDictionaries"/> that should
+/// automatically update when the current theme changes.
+/// </summary>
+public sealed class ThemeResourceExtension : MarkupExtension
+{
+    /// <summary>
+    /// Gets or sets the resource key.
+    /// </summary>
+    public object? ResourceKey { get; set; }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ThemeResourceExtension"/> class.
+    /// </summary>
+    public ThemeResourceExtension()
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ThemeResourceExtension"/> class with the specified key.
+    /// </summary>
+    /// <param name="resourceKey">The resource key.</param>
+    public ThemeResourceExtension(object resourceKey)
+    {
+        ResourceKey = resourceKey;
+    }
+
+    /// <inheritdoc />
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Override of a base member that is annotated with RequiresUnreferencedCode.")]
+    [System.Diagnostics.CodeAnalysis.RequiresDynamicCode("Override of a base member that is annotated with RequiresDynamicCode.")]
+    public override object? ProvideValue(IServiceProvider serviceProvider)
+    {
+        if (ResourceKey == null)
+            return null;
+
+        var provideValueTarget = serviceProvider?.GetService(typeof(IProvideValueTarget)) as IProvideValueTarget;
+        var targetObject = provideValueTarget?.TargetObject as DependencyObject;
+        var targetProperty = provideValueTarget?.TargetProperty as DependencyProperty;
+
+        if (targetObject is FrameworkElement targetElement && targetProperty != null)
+        {
+            // Register runtime tracking so the property is refreshed on theme changes.
+            // ThemeManager.ApplyTheme triggers DynamicResourceBindingOperations.RefreshAll,
+            // which repropagates the resource through the subscription list.
+            DynamicResourceBindingOperations.SetDynamicResource(targetElement, targetProperty, ResourceKey);
+            return ResourceLookup.FindResource(targetElement, ResourceKey);
+        }
+
+        if (provideValueTarget?.TargetObject is FrameworkElement element)
+        {
+            return ResourceLookup.FindResource(element, ResourceKey) ?? new DynamicResourceReference(ResourceKey);
+        }
+
+        // For deferred cases (e.g., Setter.Value), preserve the reference so style runtime can resolve it.
+        return new DynamicResourceReference(ResourceKey);
+    }
+}
+
+/// <summary>
 /// XAML markup extension for x:Null.
 /// </summary>
 public sealed class NullExtension : MarkupExtension
 {
     /// <inheritdoc />
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Override of a base member that is annotated with RequiresUnreferencedCode.")]
+    [System.Diagnostics.CodeAnalysis.RequiresDynamicCode("Override of a base member that is annotated with RequiresDynamicCode.")]
     public override object? ProvideValue(IServiceProvider serviceProvider) => null;
 }
 
@@ -467,6 +539,8 @@ public sealed class StaticExtension : MarkupExtension
     }
 
     /// <inheritdoc />
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("StaticExtension reads public static fields/properties via reflection on the resolved Type. Owner types reachable from XAML are preserved via XamlTypeRegistry registrations with DAM annotations.")]
+    [System.Diagnostics.CodeAnalysis.RequiresDynamicCode("Override of MarkupExtension.ProvideValue annotated with RequiresDynamicCode.")]
     public override object? ProvideValue(IServiceProvider serviceProvider)
     {
         if (string.IsNullOrEmpty(Member))
@@ -560,6 +634,8 @@ public sealed class ArrayExtension : MarkupExtension
     }
 
     /// <inheritdoc />
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Override of a base member that is annotated with RequiresUnreferencedCode.")]
+    [System.Diagnostics.CodeAnalysis.RequiresDynamicCode("Override of a base member that is annotated with RequiresDynamicCode.")]
     public override object? ProvideValue(IServiceProvider serviceProvider)
     {
         var elementType = Type ?? typeof(object);
@@ -612,6 +688,8 @@ public sealed class TypeExtension : MarkupExtension
     }
 
     /// <inheritdoc />
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Override of a base member that is annotated with RequiresUnreferencedCode.")]
+    [System.Diagnostics.CodeAnalysis.RequiresDynamicCode("Override of a base member that is annotated with RequiresDynamicCode.")]
     public override object? ProvideValue(IServiceProvider serviceProvider)
     {
         if (Type != null)
@@ -653,6 +731,8 @@ public sealed class TemplateBindingExtension : MarkupExtension
     }
 
     /// <inheritdoc />
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Override of a base member that is annotated with RequiresUnreferencedCode.")]
+    [System.Diagnostics.CodeAnalysis.RequiresDynamicCode("Override of a base member that is annotated with RequiresDynamicCode.")]
     public override object? ProvideValue(IServiceProvider serviceProvider)
     {
         if (string.IsNullOrEmpty(Property))
@@ -801,21 +881,8 @@ internal sealed class DeferredTemplateBindingExpression : BindingExpressionBase
 
     private static DependencyProperty? ResolveDependencyProperty(Type type, string propertyName)
     {
-        // Search for the DependencyProperty field
-        var dpFieldName = propertyName + "Property";
-        var currentType = type;
-
-        while (currentType != null)
-        {
-            var field = currentType.GetField(dpFieldName, BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy);
-            if (field != null)
-            {
-                return field.GetValue(null) as DependencyProperty;
-            }
-            currentType = currentType.BaseType;
-        }
-
-        return null;
+        // AOT-safe DependencyProperty lookup via the registry (no reflection).
+        return DependencyProperty.FromName(type, propertyName);
     }
 }
 
@@ -827,6 +894,7 @@ internal static class MarkupExtensionParser
     /// <summary>
     /// Tries to parse a markup extension from an attribute value.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Some markup extensions (e.g. x:Static) reflect on the resolved Type to read fields/properties.")]
     public static bool TryParse(string value, object targetObject, PropertyInfo? targetProperty, out object? result)
     {
         return TryParse(value, targetObject, targetProperty, null, out result);
@@ -835,6 +903,7 @@ internal static class MarkupExtensionParser
     /// <summary>
     /// Tries to parse a markup extension from an attribute value with ambient resource support.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Some markup extensions (e.g. x:Static) reflect on the resolved Type to read fields/properties.")]
     public static bool TryParse(string value, object targetObject, PropertyInfo? targetProperty, IAmbientResourceProvider? ambientProvider, out object? result)
     {
         result = null;
@@ -888,6 +957,7 @@ internal static class MarkupExtensionParser
         return true;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Some markup extensions (e.g. x:Static) reflect on the resolved Type to read fields/properties.")]
     private static MarkupExtension? CreateMarkupExtension(string name, string parameters, IAmbientResourceProvider? ambientProvider = null)
     {
         // Handle special x: namespace extensions
@@ -901,6 +971,7 @@ internal static class MarkupExtensionParser
             "binding" => CreateBindingExtension(parameters, ambientProvider),
             "staticresource" => CreateStaticResourceExtension(parameters),
             "dynamicresource" => CreateDynamicResourceExtension(parameters),
+            "themeresource" => CreateThemeResourceExtension(parameters),
             "templatebinding" => CreateTemplateBindingExtension(parameters),
             "null" => new NullExtension(),
             "type" => CreateTypeExtension(parameters),
@@ -910,6 +981,7 @@ internal static class MarkupExtensionParser
         };
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Forwards to SetBindingParameter which may invoke nested markup extensions that reflect on user types.")]
     private static BindingExtension CreateBindingExtension(string parameters, IAmbientResourceProvider? ambientProvider = null)
     {
         var extension = new BindingExtension();
@@ -939,6 +1011,7 @@ internal static class MarkupExtensionParser
         return extension;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Forwards to ResolveNestedValue which can call markup extensions that reflect on user types.")]
     private static void SetBindingParameter(BindingExtension extension, string name, string value, IAmbientResourceProvider? ambientProvider = null)
     {
         switch (name.ToLowerInvariant())
@@ -1000,6 +1073,7 @@ internal static class MarkupExtensionParser
     /// <summary>
     /// Resolves a nested markup extension value (e.g., {StaticResource BoolToVis}) or returns null if not a markup extension.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Some markup extensions (e.g. x:Static) reflect on the resolved Type to read fields/properties.")]
     private static object? ResolveNestedValue(string value, IAmbientResourceProvider? ambientProvider)
     {
         var trimmed = value.Trim();
@@ -1139,6 +1213,12 @@ internal static class MarkupExtensionParser
         return new DynamicResourceExtension(key);
     }
 
+    private static ThemeResourceExtension CreateThemeResourceExtension(string parameters)
+    {
+        var key = ParseResourceKey(parameters);
+        return new ThemeResourceExtension(key);
+    }
+
     private static object ParseResourceKey(string parameters)
     {
         var trimmed = parameters.Trim();
@@ -1262,8 +1342,8 @@ internal static class MarkupExtensionParser
 
     private static DependencyProperty? FindDependencyProperty(Type type, string propertyName)
     {
-        var dpFieldName = propertyName + "Property";
-        var field = type.GetField(dpFieldName, BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy);
-        return field?.GetValue(null) as DependencyProperty;
+        // AOT-safe lookup: walks the registered DependencyProperty registry by owner type
+        // and property name. Avoids reflection on a dynamically supplied owner type.
+        return DependencyProperty.FromName(type, propertyName);
     }
 }

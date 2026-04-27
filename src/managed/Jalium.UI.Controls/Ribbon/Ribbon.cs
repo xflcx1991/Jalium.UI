@@ -50,7 +50,7 @@ public class Ribbon : ItemsControl
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Content)]
     public string Title
     {
-        get => (string)GetValue(TitleProperty);
+        get => (string)GetValue(TitleProperty)!;
         set => SetValue(TitleProperty, value);
     }
 
@@ -60,7 +60,7 @@ public class Ribbon : ItemsControl
     [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public bool IsMinimized
     {
-        get => (bool)GetValue(IsMinimizedProperty);
+        get => (bool)GetValue(IsMinimizedProperty)!;
         set => SetValue(IsMinimizedProperty, value);
     }
 
@@ -70,7 +70,7 @@ public class Ribbon : ItemsControl
     [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public bool IsDropDownOpen
     {
-        get => (bool)GetValue(IsDropDownOpenProperty);
+        get => (bool)GetValue(IsDropDownOpenProperty)!;
         set => SetValue(IsDropDownOpenProperty, value);
     }
 
@@ -80,7 +80,7 @@ public class Ribbon : ItemsControl
     [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public int SelectedIndex
     {
-        get => (int)GetValue(SelectedIndexProperty);
+        get => (int)GetValue(SelectedIndexProperty)!;
         set => SetValue(SelectedIndexProperty, value);
     }
 
@@ -138,7 +138,7 @@ public class RibbonTab : ItemsControl
     [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public bool IsSelected
     {
-        get => (bool)GetValue(IsSelectedProperty);
+        get => (bool)GetValue(IsSelectedProperty)!;
         set => SetValue(IsSelectedProperty, value);
     }
 

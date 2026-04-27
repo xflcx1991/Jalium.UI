@@ -46,7 +46,8 @@ internal sealed partial class DockIndicatorWindow : IDisposable
             ShowCenterCross = showCenterCross,
             ShowEdgeButtons = showEdgeButtons
         };
-        _dispatcher = Dispatcher.CurrentDispatcher;
+        _dispatcher = Dispatcher.CurrentDispatcher
+            ?? throw new InvalidOperationException("DockIndicatorWindow requires a current Dispatcher.");
     }
 
     /// <summary>

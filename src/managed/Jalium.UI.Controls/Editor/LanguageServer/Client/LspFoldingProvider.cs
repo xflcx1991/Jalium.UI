@@ -8,6 +8,8 @@ namespace Jalium.UI.Controls.Editor.LanguageServer.Client;
 /// Folding strategy that requests folding ranges from an LSP server.
 /// Caches the last set of ranges and updates them asynchronously.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Drives LspClient JSON-RPC payloads through System.Text.Json reflection.")]
+[System.Diagnostics.CodeAnalysis.RequiresDynamicCode("Drives LspClient JSON-RPC payloads through System.Text.Json runtime code generation.")]
 internal sealed class LspFoldingProvider : IFoldingStrategy
 {
     private readonly LspClient _client;

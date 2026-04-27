@@ -43,7 +43,6 @@ public class AutoCompleteBox : TextBoxBase, IImeSupport
 
     // Internal text storage
     private string _text = string.Empty;
-    private bool _linesDirty = true;
 
     // Text width measurement cache
     private Dictionary<string, double> _textWidthCache = new();
@@ -266,7 +265,6 @@ public class AutoCompleteBox : TextBoxBase, IImeSupport
             {
                 _text = value ?? string.Empty;
                 SetValue(TextProperty, _text);
-                _linesDirty = true;
 
                 if (_caretIndex > _text.Length)
                     _caretIndex = _text.Length;
@@ -701,7 +699,6 @@ public class AutoCompleteBox : TextBoxBase, IImeSupport
         // Insert text
         _text = _text.Substring(0, _caretIndex) + textToInsert + _text.Substring(_caretIndex);
         _caretIndex += textToInsert.Length;
-        _linesDirty = true;
 
         // Trigger filter update
         TriggerFilterUpdate();
@@ -1328,7 +1325,6 @@ public class AutoCompleteBox : TextBoxBase, IImeSupport
             if (autoComplete._text != newText)
             {
                 autoComplete._text = newText;
-                autoComplete._linesDirty = true;
 
                 if (autoComplete._caretIndex > autoComplete._text.Length)
                     autoComplete._caretIndex = autoComplete._text.Length;
@@ -1358,7 +1354,7 @@ public class AutoCompleteBox : TextBoxBase, IImeSupport
     {
         if (d is AutoCompleteBox autoComplete)
         {
-            if ((bool)e.NewValue)
+            if ((bool)e.NewValue!)
             {
                 autoComplete.UpdatePopupPlacementAndWidth();
                 autoComplete.RefreshDropDownItems();
@@ -1378,12 +1374,12 @@ public class AutoCompleteBox : TextBoxBase, IImeSupport
     {
         if (d is AutoCompleteBox autoComplete && autoComplete._filterDelayTimer != null)
         {
-            var delay = (TimeSpan)e.NewValue;
+            var delay = (TimeSpan)e.NewValue!;
             autoComplete._filterDelayTimer.Interval = delay > TimeSpan.Zero ? delay : TimeSpan.FromMilliseconds(1);
         }
     }
 
-    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static new void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is AutoCompleteBox autoComplete)
         {

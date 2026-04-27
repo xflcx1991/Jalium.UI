@@ -112,7 +112,7 @@ public class RibbonGalleryItem : ContentControl
     [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public bool IsSelected
     {
-        get => (bool)GetValue(IsSelectedProperty);
+        get => (bool)GetValue(IsSelectedProperty)!;
         set => SetValue(IsSelectedProperty, value);
     }
 

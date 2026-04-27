@@ -142,6 +142,7 @@ public partial class DevToolsWindow : Window
 
     protected override bool CanOpenDevTools => false;
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("DevToolsWindow includes a REPL and inspector that reflect on user types.")]
     public DevToolsWindow(Window targetWindow)
     {
         _targetWindow = targetWindow ?? throw new ArgumentNullException(nameof(targetWindow));
@@ -1512,6 +1513,7 @@ public partial class DevToolsWindow : Window
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Enumerates static DependencyProperty fields on the target runtime type via reflection.")]
     private static IReadOnlyList<DependencyPropertyInspectorEntry> GetCategorizedDependencyProperties(Type targetType)
     {
         return s_dependencyPropertyCache.GetOrAdd(targetType, static type =>
@@ -1545,6 +1547,7 @@ public partial class DevToolsWindow : Window
         });
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("DevTools diagnostic that reflects on DependencyProperty owner type fields/methods to discover [DevToolsPropertyCategory] attributes.")]
     private static DevToolsPropertyCategory ResolveDependencyPropertyCategory(DependencyProperty dependencyProperty, Type targetType)
     {
         if (TryGetPropertyCategory(targetType, dependencyProperty.Name, out var category))
@@ -1587,6 +1590,7 @@ public partial class DevToolsWindow : Window
         return DevToolsPropertyCategory.Other;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Reflectively reads a property on the runtime type to discover its DevToolsPropertyCategory attribute.")]
     private static bool TryGetPropertyCategory(Type type, string propertyName, out DevToolsPropertyCategory category)
     {
         var property = type.GetProperty(
@@ -1762,6 +1766,7 @@ public partial class DevToolsWindow : Window
         AppendValueSourceBadge(target, property);
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("DevTools diagnostic that reflects on the runtime DependencyObject type to read CLR property values.")]
     private static object? GetInspectablePropertyValue(DependencyObject target, DependencyProperty property)
     {
         var clrProperty = target.GetType().GetProperty(
@@ -2436,6 +2441,7 @@ public partial class DevToolsWindow : Window
     //  Binding Inspector
     // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("DevTools binding inspector enumerates static DependencyProperty fields on FrameworkElement subtypes via reflection.")]
     private void AddBindingInspector(FrameworkElement fe)
     {
         // Check common DependencyProperties for bindings via reflection

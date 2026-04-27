@@ -91,6 +91,7 @@ public sealed class TextSearch : DependencyObject
     /// <summary>
     /// Performs a text search with the given character.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("TextSearch resolves TextPath against the runtime type of items via PropertyAccessorRegistry.")]
     internal bool DoSearch(string nextChar)
     {
         var now = DateTime.UtcNow;
@@ -107,6 +108,7 @@ public sealed class TextSearch : DependencyObject
     /// <summary>
     /// Deletes the last character from the current search prefix.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("TextSearch resolves TextPath against the runtime type of items via PropertyAccessorRegistry.")]
     internal bool DeleteLastCharacter()
     {
         if (_prefix.Length == 0)
@@ -127,6 +129,7 @@ public sealed class TextSearch : DependencyObject
         _prefix = string.Empty;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("TextSearch resolves TextPath against the runtime type of items via PropertyAccessorRegistry.")]
     private bool FindAndSelect(string prefix)
     {
         var items = _itemsControl.Items;
@@ -150,6 +153,7 @@ public sealed class TextSearch : DependencyObject
         return false;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("TextSearch resolves TextPath against the runtime type of items via PropertyAccessorRegistry, which falls back to reflection.")]
     private static string? GetPrimaryText(object? item, string textPath)
     {
         if (item == null)
@@ -167,11 +171,10 @@ public sealed class TextSearch : DependencyObject
         }
 
         // Use TextPath to get text from a property
-        if (!string.IsNullOrEmpty(textPath))
+        if (!string.IsNullOrEmpty(textPath) &&
+            PropertyAccessorRegistry.TryReadProperty(item, textPath, out var value))
         {
-            var prop = item.GetType().GetProperty(textPath);
-            if (prop != null)
-                return prop.GetValue(item)?.ToString();
+            return value?.ToString();
         }
 
         return item.ToString();
@@ -180,6 +183,7 @@ public sealed class TextSearch : DependencyObject
     /// <summary>
     /// Gets the primary text from an item in the specified items control.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("TextSearch resolves TextPath against the runtime type of items via PropertyAccessorRegistry.")]
     internal static string? GetPrimaryTextFromItem(ItemsControl itemsControl, object? item)
     {
         if (item == null)

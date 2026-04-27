@@ -22,7 +22,7 @@ public sealed class RibbonButton : Button
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Content)]
     public string Label
     {
-        get => (string)GetValue(LabelProperty);
+        get => (string)GetValue(LabelProperty)!;
         set => SetValue(LabelProperty, value);
     }
 
@@ -107,7 +107,7 @@ public class RibbonSplitButton : ItemsControl
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Content)]
     public string Label
     {
-        get => (string)GetValue(LabelProperty);
+        get => (string)GetValue(LabelProperty)!;
         set => SetValue(LabelProperty, value);
     }
 
@@ -117,7 +117,7 @@ public class RibbonSplitButton : ItemsControl
     [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public bool IsDropDownOpen
     {
-        get => (bool)GetValue(IsDropDownOpenProperty);
+        get => (bool)GetValue(IsDropDownOpenProperty)!;
         set => SetValue(IsDropDownOpenProperty, value);
     }
 

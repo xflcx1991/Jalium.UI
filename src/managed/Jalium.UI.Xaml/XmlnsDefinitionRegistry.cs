@@ -222,10 +222,6 @@ public static class XmlnsDefinitionRegistry
         }
     }
 
-    [UnconditionalSuppressMessage("AOT", "IL2026:RequiresUnreferencedCode",
-        Justification = "Assembly names are matched by simple name; we never load new assemblies here.")]
-    [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
-        Justification = "No dynamic code generation — we only compare assembly simple names.")]
     private static Assembly? ResolveTargetAssembly(Assembly declaring, string? assemblyName)
     {
         if (string.IsNullOrEmpty(assemblyName))

@@ -92,6 +92,7 @@ public sealed class ObjectDataProvider : DataSourceProvider
     }
 
     /// <inheritdoc />
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Override of DataSourceProvider.BeginQuery which is annotated for reflection-based data providers.")]
     protected override void BeginQuery()
     {
         if (IsAsynchronous)
@@ -109,6 +110,7 @@ public sealed class ObjectDataProvider : DataSourceProvider
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("ObjectDataProvider invokes user methods via reflection on the supplied ObjectType. Application is responsible for keeping the bound type trim-safe via DAM annotations or explicit registrations.")]
     private object? QueryWorker()
     {
         try
@@ -217,6 +219,7 @@ public sealed class XmlDataProvider : DataSourceProvider
     }
 
     /// <inheritdoc />
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Override of DataSourceProvider.BeginQuery which is annotated for reflection-based data providers.")]
     protected override void BeginQuery()
     {
         if (IsAsynchronous)
@@ -363,8 +366,10 @@ public abstract class DataSourceProvider : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Called when the query begins.
+    /// Called when the query begins. Implementations may use reflection on user-supplied types
+    /// (see <see cref="ObjectDataProvider"/>); marked accordingly so callers / overrides can declare AOT contracts.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Some providers (e.g. ObjectDataProvider) reflectively invoke methods on user types.")]
     protected abstract void BeginQuery();
 
     /// <summary>

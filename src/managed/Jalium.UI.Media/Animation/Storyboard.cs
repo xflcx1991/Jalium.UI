@@ -374,14 +374,8 @@ public sealed class Storyboard : Timeline, IStoryboard
             }
         }
 
-        // Look for the dependency property in the target's type
-        var targetType = target.GetType();
-        var fieldInfo = targetType.GetField($"{propertyName}Property",
-            System.Reflection.BindingFlags.Public |
-            System.Reflection.BindingFlags.Static |
-            System.Reflection.BindingFlags.FlattenHierarchy);
-
-        return fieldInfo?.GetValue(null) as DependencyProperty;
+        // AOT-safe DependencyProperty lookup via the registry (no reflection).
+        return DependencyProperty.FromName(target.GetType(), propertyName);
     }
 
     private static object GetDefaultValue(DependencyProperty property)

@@ -3763,6 +3763,19 @@ public interface IWindowHost
     /// Calls Win32 ReleaseCapture to stop receiving mouse messages outside the window.
     /// </summary>
     void ReleaseNativeCapture();
+
+    /// <summary>
+    /// Gets the platform window handle (HWND on Windows). Returns <see cref="nint.Zero"/>
+    /// if no native window has been created. Exposed so cross-cutting platform code (drag-drop,
+    /// IME, etc.) can avoid reflective <c>GetType().GetProperty("Handle")</c> lookups.
+    /// </summary>
+    nint Handle => nint.Zero;
+
+    /// <summary>
+    /// Gets the DPI scale factor for this window (1.0 = 96 DPI, 2.0 = 192 DPI, etc.).
+    /// Default implementation returns 1.0 so existing hosts that don't override remain valid.
+    /// </summary>
+    double DpiScale => 1.0;
 }
 
 /// <summary>

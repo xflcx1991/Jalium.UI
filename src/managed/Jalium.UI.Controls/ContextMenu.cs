@@ -417,7 +417,7 @@ public class ContextMenu : ItemsControl
     {
         if (d is ContextMenu contextMenu)
         {
-            var isOpen = (bool)e.NewValue;
+            var isOpen = (bool)e.NewValue!;
 
             if (isOpen)
             {

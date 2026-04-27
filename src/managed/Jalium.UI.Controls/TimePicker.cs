@@ -738,7 +738,7 @@ public class TimePicker : Control
     {
         if (d is TimePicker timePicker)
         {
-            if ((bool)e.NewValue)
+            if ((bool)e.NewValue!)
                 timePicker.OpenDropDown();
             else
                 timePicker.CloseDropDown();
@@ -766,7 +766,7 @@ public class TimePicker : Control
         }
     }
 
-    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static new void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is TimePicker timePicker)
         {

@@ -25,7 +25,6 @@ internal sealed class LspSemanticHighlighter : IReactiveSyntaxHighlighter
 
     // Cached per-line tokens
     private readonly Dictionary<int, SyntaxToken[]> _lineTokens = [];
-    private int _lastTokenVersion = -1;
 
     private CancellationTokenSource? _refreshCts;
     private bool _attached;

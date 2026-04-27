@@ -1338,7 +1338,7 @@ public abstract class TextBoxBase : Control
     /// <summary>
     /// Handles key down events.
     /// </summary>
-    protected virtual void OnKeyDown(KeyEventArgs e)
+    protected override void OnKeyDown(KeyEventArgs e)
     {
         var shift = e.IsShiftDown;
         var ctrl = e.IsControlDown;
@@ -2461,7 +2461,7 @@ public abstract class TextBoxBase : Control
 
     #region Property Changed
 
-    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static new void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is TextBoxBase textBox)
         {

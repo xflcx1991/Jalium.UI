@@ -531,12 +531,9 @@ public abstract class Visual : DependencyObject
     /// </summary>
     private static CornerRadius GetCornerRadius(UIElement element)
     {
-        // Look for CornerRadiusProperty static field on the element's type
-        var field = element.GetType().GetField("CornerRadiusProperty",
-            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static |
-            System.Reflection.BindingFlags.FlattenHierarchy);
-        if (field?.GetValue(null) is DependencyProperty dp &&
-            element.GetValue(dp) is CornerRadius cr)
+        // AOT-safe DependencyProperty lookup via the registry (no reflection).
+        var dp = DependencyProperty.FromName(element.GetType(), "CornerRadius");
+        if (dp != null && element.GetValue(dp) is CornerRadius cr)
             return cr;
         return new CornerRadius(0);
     }

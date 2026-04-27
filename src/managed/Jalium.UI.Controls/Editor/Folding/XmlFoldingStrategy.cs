@@ -166,6 +166,7 @@ public sealed class XmlFoldingStrategy : IFoldingStrategy
                         break;
 
                     if (TryPopMatchingElement(openElements, closingName, out OpenElement? openElement) &&
+                        openElement is not null &&
                         lineNum > openElement.StartLine)
                     {
                         var section = new FoldingSection(openElement.StartLine, lineNum, openElement.Title, openElement.StartColumn)

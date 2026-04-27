@@ -211,6 +211,7 @@ public sealed class MediaPlayer : IDisposable
     /// Opens the specified URI for playback.
     /// </summary>
     /// <param name="source">The URI of the media to open.</param>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Audio probe reflectively configures the SoundFlow CodecManager.")]
     public void Open(Uri source)
     {
         Source = source;
@@ -530,6 +531,7 @@ public sealed class MediaPlayer : IDisposable
 
     #region 音频管理
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Reflectively calls AudioEngine.CodecManager.AddFactory on the SoundFlow runtime type.")]
     private bool TryInitializeAudio(string filePath)
     {
         try

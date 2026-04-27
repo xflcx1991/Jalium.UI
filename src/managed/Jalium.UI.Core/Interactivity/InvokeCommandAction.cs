@@ -71,6 +71,7 @@ public sealed class InvokeCommandAction : TriggerAction<DependencyObject>
     /// Invokes the action.
     /// </summary>
     /// <param name="parameter">The parameter to the action.</param>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Resolves a TriggerParameterPath via reflection on user types.")]
     protected override void Invoke(object? parameter)
     {
         var command = Command;
@@ -85,6 +86,7 @@ public sealed class InvokeCommandAction : TriggerAction<DependencyObject>
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Walks the trigger parameter property path via reflection on user types.")]
     private object? ResolveParameter(object? triggerParameter)
     {
         // If CommandParameter is explicitly set, use it
@@ -109,6 +111,7 @@ public sealed class InvokeCommandAction : TriggerAction<DependencyObject>
         return CommandParameter;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("InvokeCommandAction walks user object graphs via reflection to resolve a property path.")]
     private static object? GetPropertyValue(object obj, string propertyPath)
     {
         if (string.IsNullOrEmpty(propertyPath))

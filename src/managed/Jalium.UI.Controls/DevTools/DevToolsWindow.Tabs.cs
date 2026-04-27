@@ -21,6 +21,7 @@ public partial class DevToolsWindow
     private static readonly SolidColorBrush BrushTabHeaderMuted = DevToolsTheme.TextSecondary;
     private static readonly SolidColorBrush BrushSurfaceDark    = DevToolsTheme.Surface;
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("DevTools tab layout includes the REPL which evaluates user input via reflection.")]
     private UIElement BuildTabLayout()
     {
         // Logical tree view is folded into the Inspector tab via the segmented

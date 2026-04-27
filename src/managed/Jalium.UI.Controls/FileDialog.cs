@@ -56,7 +56,7 @@ public abstract class FileDialog
     /// <summary>
     /// Gets the safe file names (without paths).
     /// </summary>
-    public string[] SafeFileNames => FileNames.Select(Path.GetFileName).ToArray();
+    public string[] SafeFileNames => FileNames.Select(p => Path.GetFileName(p) ?? string.Empty).ToArray();
 
     /// <summary>
     /// Gets or sets whether to check if the file exists.

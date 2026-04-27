@@ -423,7 +423,7 @@ public class DataGridColumnHeader : ButtonBase
         }
     }
 
-    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static new void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is DataGridColumnHeader header)
         {

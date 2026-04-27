@@ -241,7 +241,9 @@ public abstract class WeakEventManager
 /// </summary>
 /// <typeparam name="TEventSource">The type that raises the event.</typeparam>
 /// <typeparam name="TEventArgs">The type of event data.</typeparam>
-public class WeakEventManager<TEventSource, TEventArgs> : WeakEventManager
+public class WeakEventManager<
+    [System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicEvents)] TEventSource,
+    TEventArgs> : WeakEventManager
     where TEventArgs : EventArgs
 {
     private static readonly ConcurrentDictionary<string, WeakEventManager<TEventSource, TEventArgs>> s_perEventManagers = new();

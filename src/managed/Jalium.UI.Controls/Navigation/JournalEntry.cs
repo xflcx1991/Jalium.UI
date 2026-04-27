@@ -148,7 +148,7 @@ public abstract class PageFunction<T> : Page
     /// <summary>
     /// Raises the Return event with the specified value.
     /// </summary>
-    /// <param name="result">The value to return.</param>
+    /// <param name="e">The return event arguments.</param>
     protected void OnReturn(ReturnEventArgs<T> e)
     {
         Return?.Invoke(this, e);

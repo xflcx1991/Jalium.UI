@@ -701,11 +701,11 @@ public class ColorPicker : Control
             // and RGB閳墲SV conversion would lose hue information at low saturation/value.
             if (!colorPicker._isUpdatingColor)
             {
-                colorPicker.UpdateFromColor((Color)e.NewValue);
+                colorPicker.UpdateFromColor((Color)e.NewValue!);
             }
             colorPicker.InvalidateVisual();
 
-            var args = new ColorChangedEventArgs(ColorChangedEvent, (Color)e.OldValue, (Color)e.NewValue);
+            var args = new ColorChangedEventArgs(ColorChangedEvent, (Color)e.OldValue!, (Color)e.NewValue!);
             colorPicker.RaiseEvent(args);
         }
     }

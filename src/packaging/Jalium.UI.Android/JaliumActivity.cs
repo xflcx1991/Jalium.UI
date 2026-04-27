@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using Android.App;
 using Android.OS;
 using Android.Views;
@@ -13,11 +14,11 @@ namespace Jalium.UI;
 /// to build the Jalium.UI <see cref="JaliumApp"/> (host + application) with views,
 /// services, styles, and business logic.
 /// </summary>
+[SupportedOSPlatform("android24.0")]
 public abstract class JaliumActivity : Activity, ISurfaceHolderCallback
 {
     private SurfaceView? _surfaceView;
     private Thread? _jaliumThread;
-    private volatile bool _surfaceReady;
     private static volatile bool s_appStarted;
 
     /// <summary>
@@ -64,7 +65,6 @@ public abstract class JaliumActivity : Activity, ISurfaceHolderCallback
         }
 
         AndroidActivityBridge.OnNativeWindowCreated(nativeWindow);
-        _surfaceReady = true;
 
         if (!s_appStarted)
         {
@@ -80,7 +80,6 @@ public abstract class JaliumActivity : Activity, ISurfaceHolderCallback
 
     public void SurfaceDestroyed(ISurfaceHolder holder)
     {
-        _surfaceReady = false;
         AndroidActivityBridge.OnNativeWindowDestroyed();
     }
 

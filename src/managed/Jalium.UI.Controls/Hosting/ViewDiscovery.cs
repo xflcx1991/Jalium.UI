@@ -22,9 +22,7 @@ namespace Jalium.UI.Hosting;
 /// </remarks>
 internal static class ViewDiscovery
 {
-    [RequiresUnreferencedCode(
-        "ViewDiscovery relies on Assembly.GetExportedTypes() and name matching; trimmed " +
-        "applications must preserve discovered View/ViewModel types explicitly.")]
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("ViewDiscovery enumerates exported types via Assembly.GetExportedTypes; see remarks for trim-safe alternatives.")]
     public static ViewDiscoveryResult Discover(IServiceCollection services, ViewDiscoveryOptions options)
     {
         ArgumentNullException.ThrowIfNull(services);
@@ -132,9 +130,7 @@ internal static class ViewDiscovery
         return result;
     }
 
-    [RequiresUnreferencedCode(
-        "DiscoverViews uses Assembly.GetExportedTypes() and name matching; trimmed " +
-        "applications must preserve discovered View types explicitly.")]
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to Discover which enumerates exported types via Assembly.GetExportedTypes.")]
     public static ViewDiscoveryResult DiscoverViewsOnly(IServiceCollection services, ViewDiscoveryOptions options)
     {
         var originalAutoPair = options.AutoPair;
@@ -151,9 +147,7 @@ internal static class ViewDiscovery
         }
     }
 
-    [RequiresUnreferencedCode(
-        "DiscoverViewModels uses Assembly.GetExportedTypes() and name matching; trimmed " +
-        "applications must preserve discovered ViewModel types explicitly.")]
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("ViewDiscovery enumerates exported types via Assembly.GetExportedTypes.")]
     public static ViewDiscoveryResult DiscoverViewModelsOnly(IServiceCollection services, ViewDiscoveryOptions options)
     {
         ArgumentNullException.ThrowIfNull(services);
@@ -244,6 +238,7 @@ internal static class ViewDiscovery
         return false;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Enumerates exported types via Assembly.GetExportedTypes; types may be trimmed.")]
     private static IEnumerable<Type> GetExportedTypesSafe(Assembly assembly)
     {
         try

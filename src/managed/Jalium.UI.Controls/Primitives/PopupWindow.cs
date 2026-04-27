@@ -81,7 +81,8 @@ internal sealed partial class PopupWindow : Decorator, IWindowHost, ILayoutManag
     internal PopupWindow(Window parentWindow, PopupRoot popupRoot)
     {
         _parentWindow = parentWindow;
-        _dispatcher = Dispatcher.CurrentDispatcher;
+        _dispatcher = Dispatcher.CurrentDispatcher
+            ?? throw new InvalidOperationException("PopupWindow requires a current Dispatcher.");
         _realTimeStylus = new RealTimeStylus(this);
 
         // Set PopupRoot as child in the Decorator visual tree

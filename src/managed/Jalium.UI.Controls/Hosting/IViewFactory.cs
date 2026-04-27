@@ -24,11 +24,13 @@ public interface IViewFactory
     /// <see cref="ActivatorUtilities.CreateInstance(IServiceProvider, Type, object[])"/>
     /// so constructor-injected services still work.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Implementations may invoke ActivatorUtilities.CreateInstance which requires the view type's public constructors to be reachable.")]
     object? CreateView(Type viewType);
 
     /// <summary>
     /// Strongly-typed overload of <see cref="CreateView(Type)"/>.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to CreateView(Type) which carries the RUC contract for view construction.")]
     TView? CreateView<TView>() where TView : class;
 
     /// <summary>
@@ -55,14 +57,7 @@ internal sealed class ViewFactory : IViewFactory
         _registry = registry;
     }
 
-    [UnconditionalSuppressMessage(
-        "Trimming",
-        "IL2067:Target method argument",
-        Justification = "View types are registered by callers who already keep them rooted via AddView<TView>(); pairing types are public-constructor classes preserved by the DI container.")]
-    [UnconditionalSuppressMessage(
-        "AOT",
-        "IL3050:Generic code may not be available at runtime",
-        Justification = "ActivatorUtilities.CreateInstance uses a cached constructor invoker; the view type is always a concrete class reachable from user code.")]
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Falls back to ActivatorUtilities.CreateInstance(IServiceProvider, Type) which requires the view type's public constructors to be reachable.")]
     public object? CreateView(Type viewType)
     {
         ArgumentNullException.ThrowIfNull(viewType);
@@ -82,6 +77,7 @@ internal sealed class ViewFactory : IViewFactory
         return view;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to CreateView(Type) which carries the RUC contract for view construction.")]
     public TView? CreateView<TView>() where TView : class
         => CreateView(typeof(TView)) as TView;
 

@@ -328,6 +328,9 @@ public class NavigationView : ContentControl
     /// </summary>
     public event EventHandler<NavigationViewBackRequestedEventArgs>? BackRequested;
 
+    /// <summary>Raises the <see cref="BackRequested"/> event when the back button is clicked.</summary>
+    protected virtual void OnBackRequested(NavigationViewBackRequestedEventArgs e) => BackRequested?.Invoke(this, e);
+
     /// <summary>
     /// Occurs when the pane is opening.
     /// </summary>

@@ -137,7 +137,7 @@ public class ComboBox : Selector
     [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public bool IsDropDownOpen
     {
-        get => (bool)GetValue(IsDropDownOpenProperty);
+        get => (bool)GetValue(IsDropDownOpenProperty)!;
         set => SetValue(IsDropDownOpenProperty, value);
     }
 
@@ -147,7 +147,7 @@ public class ComboBox : Selector
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public double MaxDropDownHeight
     {
-        get => (double)GetValue(MaxDropDownHeightProperty);
+        get => (double)GetValue(MaxDropDownHeightProperty)!;
         set => SetValue(MaxDropDownHeightProperty, value);
     }
 
@@ -157,7 +157,7 @@ public class ComboBox : Selector
     [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public bool IsEditable
     {
-        get => (bool)GetValue(IsEditableProperty);
+        get => (bool)GetValue(IsEditableProperty)!;
         set => SetValue(IsEditableProperty, value);
     }
 
@@ -461,7 +461,7 @@ public class ComboBox : Selector
     {
         if (d is ComboBox comboBox)
         {
-            var isOpen = (bool)e.NewValue;
+            var isOpen = (bool)e.NewValue!;
             if (isOpen)
             {
                 comboBox.OpenDropDown();

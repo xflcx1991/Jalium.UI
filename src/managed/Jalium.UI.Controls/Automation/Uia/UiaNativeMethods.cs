@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 
 namespace Jalium.UI.Controls.Automation.Uia;
@@ -9,6 +10,9 @@ namespace Jalium.UI.Controls.Automation.Uia;
 /// </summary>
 internal static partial class UiaNativeMethods
 {
+    // COM-marshalled UIA interfaces are preserved via ILLink.Descriptors.xml so the
+    // trimmer keeps the vtable members the runtime calls through. The UnconditionalSuppressMessage
+    // attributes below acknowledge that contract for the analyzer.
     [DllImport("uiautomationcore.dll", EntryPoint = "UiaReturnRawElementProvider", CharSet = CharSet.Unicode)]
     internal static extern nint UiaReturnRawElementProvider(
         nint hwnd, nint wParam, nint lParam,

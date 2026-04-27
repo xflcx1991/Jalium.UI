@@ -1154,7 +1154,7 @@ public class MenuItem : HeaderedItemsControl
 
     #region Property Changed Callbacks
 
-    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static new void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is MenuItem menuItem)
         {
@@ -1174,7 +1174,7 @@ public class MenuItem : HeaderedItemsControl
     {
         if (d is MenuItem menuItem)
         {
-            if ((bool)e.NewValue)
+            if ((bool)e.NewValue!)
             {
                 menuItem.RaiseEvent(new RoutedEventArgs(CheckedEvent, menuItem));
             }
@@ -1193,7 +1193,7 @@ public class MenuItem : HeaderedItemsControl
             menuItem._isUpdatingSubmenuOpen = true;
             try
             {
-                var isOpen = (bool)e.NewValue;
+                var isOpen = (bool)e.NewValue!;
 
                 if (isOpen)
                 {

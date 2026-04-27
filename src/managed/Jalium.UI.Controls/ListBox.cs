@@ -38,11 +38,6 @@ public class ListBox : Selector
     /// </summary>
     private int _anchorIndex = -1;
 
-    /// <summary>
-    /// Tracks whether a mouse-drag selection is active (for Extended mode drag selection).
-    /// </summary>
-    private bool _isDragSelecting;
-
     #endregion
 
     #region CLR Properties
@@ -158,6 +153,7 @@ public class ListBox : Selector
         }
 
         var content = GetSelectionValueAtIndex(clickedIndex) ?? item.Content;
+        if (content is null) return;
 
         switch (SelectionMode)
         {
@@ -498,7 +494,6 @@ public class ListBox : Selector
         // Begin drag-select tracking for Extended mode
         if (SelectionMode == SelectionMode.Extended && e.ChangedButton == MouseButton.Left)
         {
-            _isDragSelecting = true;
         }
     }
 

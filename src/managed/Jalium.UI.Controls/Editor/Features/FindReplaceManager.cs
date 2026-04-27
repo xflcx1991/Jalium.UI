@@ -228,6 +228,8 @@ public sealed class FindReplaceManager
             if (_results.Count == 0) return 0;
         }
 
+        if (_document == null) return 0;
+
         int count = _results.Count;
 
         // Replace from end to start to preserve offsets

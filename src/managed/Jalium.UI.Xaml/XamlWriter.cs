@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Reflection;
 using System.Text;
@@ -13,6 +14,7 @@ public static class XamlWriter
     /// <summary>
     /// Returns a XAML string that serializes the provided object.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("XamlWriter enumerates public properties of arbitrary runtime types via reflection.")]
     public static string Save(object obj)
     {
         ArgumentNullException.ThrowIfNull(obj);
@@ -25,6 +27,7 @@ public static class XamlWriter
     /// <summary>
     /// Saves XAML information as the source for a provided text writer.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("XamlWriter enumerates public properties of arbitrary runtime types via reflection.")]
     public static void Save(object obj, TextWriter writer)
     {
         ArgumentNullException.ThrowIfNull(obj);
@@ -35,6 +38,7 @@ public static class XamlWriter
     /// <summary>
     /// Saves XAML information into a specified stream as the source.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("XamlWriter enumerates public properties of arbitrary runtime types via reflection.")]
     public static void Save(object obj, Stream stream)
     {
         ArgumentNullException.ThrowIfNull(obj);
@@ -44,6 +48,7 @@ public static class XamlWriter
         writer.Flush();
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("XamlWriter enumerates public properties of arbitrary runtime types via reflection.")]
     private static void Save(object obj, TextWriter writer, int indent)
     {
         var type = obj.GetType();

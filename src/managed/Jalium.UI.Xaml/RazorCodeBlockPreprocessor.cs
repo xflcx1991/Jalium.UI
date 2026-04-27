@@ -1377,6 +1377,9 @@ internal static class RazorCodeBlockPreprocessor
     /// Compiles and executes the generated script using SyntaxFactory to construct a
     /// complete C# syntax tree, then compiles with CSharpCompilation and runs in-memory.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Loads a Roslyn-emitted assembly via Assembly.Load and reflectively invokes its entry point.")]
+    [System.Diagnostics.CodeAnalysis.RequiresDynamicCode("Compiles C# script to IL via Roslyn at runtime.")]
+    [System.Diagnostics.CodeAnalysis.RequiresAssemblyFiles("Roslyn metadata reference enumeration falls back to Assembly.Location, which is empty in single-file/AOT publishing.")]
     private static string ExecuteScript(string script)
     {
         var usingDirectives = List(new UsingDirectiveSyntax[]
@@ -1450,6 +1453,7 @@ internal static class RazorCodeBlockPreprocessor
         return block.Statements;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresAssemblyFiles("Roslyn metadata reference enumeration falls back to Assembly.Location, which is empty in single-file/AOT publishing.")]
     private static MetadataReference[] GetMetadataReferences()
     {
         var trustedAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;

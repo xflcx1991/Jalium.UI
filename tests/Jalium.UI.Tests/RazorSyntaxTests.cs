@@ -674,14 +674,6 @@ public class RazorSyntaxTests
     [Fact]
     public void RazorAwaitForeach_ShouldExpandAsyncEnumerable()
     {
-        const string xaml = """
-            <StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
-              @await foreach(var item in AsyncItems()) {
-              <TextBlock Text="@item" />
-              }
-            </StackPanel>
-            """;
-
         // await foreach is compiled by Roslyn scripting — needs the helper method in scope.
         // Since the preprocessor uses CSharpScript which supports top-level await,
         // we test with a simple async enumerable via inline code.
@@ -890,7 +882,7 @@ public class RazorSyntaxTests
         var template = (DataTemplate)XamlReader.Parse(templateXaml);
         var model = new PersonModel { Name = "Charlie", Age = 20, Adult = true };
 
-        var grid = (Grid)template.LoadContent();
+        var grid = (Grid)template.LoadContent()!;
         grid.DataContext = model;
 
         var adultText = (TextBlock)grid.Children[0];
@@ -989,14 +981,14 @@ public class RazorSyntaxTests
         var template = (DataTemplate)XamlReader.Parse(templateXaml);
 
         // Instance 1: Adult = true — Age TextBlock should be VISIBLE
-        var instance1 = (Grid)template.LoadContent();
+        var instance1 = (Grid)template.LoadContent()!;
         instance1.DataContext = new PersonModel { Name = "Alice", Age = 30, Adult = true };
         Assert.Equal(2, instance1.Children.Count);
         var adultText1 = (TextBlock)instance1.Children[0];
         Assert.Equal(Visibility.Visible, adultText1.Visibility);
 
         // Instance 2: Adult = false — Age TextBlock should be COLLAPSED
-        var instance2 = (Grid)template.LoadContent();
+        var instance2 = (Grid)template.LoadContent()!;
         instance2.DataContext = new PersonModel { Name = "Bob", Age = 15, Adult = false };
         Assert.Equal(2, instance2.Children.Count);
         var adultText2 = (TextBlock)instance2.Children[0];

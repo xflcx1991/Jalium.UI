@@ -1186,10 +1186,10 @@ public class PasswordBox : Control, IImeSupport
         if (e.Handled)
             return;
 
-        OnKeyDown(e);
+        HandleKeyDown(e);
     }
 
-    private void OnKeyDown(KeyEventArgs e)
+    private void HandleKeyDown(KeyEventArgs e)
     {
         var shift = e.IsShiftDown;
         var ctrl = e.IsControlDown;
@@ -1760,7 +1760,7 @@ public class PasswordBox : Control, IImeSupport
 
     #region Property Changed Callbacks
 
-    private static void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static new void OnVisualPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is PasswordBox passwordBox)
         {

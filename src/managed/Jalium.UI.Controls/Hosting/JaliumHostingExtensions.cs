@@ -228,9 +228,7 @@ public static class JaliumHostingExtensions
     /// with <c>FooViewModel</c>, <c>MainWindow</c> pairs with
     /// <c>MainWindowViewModel</c>, etc.
     /// </remarks>
-    [RequiresUnreferencedCode(
-        "AddViewsAndViewModels uses reflection over Assembly.GetExportedTypes() and is not trim-safe; " +
-        "use AddView<TView, TViewModel>() explicitly in trimmed/AOT applications.")]
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to ViewDiscovery.Discover which enumerates exported types via reflection. Use AddView<TView, TViewModel>() for AOT-safe registration.")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static IServiceCollection AddViewsAndViewModels(this IServiceCollection services)
     {
@@ -245,8 +243,7 @@ public static class JaliumHostingExtensions
     /// Overload accepting explicit assemblies. Every assembly listed is
     /// scanned; duplicates are ignored.
     /// </summary>
-    [RequiresUnreferencedCode(
-        "AddViewsAndViewModels uses reflection; see the parameterless overload for details.")]
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to ViewDiscovery.Discover which enumerates exported types via reflection. Use AddView<TView, TViewModel>() for AOT-safe registration.")]
     public static IServiceCollection AddViewsAndViewModels(
         this IServiceCollection services,
         params Assembly[] assemblies)
@@ -272,8 +269,7 @@ public static class JaliumHostingExtensions
     /// or disable auto-pairing. Calling-assembly fallback still applies when
     /// <paramref name="configure"/> leaves <see cref="ViewDiscoveryOptions.Assemblies"/> empty.
     /// </summary>
-    [RequiresUnreferencedCode(
-        "AddViewsAndViewModels uses reflection; see the parameterless overload for details.")]
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to ViewDiscovery.Discover which enumerates exported types via reflection. Use AddView<TView, TViewModel>() for AOT-safe registration.")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static IServiceCollection AddViewsAndViewModels(
         this IServiceCollection services,
@@ -297,8 +293,7 @@ public static class JaliumHostingExtensions
     /// Useful when ViewModels live in a separate assembly and are registered
     /// manually.
     /// </summary>
-    [RequiresUnreferencedCode(
-        "AddViews uses reflection; use AddView<TView>() explicitly in trimmed/AOT applications.")]
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to ViewDiscovery which enumerates exported types via reflection. Use AddView<TView, TViewModel>() for AOT-safe registration.")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static IServiceCollection AddViews(this IServiceCollection services)
     {
@@ -312,8 +307,7 @@ public static class JaliumHostingExtensions
     /// <summary>
     /// Overload of <see cref="AddViews(IServiceCollection)"/> with options callback.
     /// </summary>
-    [RequiresUnreferencedCode(
-        "AddViews uses reflection; use AddView<TView>() explicitly in trimmed/AOT applications.")]
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to ViewDiscovery which enumerates exported types via reflection. Use AddView<TView, TViewModel>() for AOT-safe registration.")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static IServiceCollection AddViews(
         this IServiceCollection services,
@@ -337,8 +331,7 @@ public static class JaliumHostingExtensions
     /// <see cref="AddViews(IServiceCollection)"/>; combine the two when Views
     /// and ViewModels live in separate assemblies.
     /// </summary>
-    [RequiresUnreferencedCode(
-        "AddViewModels uses reflection; use AddViewModel<T>() explicitly in trimmed/AOT applications.")]
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to ViewDiscovery which enumerates exported types via reflection. Use service registration directly for AOT-safe usage.")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static IServiceCollection AddViewModels(this IServiceCollection services)
     {
@@ -352,8 +345,7 @@ public static class JaliumHostingExtensions
     /// <summary>
     /// Overload of <see cref="AddViewModels(IServiceCollection)"/> with options callback.
     /// </summary>
-    [RequiresUnreferencedCode(
-        "AddViewModels uses reflection; use AddViewModel<T>() explicitly in trimmed/AOT applications.")]
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to ViewDiscovery which enumerates exported types via reflection. Use service registration directly for AOT-safe usage.")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static IServiceCollection AddViewModels(
         this IServiceCollection services,
@@ -379,8 +371,7 @@ public static class JaliumHostingExtensions
     /// <see cref="AddViewsAndViewModels(IServiceCollection)"/>. Scans the
     /// calling assembly by default.
     /// </summary>
-    [RequiresUnreferencedCode(
-        "AddViewsAndViewModels uses reflection; see the IServiceCollection overloads for details.")]
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to ViewDiscovery which enumerates exported types via reflection. Use AddView<TView, TViewModel>() for AOT-safe registration.")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static AppBuilder AddViewsAndViewModels(this AppBuilder builder)
     {
@@ -394,8 +385,7 @@ public static class JaliumHostingExtensions
     /// <summary>
     /// Fluent <see cref="AppBuilder"/> wrapper accepting explicit assemblies.
     /// </summary>
-    [RequiresUnreferencedCode(
-        "AddViewsAndViewModels uses reflection; see the IServiceCollection overloads for details.")]
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to ViewDiscovery which enumerates exported types via reflection. Use AddView<TView, TViewModel>() for AOT-safe registration.")]
     public static AppBuilder AddViewsAndViewModels(this AppBuilder builder, params Assembly[] assemblies)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -417,8 +407,7 @@ public static class JaliumHostingExtensions
     /// <summary>
     /// Fluent <see cref="AppBuilder"/> wrapper with configuration callback.
     /// </summary>
-    [RequiresUnreferencedCode(
-        "AddViewsAndViewModels uses reflection; see the IServiceCollection overloads for details.")]
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Defers to ViewDiscovery which enumerates exported types via reflection. Use AddView<TView, TViewModel>() for AOT-safe registration.")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static AppBuilder AddViewsAndViewModels(this AppBuilder builder, Action<ViewDiscoveryOptions> configure)
     {

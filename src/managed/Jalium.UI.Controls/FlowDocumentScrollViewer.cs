@@ -108,7 +108,7 @@ public class FlowDocumentScrollViewer : Control
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Behavior)]
     public double Zoom
     {
-        get => (double)GetValue(ZoomProperty);
+        get => (double)GetValue(ZoomProperty)!;
         set => SetValue(ZoomProperty, value);
     }
 
@@ -118,7 +118,7 @@ public class FlowDocumentScrollViewer : Control
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public double MinZoom
     {
-        get => (double)GetValue(MinZoomProperty);
+        get => (double)GetValue(MinZoomProperty)!;
         set => SetValue(MinZoomProperty, value);
     }
 
@@ -128,7 +128,7 @@ public class FlowDocumentScrollViewer : Control
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Layout)]
     public double MaxZoom
     {
-        get => (double)GetValue(MaxZoomProperty);
+        get => (double)GetValue(MaxZoomProperty)!;
         set => SetValue(MaxZoomProperty, value);
     }
 
@@ -138,7 +138,7 @@ public class FlowDocumentScrollViewer : Control
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Behavior)]
     public double ZoomIncrement
     {
-        get => (double)GetValue(ZoomIncrementProperty);
+        get => (double)GetValue(ZoomIncrementProperty)!;
         set => SetValue(ZoomIncrementProperty, value);
     }
 
@@ -148,7 +148,7 @@ public class FlowDocumentScrollViewer : Control
     [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public bool IsToolBarVisible
     {
-        get => (bool)GetValue(IsToolBarVisibleProperty);
+        get => (bool)GetValue(IsToolBarVisibleProperty)!;
         set => SetValue(IsToolBarVisibleProperty, value);
     }
 
@@ -158,7 +158,7 @@ public class FlowDocumentScrollViewer : Control
     [DevToolsPropertyCategory(DevToolsPropertyCategory.State)]
     public bool IsSelectionEnabled
     {
-        get => (bool)GetValue(IsSelectionEnabledProperty);
+        get => (bool)GetValue(IsSelectionEnabledProperty)!;
         set => SetValue(IsSelectionEnabledProperty, value);
     }
 
@@ -168,7 +168,7 @@ public class FlowDocumentScrollViewer : Control
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Other)]
     public ScrollBarVisibility HorizontalScrollBarVisibility
     {
-        get => (ScrollBarVisibility)GetValue(HorizontalScrollBarVisibilityProperty);
+        get => (ScrollBarVisibility)GetValue(HorizontalScrollBarVisibilityProperty)!;
         set => SetValue(HorizontalScrollBarVisibilityProperty, value);
     }
 
@@ -178,7 +178,7 @@ public class FlowDocumentScrollViewer : Control
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Other)]
     public ScrollBarVisibility VerticalScrollBarVisibility
     {
-        get => (ScrollBarVisibility)GetValue(VerticalScrollBarVisibilityProperty);
+        get => (ScrollBarVisibility)GetValue(VerticalScrollBarVisibilityProperty)!;
         set => SetValue(VerticalScrollBarVisibilityProperty, value);
     }
 

@@ -47,6 +47,7 @@ public sealed class CallMethodAction : TriggerAction<DependencyObject>
     /// Invokes the action.
     /// </summary>
     /// <param name="parameter">The parameter to the action.</param>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("CallMethodAction reflects on the runtime target type to invoke MethodName.")]
     protected override void Invoke(object? parameter)
     {
         var target = TargetObject ?? AssociatedObject;
@@ -155,29 +156,32 @@ public sealed class ChangePropertyAction : TriggerAction<DependencyObject>
     /// Invokes the action.
     /// </summary>
     /// <param name="parameter">The parameter to the action.</param>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("ChangePropertyAction sets a property on the target via reflection.")]
     protected override void Invoke(object? parameter)
     {
         var target = TargetObject ?? AssociatedObject;
         if (target == null || string.IsNullOrEmpty(PropertyName))
             return;
 
-        // Handle DependencyProperty
+        // Resolve DependencyProperty via the AOT-safe registry.
         if (target is DependencyObject depObj)
         {
-            var dpField = target.GetType().GetField(PropertyName + "Property", BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy);
-            if (dpField?.GetValue(null) is DependencyProperty dp)
+            var dp = DependencyProperty.FromName(target.GetType(), PropertyName);
+            if (dp != null)
             {
                 depObj.SetValue(dp, ConvertValue(Value, dp.PropertyType));
                 return;
             }
         }
 
-        // Handle regular property
-        var property = target.GetType().GetProperty(PropertyName);
-        if (property != null && property.CanWrite)
-        {
-            property.SetValue(target, ConvertValue(Value, property.PropertyType));
-        }
+        // CLR property fallback via PropertyAccessorRegistry (typed setters preferred).
+        PropertyAccessorRegistry.TryWriteProperty(target, PropertyName, ConvertValue(Value, GuessTargetType(target, PropertyName)));
+    }
+
+    private static Type GuessTargetType(object target, string propertyName)
+    {
+        var prop = PropertyAccessorRegistry.TryGetPropertyInfo(target, propertyName);
+        return prop?.PropertyType ?? typeof(object);
     }
 
     private static object? ConvertValue(object? value, Type targetType)

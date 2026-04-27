@@ -29,15 +29,16 @@ public sealed class JalxamlSourceGenerator : IIncrementalGenerator
         {
             var (compilation, jalxamlFileList) = source;
             var assemblyName = compilation.AssemblyName ?? "Unknown";
+            var xmlnsResolver = XmlnsTypeResolver.FromCompilation(compilation);
 
             foreach (var file in jalxamlFileList)
             {
-                GenerateForJalxaml(spc, file, assemblyName);
+                GenerateForJalxaml(spc, file, assemblyName, xmlnsResolver);
             }
         });
     }
 
-    private void GenerateForJalxaml(SourceProductionContext context, AdditionalText file, string assemblyName)
+    private void GenerateForJalxaml(SourceProductionContext context, AdditionalText file, string assemblyName, XmlnsTypeResolver xmlnsResolver)
     {
         var content = file.GetText(context.CancellationToken)?.ToString();
         if (string.IsNullOrEmpty(content))
@@ -50,7 +51,7 @@ public sealed class JalxamlSourceGenerator : IIncrementalGenerator
                 return;
 
             var className = parseResult.ClassName;
-            var generatedCode = GenerateCode(parseResult, assemblyName);
+            var generatedCode = GenerateCode(parseResult, assemblyName, xmlnsResolver);
             var fileName = $"{className.Replace(".", "_")}.g.cs";
 
             context.AddSource(fileName, SourceText.From(generatedCode, Encoding.UTF8));
@@ -73,7 +74,7 @@ public sealed class JalxamlSourceGenerator : IIncrementalGenerator
         }
     }
 
-    private string GenerateCode(JalxamlParseResult result, string assemblyName)
+    private string GenerateCode(JalxamlParseResult result, string assemblyName, XmlnsTypeResolver xmlnsResolver)
     {
         var sb = new StringBuilder();
 
@@ -99,6 +100,53 @@ public sealed class JalxamlSourceGenerator : IIncrementalGenerator
 
         sb.AppendLine($"partial class {className}");
         sb.AppendLine("{");
+
+        // AOT 保根:StartupUri 等按 x:Class 字符串查类型的路径,在 AOT trim 之后会被 Assembly.GetType
+        // 判空。ModuleInitializer 在模块 cctor 里一次性把 typeof(T) 写入 XamlTypeRegistry —
+        // typeof 引用让 linker 留住类型,注册表让 ThemeLoader 不依赖 Assembly.GetType。
+        //
+        // 同样的 pin 必须覆盖 jalxaml 文档里的每一个元素类型,否则 trimmer 会把 XAML 解析时
+        // Activator.CreateInstance 需要的构造函数裁掉(典型现象:运行时抛 MissingMethodException
+        // "No parameterless constructor defined for type '...'.")。SourceGenerator 在编译时
+        // 通过 XmlnsDefinition + 兼容映射把 element 名解析为完整 INamedTypeSymbol,然后 emit
+        // typeof(...) 引用 + RegisterType<T>() 注册,二者合起来既保留类型也加速运行时查找。
+        //
+        // 方法名按类名后缀区分,避免同一 module 内重名冲突。
+        //
+        // [DynamicDependency] 告知 IL trimmer:此 ModuleInitializer 一旦保留(它带 [ModuleInitializer]
+        // 必然 reachable),就要连带保住 codebehind 类型的所有 instance 方法元数据。这是修 jalxaml
+        // event-handler 在 AOT 下"Click not found"的根因 — XamlReader.TryWireEvent 走 reflection
+        // GetMethod(handlerName, Public|NonPublic) 查 click handler,trimmer 默认会把 private 方法
+        // 元数据 prune 掉 (typeof 引用只 pin 类型本身,不保护方法)。DynamicDependency 是 .NET 标准
+        // trimmer hint,无需新 API/registry,直接让所有 click/keydown/lostfocus 等签名各异的 event
+        // 一次性可达。
+        var moduleInitMethodName = $"__JalxamlRegisterStartupType_{className}";
+        sb.AppendLine("    [global::System.Runtime.CompilerServices.ModuleInitializer]");
+        sb.AppendLine($"    [global::System.Diagnostics.CodeAnalysis.DynamicDependency(global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods | global::System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.NonPublicMethods, typeof({className}))]");
+        sb.AppendLine($"    internal static void {moduleInitMethodName}()");
+        sb.AppendLine("    {");
+        sb.AppendLine($"        global::Jalium.UI.Markup.XamlTypeRegistry.RegisterStartupType(\"{result.ClassName}\", typeof({className}));");
+
+        // De-duplicate by full qualified name so we never emit the same RegisterType<T>() twice
+        // even if multiple element references resolve to the same INamedTypeSymbol (e.g. the
+        // root x:Class type is also referenced as the document root element).
+        var emittedTypes = new HashSet<string>(StringComparer.Ordinal);
+        emittedTypes.Add(result.ClassName!);
+
+        foreach (var element in result.ReferencedElements)
+        {
+            var resolvedFullName = xmlnsResolver.ResolveToGlobalQualifiedName(element.ElementName, element.NamespaceUri);
+            if (resolvedFullName == null)
+                continue;
+
+            if (!emittedTypes.Add(resolvedFullName))
+                continue;
+
+            sb.AppendLine($"        global::Jalium.UI.Markup.XamlTypeRegistry.RegisterType<{resolvedFullName}>();");
+        }
+
+        sb.AppendLine("    }");
+        sb.AppendLine();
 
         // Generate fields for named elements
         foreach (var element in result.NamedElements)
@@ -155,6 +203,15 @@ public sealed class JalxamlParseResult
     public string? ClassName { get; set; }
     public string? RootElementType { get; set; }
     public List<NamedElement> NamedElements { get; } = new();
+
+    /// <summary>
+    /// Every element type referenced by the document (root + descendants), excluding XAML
+    /// property-elements like <c>Grid.RowDefinitions</c>. Captured for AOT pinning so the
+    /// generator can emit <c>typeof(T)</c> references that prevent the trimmer from
+    /// removing constructors / metadata that <see cref="System.Activator.CreateInstance(System.Type)"/>
+    /// would need at runtime. De-duplicated by (elementName, namespaceUri).
+    /// </summary>
+    public List<ReferencedElement> ReferencedElements { get; } = new();
 }
 
 /// <summary>
@@ -164,4 +221,15 @@ public sealed class NamedElement
 {
     public string Name { get; set; } = string.Empty;
     public string TypeName { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// A unique element type reference discovered during parsing. The pair
+/// (<see cref="ElementName"/>, <see cref="NamespaceUri"/>) uniquely identifies
+/// the XAML type the generator must pin for AOT.
+/// </summary>
+public sealed class ReferencedElement
+{
+    public string ElementName { get; set; } = string.Empty;
+    public string NamespaceUri { get; set; } = string.Empty;
 }

@@ -262,15 +262,17 @@ public abstract class ButtonBase : ContentControl
     /// <summary>
     /// Called when the mouse enters the button.
     /// </summary>
-    protected virtual void OnMouseEnter(MouseEventArgs e)
+    protected override void OnMouseEnter(MouseEventArgs e)
     {
+        base.OnMouseEnter(e);
     }
 
     /// <summary>
     /// Called when the mouse leaves the button.
     /// </summary>
-    protected virtual void OnMouseLeave(MouseEventArgs e)
+    protected override void OnMouseLeave(MouseEventArgs e)
     {
+        base.OnMouseLeave(e);
     }
 
     #endregion

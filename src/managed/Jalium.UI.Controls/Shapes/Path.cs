@@ -195,6 +195,9 @@ public class Path : Shape
         if (_pen != null)
             return _pen;
 
+        if (Stroke is null)
+            return null;
+
         var thickness = Math.Abs(StrokeThickness);
         var pen = new Pen(Stroke, thickness)
         {
@@ -207,7 +210,7 @@ public class Path : Shape
 
         var dashArray = StrokeDashArray;
         var dashOffset = StrokeDashOffset;
-        if (dashArray is { Count: > 0 } || dashOffset != 0.0)
+        if (dashArray is { Count: > 0 })
         {
             pen.DashStyle = new DashStyle(dashArray, dashOffset);
         }

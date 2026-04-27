@@ -65,6 +65,7 @@ public abstract class TriggerBase : DependencyObject, IAttachedObject
     /// Invokes all actions associated with this trigger.
     /// </summary>
     /// <param name="parameter">The parameter to pass to the actions.</param>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("TriggerAction.Invoke implementations may use reflection on user-supplied targets.")]
     protected void InvokeActions(object? parameter)
     {
         foreach (var action in _actions)

@@ -87,6 +87,7 @@ public class Frame : ContentControl
     /// </summary>
     /// <param name="sourcePageType">The type of page to navigate to.</param>
     /// <returns>True if navigation was successful; otherwise, false.</returns>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Constructs the page type via Activator.CreateInstance/DI — caller must keep the page type's constructor reachable (typically via typeof literals or source-generated factories).")]
     public bool Navigate(Type sourcePageType)
     {
         return Navigate(sourcePageType, null);
@@ -98,6 +99,7 @@ public class Frame : ContentControl
     /// <param name="sourcePageType">The type of page to navigate to.</param>
     /// <param name="parameter">The navigation parameter.</param>
     /// <returns>True if navigation was successful; otherwise, false.</returns>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Constructs the page type via Activator.CreateInstance/DI — caller must keep the page type's constructor reachable (typically via typeof literals or source-generated factories).")]
     public bool Navigate(Type sourcePageType, object? parameter)
     {
         if (sourcePageType == null || !typeof(Page).IsAssignableFrom(sourcePageType))
@@ -153,6 +155,7 @@ public class Frame : ContentControl
     /// Navigates to the most recent entry in the back navigation history.
     /// </summary>
     /// <returns>True if navigation was successful; otherwise, false.</returns>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Re-instantiates a page type popped from the back stack via reflection.")]
     public bool GoBack()
     {
         if (!CanGoBack)
@@ -208,6 +211,7 @@ public class Frame : ContentControl
     /// Navigates to the most recent entry in the forward navigation history.
     /// </summary>
     /// <returns>True if navigation was successful; otherwise, false.</returns>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Re-instantiates a page type popped from the forward stack via reflection.")]
     public bool GoForward()
     {
         if (!CanGoForward)
@@ -259,6 +263,7 @@ public class Frame : ContentControl
         return true;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Activates a Page type via Activator.CreateInstance — caller must keep the page type's constructor reachable (typically via DI / source-generated factories).")]
     private Page? GetOrCreatePage(Type pageType)
     {
         // Check cache first

@@ -2016,10 +2016,18 @@ void SoftwareRenderTarget::PopClip()
 
 void SoftwareRenderTarget::PushRoundedRectClip(float x, float y, float w, float h, float rx, float ry)
 {
+    // Symmetric variant: all four corners get the smaller of the two radii so
+    // the SDF stays circular, then forward to the per-corner path.
+    float r = std::min(rx, ry);
+    PushPerCornerRoundedRectClip(x, y, w, h, r, r, r, r);
+}
+
+void SoftwareRenderTarget::PushPerCornerRoundedRectClip(float x, float y, float w, float h,
+    float tl, float tr, float br, float bl)
+{
     float tx, ty;
     currentTransform_.Apply(x, y, tx, ty);
 
-    // Transform dimensions through the current transform
     float tx2, ty2;
     currentTransform_.Apply(x + w, y + h, tx2, ty2);
     float tw = tx2 - tx;
@@ -2037,8 +2045,15 @@ void SoftwareRenderTarget::PushRoundedRectClip(float x, float y, float w, float 
     } else {
         clip = {tx, ty, tw, th};
     }
-    clip.rx = rx * scaleX_;
-    clip.ry = ry * scaleY_;
+    // Use the smaller of X/Y scale so non-uniform stretch doesn't produce an
+    // ellipse-shaped clip — the corners of a Border are conceptually circular.
+    float scale = std::min(scaleX_, scaleY_);
+    clip.radiusTL = tl * scale;
+    clip.radiusTR = tr * scale;
+    clip.radiusBR = br * scale;
+    clip.radiusBL = bl * scale;
+    clip.rx = std::max({ clip.radiusTL, clip.radiusTR, clip.radiusBR, clip.radiusBL });
+    clip.ry = clip.rx;
     clipStack_.push(clip);
 }
 

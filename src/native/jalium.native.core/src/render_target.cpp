@@ -628,6 +628,16 @@ JALIUM_API void jalium_push_rounded_rect_clip(JaliumRenderTarget* rt, float x, f
     }
 }
 
+JALIUM_API void jalium_push_per_corner_rounded_rect_clip(JaliumRenderTarget* rt,
+    float x, float y, float width, float height,
+    float tl, float tr, float br, float bl)
+{
+    if (rt) {
+        reinterpret_cast<jalium::RenderTarget*>(rt)->PushPerCornerRoundedRectClip(
+            x, y, width, height, tl, tr, br, bl);
+    }
+}
+
 JALIUM_API void jalium_pop_clip(JaliumRenderTarget* rt) {
     if (rt) {
         reinterpret_cast<jalium::RenderTarget*>(rt)->PopClip();

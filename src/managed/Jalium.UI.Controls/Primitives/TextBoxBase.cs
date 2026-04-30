@@ -566,7 +566,7 @@ public abstract class TextBoxBase : Control
     #region Template Handling
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
 

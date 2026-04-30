@@ -94,7 +94,7 @@ public class HyperlinkButton : ButtonBase
     #region Template
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
         _underlineBorder = GetTemplateChild("UnderlineBorder") as Border;

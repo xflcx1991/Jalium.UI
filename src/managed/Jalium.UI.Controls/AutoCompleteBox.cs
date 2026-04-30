@@ -414,7 +414,7 @@ public class AutoCompleteBox : TextBoxBase, IImeSupport
     }
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         if (_popup != null)
         {

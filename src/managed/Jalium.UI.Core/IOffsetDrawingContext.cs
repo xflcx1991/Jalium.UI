@@ -29,6 +29,15 @@ public interface IClipDrawingContext
         PushClip(bounds); // default: fall back to rectangular clip
 
     /// <summary>
+    /// Pushes a per-corner rounded-rect clip. Default forwards to
+    /// <see cref="PushRoundedRectClip(Rect, CornerRadius)"/> so contexts that
+    /// don't natively support asymmetric corners stay correct (the underlying
+    /// implementation may collapse to max-radius / rectangular fall-back).
+    /// </summary>
+    void PushPerCornerRoundedRectClip(Rect bounds, CornerRadius cornerRadius) =>
+        PushRoundedRectClip(bounds, cornerRadius);
+
+    /// <summary>
     /// Pops the most recent clip from the clip stack.
     /// </summary>
     void Pop();

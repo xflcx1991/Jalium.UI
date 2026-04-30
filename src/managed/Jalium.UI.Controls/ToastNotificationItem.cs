@@ -340,7 +340,7 @@ public class ToastNotificationItem : ContentControl
     private Button? _closeButton;
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
 

@@ -103,23 +103,7 @@ internal static partial class NativeMethods
     private static int s_d3d12InitTried;
     private static int s_vulkanInitTried;
     private static int s_metalInitTried;
-
-    /// <summary>
-    /// Static constructor: only registers the Software fallback backend.
-    /// GPU backends (D3D12 / Vulkan / Metal) stay completely unloaded — their
-    /// native DLLs (and transitive dependencies like vulkan-1.dll) are not
-    /// brought into the process — until <see cref="EnsureBackendInitialized"/>
-    /// is called for that specific backend, which happens lazily inside
-    /// <see cref="RenderContext"/>'s constructor and inside
-    /// <see cref="IsBackendAvailable"/>. This shaves the secondary backend's
-    /// LoadLibrary chain (and its first-chance DllNotFoundException when its
-    /// runtime probe fails) off the startup path on machines that only ever
-    /// use the platform-default backend.
-    /// </summary>
-    static NativeMethods()
-    {
-        TryInitializeBackend(SoftwareInit);
-    }
+    private static int s_softwareInitTried;
 
     /// <summary>
     /// Ensures the native init function for <paramref name="backend"/> has
@@ -129,11 +113,24 @@ internal static partial class NativeMethods
     /// registry. Repeated calls are a no-op. Safe to call from any thread.
     /// </summary>
     /// <remarks>
-    /// <see cref="RenderBackend.Software"/> is already initialized in the static
-    /// constructor and <see cref="RenderBackend.Auto"/> is a request marker, not
-    /// a backend — both are no-ops here. Callers that need to materialize the
-    /// platform default for an Auto request should resolve it through
-    /// <see cref="RenderBackendSelector"/> first.
+    /// <para>
+    /// All backends — including <see cref="RenderBackend.Software"/> — are
+    /// strictly lazy: their native DLLs are not brought into the process until
+    /// the first call to <see cref="EnsureBackendInitialized"/> for that
+    /// specific backend, which happens inside <see cref="RenderContext"/>'s
+    /// constructor and inside <see cref="IsBackendAvailable"/>. This means a
+    /// host that only ever uses the platform-default GPU backend (e.g. D3D12
+    /// on Windows) never pays the LoadLibrary cost — or first-chance
+    /// <see cref="DllNotFoundException"/> — for jalium.native.software, even
+    /// though the C# type system would otherwise force its <c>SoftwareInit</c>
+    /// P/Invoke to bind eagerly via a static constructor.
+    /// </para>
+    /// <para>
+    /// <see cref="RenderBackend.Auto"/> is a request marker, not a concrete
+    /// backend, and is intentionally a no-op here. Callers that need to
+    /// materialize the platform default for an Auto request should resolve it
+    /// through <see cref="RenderBackendSelector"/> first.
+    /// </para>
     /// </remarks>
     internal static void EnsureBackendInitialized(RenderBackend backend)
     {
@@ -158,10 +155,14 @@ internal static partial class NativeMethods
                 }
                 break;
             case RenderBackend.Software:
+                if (Interlocked.CompareExchange(ref s_softwareInitTried, 1, 0) == 0)
+                {
+                    TryInitializeBackend(SoftwareInit);
+                }
+                break;
             case RenderBackend.Auto:
             default:
-                // Software handled by the static ctor; Auto is not a concrete
-                // backend. Both are intentionally no-ops.
+                // Auto is a request marker, not a concrete backend.
                 break;
         }
     }
@@ -834,6 +835,14 @@ internal static partial class NativeMethods
     /// </summary>
     [LibraryImport(CoreLib, EntryPoint = "jalium_push_rounded_rect_clip")]
     internal static partial void PushRoundedRectClip(nint renderTarget, float x, float y, float width, float height, float rx, float ry);
+
+    /// <summary>
+    /// Pushes a per-corner rounded-rect clip with independent radii for each corner.
+    /// </summary>
+    [LibraryImport(CoreLib, EntryPoint = "jalium_push_per_corner_rounded_rect_clip")]
+    internal static partial void PushPerCornerRoundedRectClip(nint renderTarget,
+        float x, float y, float width, float height,
+        float tl, float tr, float br, float bl);
 
     /// <summary>
     /// Pops the current clip.

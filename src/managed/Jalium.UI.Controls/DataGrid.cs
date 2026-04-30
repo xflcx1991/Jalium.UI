@@ -463,7 +463,7 @@ public class DataGrid : Control, IColumnHeaderHost
 
     #region Template
 
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
 
@@ -2281,7 +2281,7 @@ public class DataGridRow : Control
         Focusable = false;
     }
 
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
 
@@ -2490,7 +2490,7 @@ public class DataGridColumnHeader : ContentControl
         AddHandler(MouseUpEvent, new MouseButtonEventHandler(OnMouseUpHandler), true);
     }
 
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
         _sortIndicator = GetTemplateChild("PART_SortIndicator") as TextBlock;

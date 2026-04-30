@@ -148,10 +148,13 @@ public sealed class JalxamlSourceGenerator : IIncrementalGenerator
         sb.AppendLine("    }");
         sb.AppendLine();
 
-        // Generate fields for named elements
+        // Generate fields for named elements.
+        // 字段声明为非可空 + `= null!;`:命名元素一定会被 InitializeComponent 中 XamlReader.LoadComponent
+        // 通过 _namedElements 字典在 ctor 体内回填,使用方不需要 `?.` 或 `!`。`null!` 抑制 CS8618
+        // (Source Generator 不能依赖 ctor 体执行顺序的 nullable 流分析)。
         foreach (var element in result.NamedElements)
         {
-            sb.AppendLine($"    private {element.TypeName}? {element.Name};");
+            sb.AppendLine($"    private {element.TypeName} {element.Name} = null!;");
         }
 
         if (result.NamedElements.Count > 0)

@@ -225,7 +225,7 @@ public class ComboBox : Selector
     }
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
 
@@ -1100,7 +1100,7 @@ public class ComboBoxItem : ContentControl
     }
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
         _backgroundBorder = GetTemplateChild("PART_BackgroundBorder") as Border;

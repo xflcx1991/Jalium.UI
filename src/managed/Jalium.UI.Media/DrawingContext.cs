@@ -1318,6 +1318,22 @@ public sealed class RectangleGeometry : Geometry
     public double RadiusY { get; set; }
 
     /// <summary>
+    /// Optional per-corner radii. When any component is non-zero, this overrides
+    /// <see cref="RadiusX"/>/<see cref="RadiusY"/> for downstream consumers that
+    /// support per-corner rounded rects (e.g. native rounded-rect clip).
+    /// </summary>
+    public CornerRadius CornerRadius { get; set; }
+
+    /// <summary>
+    /// True when <see cref="CornerRadius"/> carries non-uniform per-corner data
+    /// (i.e. the corners aren't all equal); consumers should honor it instead of
+    /// the scalar <see cref="RadiusX"/>/<see cref="RadiusY"/>.
+    /// </summary>
+    public bool HasPerCornerRadii =>
+        CornerRadius.TopLeft != 0 || CornerRadius.TopRight != 0 ||
+        CornerRadius.BottomRight != 0 || CornerRadius.BottomLeft != 0;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="RectangleGeometry"/> class.
     /// </summary>
     public RectangleGeometry()
@@ -1344,6 +1360,20 @@ public sealed class RectangleGeometry : Geometry
         Rect = rect;
         RadiusX = radiusX;
         RadiusY = radiusY;
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="RectangleGeometry"/> class with per-corner radii.
+    /// </summary>
+    public RectangleGeometry(Rect rect, CornerRadius cornerRadius)
+    {
+        Rect = rect;
+        CornerRadius = cornerRadius;
+        var maxR = Math.Max(
+            Math.Max(cornerRadius.TopLeft, cornerRadius.TopRight),
+            Math.Max(cornerRadius.BottomRight, cornerRadius.BottomLeft));
+        RadiusX = maxR;
+        RadiusY = maxR;
     }
 
     /// <inheritdoc />
@@ -1439,7 +1469,11 @@ public sealed class RectangleGeometry : Geometry
     /// <inheritdoc />
     public override Geometry Clone()
     {
-        return new RectangleGeometry(Rect, RadiusX, RadiusY) { Transform = Transform };
+        return new RectangleGeometry(Rect, RadiusX, RadiusY)
+        {
+            Transform = Transform,
+            CornerRadius = CornerRadius,
+        };
     }
 }
 

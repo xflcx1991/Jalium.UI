@@ -172,26 +172,38 @@ struct SoftwareTransform {
 
 struct SoftwareClipRect {
     float x, y, w, h;
-    float rx = 0, ry = 0; // corner radii (0 = rectangular)
+    // Per-corner radii (TL, TR, BR, BL).  rx/ry below kept for backward
+    // compatibility with code paths that still set the symmetric variant —
+    // those paths populate all four per-corner values too.
+    float radiusTL = 0, radiusTR = 0, radiusBR = 0, radiusBL = 0;
+    float rx = 0, ry = 0;
     bool Contains(float px, float py) const {
         if (px < x || px >= x + w || py < y || py >= y + h) return false;
-        if (rx <= 0 || ry <= 0) return true;
-        // Check rounded corners
+
+        // Cap each corner radius to half the smaller side so a single corner
+        // can't eat into the opposite edge.
+        const float halfMin = std::min(w, h) * 0.5f;
+        const float rTL = std::min(radiusTL, halfMin);
+        const float rTR = std::min(radiusTR, halfMin);
+        const float rBR = std::min(radiusBR, halfMin);
+        const float rBL = std::min(radiusBL, halfMin);
+        if (rTL <= 0 && rTR <= 0 && rBR <= 0 && rBL <= 0) return true;
+
         float lx = px - x, ly = py - y;
-        if (lx < rx && ly < ry) {
-            float dx = (lx - rx) / rx, dy = (ly - ry) / ry;
+        if (lx < rTL && ly < rTL && rTL > 0) {
+            float dx = (lx - rTL) / rTL, dy = (ly - rTL) / rTL;
             return (dx * dx + dy * dy) <= 1.0f;
         }
-        if (lx > w - rx && ly < ry) {
-            float dx = (lx - (w - rx)) / rx, dy = (ly - ry) / ry;
+        if (lx > w - rTR && ly < rTR && rTR > 0) {
+            float dx = (lx - (w - rTR)) / rTR, dy = (ly - rTR) / rTR;
             return (dx * dx + dy * dy) <= 1.0f;
         }
-        if (lx < rx && ly > h - ry) {
-            float dx = (lx - rx) / rx, dy = (ly - (h - ry)) / ry;
+        if (lx < rBL && ly > h - rBL && rBL > 0) {
+            float dx = (lx - rBL) / rBL, dy = (ly - (h - rBL)) / rBL;
             return (dx * dx + dy * dy) <= 1.0f;
         }
-        if (lx > w - rx && ly > h - ry) {
-            float dx = (lx - (w - rx)) / rx, dy = (ly - (h - ry)) / ry;
+        if (lx > w - rBR && ly > h - rBR && rBR > 0) {
+            float dx = (lx - (w - rBR)) / rBR, dy = (ly - (h - rBR)) / rBR;
             return (dx * dx + dy * dy) <= 1.0f;
         }
         return true;
@@ -236,6 +248,8 @@ public:
     void PushClip(float x, float y, float w, float h) override;
     void PopClip() override;
     void PushRoundedRectClip(float x, float y, float w, float h, float rx, float ry) override;
+    void PushPerCornerRoundedRectClip(float x, float y, float w, float h,
+        float tl, float tr, float br, float bl) override;
     void PunchTransparentRect(float x, float y, float w, float h) override;
     void PushOpacity(float opacity) override;
     void PopOpacity() override;

@@ -138,7 +138,16 @@ public partial class FrameworkElement : UIElement
     /// </summary>
     internal static double LayoutDpiScale { get; set; } = 1.0;
 
-    private static double SnapLayoutValue(double value)
+    /// <summary>
+    /// Snaps a layout value to the nearest physical pixel boundary so that
+    /// arranged children and any geometry a parent paints around those
+    /// children (background fills, border strokes) land on the same pixel
+    /// rows/columns. Internal callers must use this when computing rects
+    /// that need to align with a child's <c>_visualBounds</c> — otherwise
+    /// fractional thicknesses (e.g. mid-transition values like 2.5) leave
+    /// 0.5 px seams between the parent's background and the child.
+    /// </summary>
+    internal static double SnapLayoutValue(double value)
     {
         if (!double.IsFinite(value))
         {
@@ -260,6 +269,20 @@ public partial class FrameworkElement : UIElement
     public static readonly DependencyProperty ToolTipProperty =
         DependencyProperty.Register(nameof(ToolTip), typeof(object), typeof(FrameworkElement),
             new PropertyMetadata(null, OnToolTipPropertyChanged));
+
+    /// <summary>
+    /// Identifies the <see cref="ContextMenu"/> dependency property.
+    /// </summary>
+    /// <remarks>
+    /// Declared as <see cref="object"/> because the concrete <c>ContextMenu</c> control type lives in
+    /// <c>Jalium.UI.Controls</c>, which depends on this Core assembly. <c>ContextMenuService</c> aliases this
+    /// DP so <c>ContextMenuService.ContextMenuProperty</c> and <c>FrameworkElement.ContextMenuProperty</c>
+    /// resolve to the same identifier — assigning either updates the same store.
+    /// </remarks>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Other)]
+    public static readonly DependencyProperty ContextMenuProperty =
+        DependencyProperty.Register(nameof(ContextMenu), typeof(object), typeof(FrameworkElement),
+            new PropertyMetadata(null));
 
     /// <summary>
     /// Identifies the Style dependency property.
@@ -678,6 +701,18 @@ public partial class FrameworkElement : UIElement
     {
         get => GetValue(ToolTipProperty);
         set => SetValue(ToolTipProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the context menu shown when the user requests it on this element. The runtime
+    /// type is <c>Jalium.UI.Controls.ContextMenu</c>; the property is typed as <see cref="object"/>
+    /// because <c>FrameworkElement</c> lives in Core and cannot reference the Controls assembly.
+    /// </summary>
+    [DevToolsPropertyCategory(DevToolsPropertyCategory.Other)]
+    public object? ContextMenu
+    {
+        get => GetValue(ContextMenuProperty);
+        set => SetValue(ContextMenuProperty, value);
     }
 
     /// <summary>

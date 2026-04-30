@@ -100,7 +100,7 @@ public class Separator : Control
     private Border? _separatorBorder;
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
         _separatorBorder = GetTemplateChild("SeparatorBorder") as Border;

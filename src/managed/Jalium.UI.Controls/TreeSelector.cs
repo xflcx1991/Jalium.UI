@@ -967,7 +967,7 @@ public class TreeSelector : ItemsControl
     #region Template / Trigger / Dropdown
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
 
@@ -1647,7 +1647,7 @@ public class TreeSelectorItem : HeaderedItemsControl
     #region Template
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
 

@@ -441,6 +441,7 @@ public class TextBlock : FrameworkElement
     {
         var lineHeight = GetLineHeight();
         var renderWidth = RenderSize.Width;
+        var verticalOffset = GetVerticalContentOffset(lineHeight);
 
         // Rebuild formatted text cache only when layout or text properties changed
         if (_formattedLinesCacheDirty || _cachedFormattedLines == null ||
@@ -482,8 +483,59 @@ public class TextBlock : FrameworkElement
         {
             var ft = _cachedFormattedLines[i];
             if (ft == null) continue;
-            dc.DrawText(ft, new Point(GetLineOriginX(_layoutLines[i], renderWidth), i * lineHeight));
+            dc.DrawText(ft, new Point(GetLineOriginX(_layoutLines[i], renderWidth), verticalOffset + i * lineHeight));
         }
+    }
+
+    /// <summary>
+    /// Computes the vertical offset that visually centers the rendered glyphs inside the
+    /// arranged height. Two-fold concern handled here:
+    ///
+    /// 1. Extra height from a Stretch parent (e.g. ContentPresenter) or the +2 padding
+    ///    from <see cref="MeasureOverride"/> — without compensation that slack lands
+    ///    entirely at the bottom and the text looks top-aligned.
+    ///
+    /// 2. <c>LineHeight</c> includes <c>LineGap</c> (font-designer-recommended space
+    ///    BETWEEN lines), but the glyphs only occupy <c>Ascent + Descent</c> at the
+    ///    top of the layout box (DirectWrite's default near-paragraph alignment).
+    ///    Centering on <c>LineHeight</c> would still leave the glyph block shifted
+    ///    upward by <c>LineGap / 2</c> per line — exactly the "Border looks taller
+    ///    on the bottom" symptom this method exists to fix.
+    ///
+    /// We center on the actual glyph extent (<c>Ascent + Descent</c>), which is the
+    /// pixel area the user perceives as "the text".
+    /// </summary>
+    private double GetVerticalContentOffset(double lineHeight)
+    {
+        if (lineHeight <= 0 || _layoutLines.Count == 0)
+        {
+            return 0;
+        }
+
+        var fontFamily = FontFamily ?? FrameworkElement.DefaultFontFamilyName;
+        var fontSize = FontSize > 0 ? FontSize : 14;
+        var metrics = TextMeasurement.GetFontMetrics(
+            fontFamily,
+            fontSize,
+            FontWeight.ToOpenTypeWeight(),
+            FontStyle.ToOpenTypeStyle());
+
+        // Visible glyph height per line: Ascent + Descent (no LineGap).
+        var glyphHeight = metrics.Ascent + metrics.Descent;
+        if (glyphHeight <= 0)
+        {
+            // Native metrics unavailable; fall back to box-based centering.
+            var totalLinesHeight = _layoutLines.Count * lineHeight;
+            var fallbackSlack = RenderSize.Height - totalLinesHeight;
+            return fallbackSlack > 0 ? fallbackSlack / 2 : 0;
+        }
+
+        // For N lines: lines 1..N-1 each advance by a full lineHeight (since the
+        // glyph + lineGap stack up between baselines), and the last line contributes
+        // its glyph height. So visible extent = (N-1) * lineHeight + glyphHeight.
+        var totalVisibleHeight = (_layoutLines.Count - 1) * lineHeight + glyphHeight;
+        var slack = RenderSize.Height - totalVisibleHeight;
+        return slack > 0 ? slack / 2 : 0;
     }
 
     private void DrawSelection(DrawingContext dc)
@@ -497,6 +549,7 @@ public class TextBlock : FrameworkElement
         var selectionEnd = _selectionStart + _selectionLength;
         var lineHeight = GetLineHeight();
         var renderWidth = RenderSize.Width;
+        var verticalOffset = GetVerticalContentOffset(lineHeight);
 
         for (int i = 0; i < _layoutLines.Count; i++)
         {
@@ -512,7 +565,7 @@ public class TextBlock : FrameworkElement
             var startInLine = Math.Max(0, _selectionStart - line.StartIndex);
             var endInLine = Math.Min(line.Length, selectionEnd - line.StartIndex);
             var lineOriginX = GetLineOriginX(line, renderWidth);
-            var y = i * lineHeight;
+            var y = verticalOffset + i * lineHeight;
 
             if (endInLine > startInLine)
             {
@@ -675,7 +728,7 @@ public class TextBlock : FrameworkElement
             if (current is ButtonBase or MenuFlyoutItem or MenuItem or MenuBarItem or Thumb or ListBoxItem
                 or ComboBoxItem or TabItem or TreeViewItem or AutoCompleteBox or DataGrid
                 or DataGridColumnHeader or DataGridRowHeader or NavigationViewItem or TitleBar
-                or StatusBarItem or ToolBar or Popup or ContextMenu or ScrollBar
+                or StatusBarItem or ToolBar or Popup or Jalium.UI.Controls.ContextMenu or ScrollBar
                 or CalendarButton or CalendarDayButton)
             {
                 return true;
@@ -849,9 +902,11 @@ public class TextBlock : FrameworkElement
         }
 
         var lineHeight = GetLineHeight();
+        var verticalOffset = GetVerticalContentOffset(lineHeight);
+        var adjustedY = position.Y - verticalOffset;
         var lineIndex = lineHeight <= 0
             ? 0
-            : Math.Clamp((int)Math.Floor(Math.Max(0, position.Y) / lineHeight), 0, _layoutLines.Count - 1);
+            : Math.Clamp((int)Math.Floor(Math.Max(0, adjustedY) / lineHeight), 0, _layoutLines.Count - 1);
 
         var line = _layoutLines[lineIndex];
         var lineOriginX = GetLineOriginX(line, RenderSize.Width);

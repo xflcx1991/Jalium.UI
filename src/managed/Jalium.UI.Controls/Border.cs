@@ -402,16 +402,40 @@ public class Border : FrameworkElement
     /// <inheritdoc />
     protected override Size ArrangeOverride(Size finalSize)
     {
-        var border = BorderThickness;
+        var rawBorder = BorderThickness;
         var padding = Padding;
 
         if (_child != null)
         {
+            // Snap each side of BorderThickness independently before computing
+            // the inner rect so the child's _visualBounds lines up exactly
+            // with the background/stroke geometry OnRender paints — both
+            // sides of the equation reduce the snapped per-side BorderThickness
+            // from the available size, so there is no 0.5 px disagreement
+            // mid-transition (raw BT=1.5 → snapped left=2, snapped right=2,
+            // inner rect = full - 4 — matching what OnRender computes).
+            // Padding is *not* snapped; it stays in DIPs since the user
+            // expressed it in DIPs and it's the same on every frame.
+            var snappedLeft = SnapLayoutValue(rawBorder.Left);
+            var snappedTop = SnapLayoutValue(rawBorder.Top);
+            var snappedRight = SnapLayoutValue(rawBorder.Right);
+            var snappedBottom = SnapLayoutValue(rawBorder.Bottom);
+
+            var leftInset = snappedLeft + padding.Left;
+            var topInset = snappedTop + padding.Top;
+            var rightInset = snappedRight + padding.Right;
+            var bottomInset = snappedBottom + padding.Bottom;
+
+            var x = SnapLayoutValue(leftInset);
+            var y = SnapLayoutValue(topInset);
+            var right = SnapLayoutValue(finalSize.Width - rightInset);
+            var bottom = SnapLayoutValue(finalSize.Height - bottomInset);
+
             var childRect = new Rect(
-                border.Left + padding.Left,
-                border.Top + padding.Top,
-                Math.Max(0, finalSize.Width - border.Left - border.Right - padding.Left - padding.Right),
-                Math.Max(0, finalSize.Height - border.Top - border.Bottom - padding.Top - padding.Bottom));
+                x,
+                y,
+                Math.Max(0, right - x),
+                Math.Max(0, bottom - y));
 
             _child.Arrange(childRect);
             // Note: Do NOT call SetVisualBounds here - ArrangeCore already handles margin
@@ -442,7 +466,11 @@ public class Border : FrameworkElement
 
         if (maxRadius > 0)
         {
-            return new RectangleGeometry(clipRect, maxRadius, maxRadius);
+            // Carry the full per-corner CornerRadius downstream so the native
+            // clip honors asymmetric corners (e.g. CornerRadius="13,13,0,0").
+            // RadiusX/RadiusY stay populated with maxRadius for any consumer
+            // that hasn't been taught about HasPerCornerRadii yet.
+            return new RectangleGeometry(clipRect, cornerRadius);
         }
 
         return clipRect;
@@ -516,8 +544,28 @@ public class Border : FrameworkElement
             return;
 
         var rect = new Rect(RenderSize);
-        var border = BorderThickness;
+        var rawBorder = BorderThickness;
         var cornerRadius = CornerRadius;
+
+        // Snap each side of BorderThickness to physical pixels so the stroke,
+        // the Background fill, and the child's _visualBounds all land on the
+        // same pixel rows/columns. ArrangeCore snaps _visualBounds origin via
+        // SnapLayoutValue; if we used the raw fractional BorderThickness for
+        // stroke/background here, mid-transition values like 1.5 would put
+        // the stroke inner edge at X=1.5 while the snapped child arrives at
+        // X=2 — the 0.5 px seam between them shows through to whatever lies
+        // behind the Border (typically the window background), which is the
+        // visible "BorderThickness doesn't work during transition" symptom.
+        //
+        // Snapping per side rather than collapsing to a single uniform value
+        // preserves asymmetric-thickness behaviour; rendering will only ever
+        // disagree with rawBorder by sub-pixel amounts that the layout
+        // pipeline already discarded.
+        var border = new Thickness(
+            SnapLayoutValue(rawBorder.Left),
+            SnapLayoutValue(rawBorder.Top),
+            SnapLayoutValue(rawBorder.Right),
+            SnapLayoutValue(rawBorder.Bottom));
         var borderWidth = Math.Max(border.Left, Math.Max(border.Top, Math.Max(border.Right, border.Bottom)));
         var halfBorder = borderWidth / 2;
 
@@ -852,23 +900,56 @@ public class Border : FrameworkElement
         }
         else
         {
-            // Standard rounded rectangle path
-            // Skip Background fill when LiquidGlass is enabled (same reason as SuperEllipse path).
+            // Standard rounded rectangle path.
+            //
+            // The native renderer's stroke path centres the pen on the rect's
+            // edge — half the pen sits inside the rect, half sits outside.
+            // We deliberately draw the *Background* on the inner rect (the
+            // child's arranged rect, inset by BorderThickness on each side)
+            // rather than on the stroke's centre rect: the inner-half of the
+            // stroke would otherwise overpaint Background pixels that the
+            // child needs to read against (text antialiasing, hover-state
+            // tints, etc.), which manifests as the border colour bleeding
+            // into the content area.
+            //
+            // Stroke uses the maximum side as a single pen thickness — this
+            // is correct when BorderThickness is uniform; for asymmetric
+            // thicknesses the four sides receive the max width on every
+            // side, which the child's arranged rect masks on the thinner
+            // sides as it renders on top of the stroke. (Asymmetric thickness
+            // with a fully-transparent child is the only case where this
+            // shortcut shows; non-uniform per-side stroke would need a
+            // path-fill ring which the native compound-fill pipeline doesn't
+            // exactly match the SDF stroke renderer for sub-pixel AA yet.)
+            // Snap the inner rect to physical pixels using the same rule as
+            // ArrangeOverride (and FrameworkElement.ArrangeCore). This keeps
+            // the Background fill flush with the child's _visualBounds even
+            // when BorderThickness is fractional (mid-transition values like
+            // 2.5), eliminating the 0.5 px seam where the border colour
+            // would otherwise leak into the content area.
+            var snappedInnerLeft = SnapLayoutValue(rect.X + border.Left);
+            var snappedInnerTop = SnapLayoutValue(rect.Y + border.Top);
+            var snappedInnerRight = SnapLayoutValue(rect.X + rect.Width - border.Right);
+            var snappedInnerBottom = SnapLayoutValue(rect.Y + rect.Height - border.Bottom);
+
+            var innerRect = new Rect(
+                snappedInnerLeft,
+                snappedInnerTop,
+                Math.Max(0, snappedInnerRight - snappedInnerLeft),
+                Math.Max(0, snappedInnerBottom - snappedInnerTop));
+
             if (Background != null && !LiquidGlass)
             {
-                var backgroundRect = new Rect(
-                    rect.X + halfBorder,
-                    rect.Y + halfBorder,
-                    Math.Max(0, rect.Width - borderWidth),
-                    Math.Max(0, rect.Height - borderWidth));
-
                 var innerRadius = new CornerRadius(
-                    Math.Max(0, cornerRadius.TopLeft - halfBorder),
-                    Math.Max(0, cornerRadius.TopRight - halfBorder),
-                    Math.Max(0, cornerRadius.BottomRight - halfBorder),
-                    Math.Max(0, cornerRadius.BottomLeft - halfBorder));
+                    Math.Max(0, cornerRadius.TopLeft - Math.Max(border.Left, border.Top)),
+                    Math.Max(0, cornerRadius.TopRight - Math.Max(border.Top, border.Right)),
+                    Math.Max(0, cornerRadius.BottomRight - Math.Max(border.Right, border.Bottom)),
+                    Math.Max(0, cornerRadius.BottomLeft - Math.Max(border.Bottom, border.Left)));
 
-                dc.DrawRoundedRectangle(Background, null, backgroundRect, innerRadius);
+                if (innerRect.Width > 0 && innerRect.Height > 0)
+                {
+                    dc.DrawRoundedRectangle(Background, null, innerRect, innerRadius);
+                }
             }
 
             if (BorderBrush != null && borderWidth > 0)

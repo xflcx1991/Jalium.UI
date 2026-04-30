@@ -1,4 +1,4 @@
-using System.Diagnostics.CodeAnalysis;
+﻿using System.Diagnostics.CodeAnalysis;
 using Jalium.UI.Data;
 
 namespace Jalium.UI;
@@ -11,7 +11,7 @@ public sealed class Style
 {
     private readonly List<Setter> _setters = new();
     private readonly List<EventSetter> _eventSetters = new();
-    private readonly List<Trigger> _triggers = new();
+    private readonly List<TriggerBase> _triggers = new();
     private bool _isSealed;
 
     /// <summary>
@@ -37,7 +37,7 @@ public sealed class Style
     /// <summary>
     /// Gets the collection of triggers.
     /// </summary>
-    public IList<Trigger> Triggers => _triggers;
+    public IList<TriggerBase> Triggers => _triggers;
 
     /// <summary>
     /// Gets a value that indicates whether the style is read-only.
@@ -157,6 +157,15 @@ public sealed class Style
             BasedOn.Remove(element, visited);
         }
     }
+
+    /// <summary>
+    /// 上层（典型为 Jalium.UI.Xaml 的 TypeConverterRegistry）注入的字符串值转换器。
+    /// Setter / TriggerBase 内部 <c>ConvertValueIfNeeded</c> 的 hardcoded fast-path 命中
+    /// 不到目标类型时会回落到这里，从而把 jalxaml 里写出的字符串值（例如
+    /// <c>Cursor="Hand"</c>、自定义 Brush 名等）正确转成目标 DP 类型，而不是把原始字符串
+    /// 塞进 layer 让渲染层强转崩溃。
+    /// </summary>
+    internal static Func<string, Type, object?>? StringValueConverter { get; set; }
 }
 
 /// <summary>
@@ -246,6 +255,17 @@ public sealed class Setter
             return;
         }
 
+        // Setter.Value 可以是一个 BindingBase（典型场景：jalxaml 里写
+        // <Setter Property="Foo" Value="{TemplateBinding Bar}" /> 或 RelativeSource Binding）。
+        // 之前会把整个 BindingBase 当成属性值塞进 layer，OnRender 时强转成 Brush 等
+        // 目标类型直接抛 InvalidCastException — 控件渲染崩溃。这里改为标准 WPF 行为：
+        // 让 binding 在目标 DP 上建立连接，由 BindingExpression 自行把 source 值流到 layer。
+        if (Value is BindingBase binding)
+        {
+            target.SetBinding(actualProperty, binding);
+            return;
+        }
+
         // Convert value to the correct type if needed
         var valueToSet = ConvertValueIfNeeded(Value, actualProperty.PropertyType);
         target.SetLayerValue(actualProperty, valueToSet, DependencyObject.LayerValueSource.StyleSetter);
@@ -259,26 +279,61 @@ public sealed class Setter
         if (value == null) return null;
         if (targetType.IsInstanceOfType(value)) return value;
 
+        // Handle nullable types - get the underlying type
+        var underlyingType = Nullable.GetUnderlyingType(targetType);
+        var actualType = underlyingType ?? targetType;
+
         // String to target type conversion
         if (value is string stringValue)
         {
-            if (targetType == typeof(double))
+            if (actualType == typeof(double))
                 return double.Parse(stringValue, System.Globalization.CultureInfo.InvariantCulture);
-            if (targetType == typeof(float))
+            if (actualType == typeof(float))
                 return float.Parse(stringValue, System.Globalization.CultureInfo.InvariantCulture);
-            if (targetType == typeof(int))
+            if (actualType == typeof(int))
                 return int.Parse(stringValue, System.Globalization.CultureInfo.InvariantCulture);
-            if (targetType == typeof(bool))
+            if (actualType == typeof(bool))
                 return bool.Parse(stringValue);
-            if (targetType.IsEnum)
-                return Enum.Parse(targetType, stringValue, ignoreCase: true);
-            if (targetType == typeof(CornerRadius))
+            if (actualType.IsEnum)
+                return Enum.Parse(actualType, stringValue, ignoreCase: true);
+            if (actualType == typeof(CornerRadius))
                 return ParseCornerRadius(stringValue);
-            if (targetType == typeof(Thickness))
+            if (actualType == typeof(Thickness))
                 return ParseThickness(stringValue);
+            if (actualType == typeof(Cursor))
+                return ParseCursor(stringValue);
+
+            // 没命中 hardcoded 列表 — 走 Style 提供的字符串值转换器钩子。
+            // 详细说明见 TriggerBase.ConvertValueIfNeeded 的同名 fallback。
+            var converter = Style.StringValueConverter;
+            if (converter != null)
+            {
+                try
+                {
+                    var converted = converter(stringValue, actualType);
+                    if (converted != null && actualType.IsInstanceOfType(converted))
+                        return converted;
+                }
+                catch
+                {
+                    // 转换失败不抛 — 让上层防御逻辑处理。
+                }
+            }
         }
 
         return value;
+    }
+
+    private static Cursor? ParseCursor(string value)
+    {
+        var trimmed = value.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+            return null;
+
+        if (Enum.TryParse<CursorType>(trimmed, ignoreCase: true, out var cursorType))
+            return new Cursor(cursorType);
+
+        return null;
     }
 
     /// <summary>
@@ -425,7 +480,7 @@ public sealed class Setter
 /// Base class for triggers that conditionally apply property values.
 /// </summary>
 [ContentProperty("Setters")]
-public abstract class Trigger
+public abstract class TriggerBase
 {
     /// <summary>
     /// Gets the collection of setters to apply when the trigger is active.
@@ -447,7 +502,7 @@ public abstract class Trigger
     /// Gets or sets the parent template triggers collection.
     /// This is set when the trigger is attached as part of a ControlTemplate.
     /// </summary>
-    internal IList<Trigger>? ParentTemplateTriggers { get; set; }
+    internal IList<TriggerBase>? ParentTemplateTriggers { get; set; }
 
     /// <summary>
     /// Attaches this trigger to the specified element.
@@ -508,6 +563,30 @@ public abstract class Trigger
                 continue;
             }
 
+            // 触发器内的 Setter.Value 也可能是 BindingBase（{TemplateBinding ...} /
+            // {Binding ..., RelativeSource={RelativeSource TemplatedParent}} 等）。
+            // 直接走 SetLayerValue 会把 BindingBase 当成属性值灌进 DP，触发渲染时
+            // 类型强转崩溃。WPF 行为：让 binding 在 trigger 激活期间建立连接，
+            // 失活时由 RemoveTriggerSetters 调用 ClearBinding 还原。
+            if (setter.Value is BindingBase binding)
+            {
+                target.SetBinding(actualProperty, binding);
+                continue;
+            }
+
+            // 防御：如果 setter.Value 类型与目标 DP 不兼容（典型场景：上游 markup
+            // extension 在 Setter 上下文下没解析成可用值），跳过 SetLayerValue 而不是
+            // 把脏值塞进 DP。否则后续渲染从该 DP 强转目标类型会抛 InvalidCastException
+            // （例如 Brush DP 里塞了一个 BindingBase 子类实例）。
+            if (setter.Value != null &&
+                !actualProperty.PropertyType.IsInstanceOfType(setter.Value) &&
+                setter.Value is not string)
+            {
+                System.Diagnostics.Trace.WriteLine(
+                    $"[Jalium.UI] ApplyTriggerSetters skip: setter.Value 类型 {setter.Value.GetType().Name} 与 DP {actualProperty.OwnerType.Name}.{actualProperty.Name} ({actualProperty.PropertyType.Name}) 不兼容。");
+                continue;
+            }
+
             // Convert value to the correct type if needed and apply
             var valueToSet = ConvertValueIfNeeded(setter.Value, actualProperty.PropertyType);
             target.SetLayerValue(actualProperty, valueToSet, layerSource);
@@ -565,9 +644,46 @@ public abstract class Trigger
                 return ParseCornerRadius(stringValue);
             if (actualType == typeof(Thickness))
                 return ParseThickness(stringValue);
+            if (actualType == typeof(Cursor))
+                return ParseCursor(stringValue);
+
+            // 没命中 hardcoded 列表 — 走 Style 提供的字符串值转换器钩子（典型为 Xaml 的
+            // TypeConverterRegistry 在 ModuleInitializer 里注入）。这避免了把 Cursor /
+            // Brush / GridLength 等框架内置类型在 Core 层重复实现一遍。
+            var converter = Style.StringValueConverter;
+            if (converter != null)
+            {
+                try
+                {
+                    var converted = converter(stringValue, actualType);
+                    if (converted != null && actualType.IsInstanceOfType(converted))
+                        return converted;
+                }
+                catch
+                {
+                    // 转换失败不抛 — 留给后续防御逻辑（如 ApplyTriggerSetters 的类型不匹配跳过）
+                    // 处理；否则一个错配的 Setter 会拖垮整个 Style 加载。
+                }
+            }
         }
 
         return value;
+    }
+
+    /// <summary>
+    /// 把字符串解析成 <see cref="Cursor"/>。Core 自己处理这条路径是因为 Cursor 类型也在
+    /// Core 程序集里，但完整的 CursorConverter 在 Jalium.UI.Input — Style.cs 不能反向引用。
+    /// </summary>
+    private static Cursor? ParseCursor(string value)
+    {
+        var trimmed = value.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+            return null;
+
+        if (Enum.TryParse<CursorType>(trimmed, ignoreCase: true, out var cursorType))
+            return new Cursor(cursorType);
+
+        return null;
     }
 
     /// <summary>
@@ -653,6 +769,12 @@ public abstract class Trigger
             {
                 DynamicResourceBindingOperations.ClearDynamicResource(target, actualProperty);
             }
+            else if (setter.Value is BindingBase)
+            {
+                // ApplyTriggerSetters 用 SetBinding 建立的 binding 在 LocalValue 层占用了 DP，
+                // 触发器失活时必须显式断开，否则 trigger 已经离开了但 binding 还在源端持续推值。
+                target.ClearBinding(actualProperty);
+            }
 
             _activeSetters.Remove(key);
             target.ClearLayerValue(actualProperty, layerSource);
@@ -666,7 +788,7 @@ public abstract class Trigger
         if (needsReapply.Count > 0)
         {
             // Collect triggers to check - from ParentStyle or from ParentTemplateTriggers
-            IEnumerable<Trigger>? triggersToCheck = ParentStyle?.Triggers ?? ParentTemplateTriggers;
+            IEnumerable<TriggerBase>? triggersToCheck = ParentStyle?.Triggers ?? ParentTemplateTriggers;
 
             if (triggersToCheck != null)
             {
@@ -698,6 +820,12 @@ public abstract class Trigger
                             if (setter.Value is IDynamicResourceReference dynamicReference)
                             {
                                 DynamicResourceBindingOperations.SetDynamicResource(target, actualProperty, dynamicReference.ResourceKey, layerSource);
+                            }
+                            else if (setter.Value is BindingBase reapplyBinding)
+                            {
+                                // 与 ApplyTriggerSetters 对齐：仍激活的兄弟触发器若用 Binding 作为 Value，
+                                // 重新激活时也要走 SetBinding,而不是把 Binding 对象塞进 layer 触发崩溃。
+                                target.SetBinding(actualProperty, reapplyBinding);
                             }
                             else
                             {
@@ -775,7 +903,7 @@ public abstract class Trigger
 /// <summary>
 /// Represents a trigger that applies property values when a property value equals a specified value.
 /// </summary>
-public sealed class PropertyTrigger : Trigger
+public sealed class Trigger : TriggerBase
 {
     /// <summary>
     /// Tracks per-element state since a single trigger can be attached to multiple elements (shared styles).
@@ -915,7 +1043,7 @@ public sealed class BindingCondition
 /// Represents a trigger that applies property values when multiple conditions are all true.
 /// </summary>
 [ContentProperty("Setters")]
-public sealed class MultiTrigger : Trigger
+public sealed class MultiTrigger : TriggerBase
 {
     /// <summary>
     /// Tracks per-element state since a single trigger can be attached to multiple elements (shared styles).
@@ -1042,7 +1170,7 @@ public sealed class MultiTrigger : Trigger
 /// <summary>
 /// Represents a trigger that applies property values when data equals a specified value.
 /// </summary>
-public sealed class DataTrigger : Trigger
+public sealed class DataTrigger : TriggerBase
 {
     /// <summary>
     /// Tracks per-element state since a single trigger can be attached to multiple elements (shared styles).
@@ -1161,7 +1289,7 @@ public sealed class DataTrigger : Trigger
 /// <summary>
 /// Represents a trigger that applies property values when an event occurs.
 /// </summary>
-public sealed class EventTrigger : Trigger
+public sealed class EventTrigger : TriggerBase
 {
     private FrameworkElement? _attachedElement;
 
@@ -1217,7 +1345,7 @@ public sealed class EventTrigger : Trigger
 /// Represents a trigger that applies property values when multiple data binding conditions are all true.
 /// </summary>
 [ContentProperty("Setters")]
-public sealed class MultiDataTrigger : Trigger
+public sealed class MultiDataTrigger : TriggerBase
 {
     /// <summary>
     /// Tracks per-element state since a single trigger can be attached to multiple elements (shared styles).

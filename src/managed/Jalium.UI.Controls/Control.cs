@@ -256,7 +256,7 @@ public class Control : FrameworkElement
 
     private FrameworkElement? _templateRoot;
     private bool _templateApplied;
-    private IList<Trigger>? _appliedTemplateTriggers;
+    private IList<TriggerBase>? _appliedTemplateTriggers;
 
     #endregion
 
@@ -518,7 +518,7 @@ public class Control : FrameworkElement
     /// <summary>
     /// Called after the template is applied. Override this to get references to template parts.
     /// </summary>
-    protected virtual void OnApplyTemplate()
+    public virtual void OnApplyTemplate()
     {
     }
 

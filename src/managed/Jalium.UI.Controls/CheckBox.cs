@@ -21,7 +21,7 @@ public class CheckBox : ToggleButton
     }
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
         _checkMark = GetTemplateChild("CheckMark") as Shapes.Path;

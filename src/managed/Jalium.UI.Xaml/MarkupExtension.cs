@@ -742,16 +742,21 @@ public sealed class TemplateBindingExtension : MarkupExtension
         var targetObject = provideValueTarget?.TargetObject;
         var targetProperty = provideValueTarget?.TargetProperty as DependencyProperty;
 
-        if (targetObject is not DependencyObject depObj || targetProperty == null)
+        if (targetObject is DependencyObject depObj && targetProperty != null)
+        {
+            // 普通元素属性：立即建立 binding，让 BindingExpression 把值流到目标 DP。
+            var binding = new DeferredTemplateBinding(Property);
+            depObj.SetBinding(targetProperty, binding);
+            // 返回 null 而不是 binding：避免下游再把 binding 实例当作属性值二次写入。
             return null;
+        }
 
-        // Create a deferred template binding that will be resolved when TemplatedParent is set
-        // The binding stores the property name and resolves it against the TemplatedParent type
-        var binding = new DeferredTemplateBinding(Property);
-        depObj.SetBinding(targetProperty, binding);
-
-        // Return the binding expression (though SetBinding already applied it)
-        return null;
+        // Setter / Trigger 等上下文：targetObject 不是 DependencyObject 或目标属性不是
+        // DependencyProperty（例如 setter.Value 的 PropertyInfo），无法立即建立连接。
+        // 此时返回 BindingBase 实例,由 Setter.Apply / ApplyTriggerSetters 在 trigger 触发
+        // 时调用 SetBinding。如果在这里返回 null,setter.Value 会被设成 null,触发器激活后
+        // 直接把目标 DP 写成 null（典型现象：hover 后文本变透明、边框消失）。
+        return new DeferredTemplateBinding(Property);
     }
 }
 

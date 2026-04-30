@@ -186,7 +186,13 @@ gradient.GradientStops.Add(new GradientStop(Color.FromRgb(0, 188, 212), 1));
   - `SolidColorBrush`
   - `LinearGradientBrush`
   - `RadialGradientBrush`
-- `ImageBrush`、`DrawingBrush`、`VisualBrush` 类型在媒体层中已定义，但当前 GPU 绘制实现没有像前三者那样直接映射到 native 画刷
+  - `ImageBrush`(填充走 `TileBrushHelper` + 形状裁剪 + `DrawBitmap`,描边降级为图像平均色的纯色)
+- `DrawingBrush`、`VisualBrush` 类型在媒体层中已定义,但当前 GPU 绘制实现尚未映射到 native 画刷
+- `ImageBrush` 填充注意事项:
+  - 矩形 / 圆角矩形 / 椭圆走精确裁剪
+  - 任意 `PathGeometry` 仅做包围盒裁剪(图像可能溢出路径形状,常见 SVG 路径仍能可视)
+  - `Stretch` / `AlignmentX` / `AlignmentY` / `Viewport` / `Viewbox` / `TileMode`(包含 `Tile`/`FlipX`/`FlipY`/`FlipXY`)均按 WPF 语义处理
+  - `Brush.Transform` 暂未生效(与 `LinearGradientBrush` / `RadialGradientBrush` 行为一致)
 
 ### 4.2 `Pen`
 

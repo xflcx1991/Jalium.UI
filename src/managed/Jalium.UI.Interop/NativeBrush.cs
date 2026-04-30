@@ -26,6 +26,14 @@ public sealed class NativeBrush : IDisposable
     internal Color CachedColor { get; set; }
 
     /// <summary>
+    /// For ImageBrush-stroke fallbacks: the <see cref="ImageSource"/> the average
+    /// color was sampled from. Lets the cache lookup detect when the underlying
+    /// source has been swapped on the brush and re-sample instead of returning a
+    /// stale color. <see langword="null"/> for solid / gradient brushes.
+    /// </summary>
+    internal ImageSource? CachedImageSource { get; set; }
+
+    /// <summary>
     /// Gets or sets the access sequence for LRU eviction.
     /// </summary>
     internal long LastAccessSequence { get; set; }

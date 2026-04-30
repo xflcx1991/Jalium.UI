@@ -1,3 +1,4 @@
+using System.Reflection;
 using Jalium.UI.Media.Imaging;
 using Jalium.UI.Media.Native;
 
@@ -242,16 +243,131 @@ public sealed class BitmapImage : ImageSource, IDisposable, IReclaimableResource
 
     private void LoadFromUri(Uri uri)
     {
-        if (uri.IsFile || uri.Scheme == "file")
+        if (uri.IsAbsoluteUri && (uri.IsFile || uri.Scheme == "file"))
         {
             LoadFromFile(uri.LocalPath);
+            return;
         }
-        else if (uri.Scheme == "http" || uri.Scheme == "https")
+
+        if (uri.IsAbsoluteUri && (uri.Scheme == "http" || uri.Scheme == "https"))
         {
             var cts = new CancellationTokenSource();
             _httpCts = cts;
             _ = LoadFromHttpAsync(uri, cts.Token);
+            return;
         }
+
+        if (!uri.IsAbsoluteUri)
+        {
+            // Relative URI: resolve against assembly manifest resources first
+            // (covers <Resource Include="..."> items embedded by Jalium.UI.Build's
+            // EmbedJaliumResourceItems target), then fall back to a disk-relative
+            // lookup against AppContext.BaseDirectory for projects that ship the
+            // file as <Content CopyToOutputDirectory="...">.
+            if (TryLoadFromAssemblyResource(uri.OriginalString))
+            {
+                return;
+            }
+
+            var basePath = AppContext.BaseDirectory;
+            if (!string.IsNullOrEmpty(basePath))
+            {
+                var diskCandidate = System.IO.Path.Combine(basePath, uri.OriginalString);
+                if (System.IO.File.Exists(diskCandidate))
+                {
+                    LoadFromFile(diskCandidate);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Walks the AppDomain's loaded assemblies looking for a manifest resource
+    /// that matches <paramref name="relativePath"/>. Mirrors the candidate-name
+    /// strategy used by ThemeLoader for <c>ResourceDictionary Source="..."</c>
+    /// so consumer XAML and code-behind can share the same authoring shape.
+    /// Returns <c>true</c> when the bytes were decoded into this BitmapImage.
+    /// </summary>
+    private bool TryLoadFromAssemblyResource(string relativePath)
+    {
+        if (string.IsNullOrEmpty(relativePath))
+        {
+            return false;
+        }
+
+        var separators = new[] { '/', '\\' };
+        var dotted = relativePath.Replace('/', '.').Replace('\\', '.').TrimStart('.');
+        var lastSep = relativePath.LastIndexOfAny(separators);
+        var fileName = lastSep >= 0 ? relativePath.Substring(lastSep + 1) : relativePath;
+
+        var frameworkAssembly = typeof(BitmapImage).Assembly;
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            if (assembly.IsDynamic || assembly == frameworkAssembly)
+            {
+                continue;
+            }
+
+            string[] manifestNames;
+            try
+            {
+                manifestNames = assembly.GetManifestResourceNames();
+            }
+            catch
+            {
+                continue;
+            }
+            if (manifestNames.Length == 0)
+            {
+                continue;
+            }
+
+            var assemblyName = assembly.GetName().Name ?? string.Empty;
+            string?[] candidates =
+            [
+                dotted,
+                string.IsNullOrEmpty(assemblyName) ? null : assemblyName + "." + dotted,
+                fileName,
+                string.IsNullOrEmpty(assemblyName) ? null : assemblyName + "." + fileName,
+            ];
+
+            foreach (var candidate in candidates)
+            {
+                if (string.IsNullOrEmpty(candidate))
+                {
+                    continue;
+                }
+
+                var actual = Array.Find(manifestNames,
+                    n => string.Equals(n, candidate, StringComparison.OrdinalIgnoreCase));
+                if (actual == null)
+                {
+                    continue;
+                }
+
+                using var stream = assembly.GetManifestResourceStream(actual);
+                if (stream == null)
+                {
+                    continue;
+                }
+
+                var bytes = new byte[stream.Length];
+                var read = 0;
+                while (read < bytes.Length)
+                {
+                    var n = stream.Read(bytes, read, bytes.Length - read);
+                    if (n <= 0)
+                    {
+                        break;
+                    }
+                    read += n;
+                }
+                LoadFromBytes(bytes);
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private async Task LoadFromHttpAsync(Uri uri, CancellationToken cancellationToken)

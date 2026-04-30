@@ -170,7 +170,7 @@ public class Thumb : Control
     private Border? _thumbBorder;
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
         _thumbBorder = GetTemplateChild("ThumbBorder") as Border;

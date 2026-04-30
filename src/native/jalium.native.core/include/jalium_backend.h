@@ -333,6 +333,17 @@ public:
     /// Pushes a rounded rectangle clip using a geometry mask layer.
     virtual void PushRoundedRectClip(float x, float y, float w, float h, float rx, float ry) = 0;
 
+    /// Pushes a rounded-rect clip with independent radii for each corner.
+    /// Default implementation collapses to the maximum radius and forwards to
+    /// <see cref="PushRoundedRectClip"/>; backends that natively support
+    /// asymmetric corner radii should override.
+    virtual void PushPerCornerRoundedRectClip(float x, float y, float w, float h,
+        float tl, float tr, float br, float bl)
+    {
+        float maxR = std::max(std::max(tl, tr), std::max(br, bl));
+        PushRoundedRectClip(x, y, w, h, maxR, maxR);
+    }
+
     /// Pops a clip.
     virtual void PopClip() = 0;
 

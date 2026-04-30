@@ -75,7 +75,7 @@ public class GroupBox : ContentControl
     private Border? _contentBorder;
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
         _headerBorder = GetTemplateChild("PART_HeaderBorder") as Border;

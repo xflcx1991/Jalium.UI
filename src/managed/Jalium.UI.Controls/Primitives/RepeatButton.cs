@@ -198,7 +198,7 @@ public class RepeatButton : ButtonBase
     #region Overrides
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
 

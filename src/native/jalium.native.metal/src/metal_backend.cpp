@@ -394,6 +394,31 @@ CGPathRef MetalRenderTarget::CreateRoundedRectPath(float x, float y, float w, fl
     return path;
 }
 
+CGPathRef MetalRenderTarget::CreatePerCornerRoundedRectPath(float x, float y, float w, float h,
+    float tl, float tr, float br, float bl)
+{
+    // Cap each corner radius to half the smaller side so a single oversized
+    // corner can't run off the opposite edge.
+    const float halfMin = std::min(w, h) * 0.5f;
+    tl = std::max(0.0f, std::min(tl, halfMin));
+    tr = std::max(0.0f, std::min(tr, halfMin));
+    br = std::max(0.0f, std::min(br, halfMin));
+    bl = std::max(0.0f, std::min(bl, halfMin));
+
+    CGMutablePathRef path = CGPathCreateMutable();
+    CGPathMoveToPoint(path, nullptr, x + tl, y);
+    CGPathAddLineToPoint(path, nullptr, x + w - tr, y);
+    CGPathAddArcToPoint(path, nullptr, x + w, y, x + w, y + tr, tr);
+    CGPathAddLineToPoint(path, nullptr, x + w, y + h - br);
+    CGPathAddArcToPoint(path, nullptr, x + w, y + h, x + w - br, y + h, br);
+    CGPathAddLineToPoint(path, nullptr, x + bl, y + h);
+    CGPathAddArcToPoint(path, nullptr, x, y + h, x, y + h - bl, bl);
+    CGPathAddLineToPoint(path, nullptr, x, y + tl);
+    CGPathAddArcToPoint(path, nullptr, x, y, x + tl, y, tl);
+    CGPathCloseSubpath(path);
+    return path;
+}
+
 CGPathRef MetalRenderTarget::BuildCommandPath(float startX, float startY,
     const float* commands, uint32_t commandLength, bool closed)
 {
@@ -869,6 +894,23 @@ void MetalRenderTarget::PushRoundedRectClip(float x, float y, float w, float h, 
     }
 #else
     (void)x; (void)y; (void)w; (void)h; (void)rx; (void)ry;
+#endif
+    clipDepth_++;
+}
+
+void MetalRenderTarget::PushPerCornerRoundedRectClip(float x, float y, float w, float h,
+    float tl, float tr, float br, float bl)
+{
+#ifdef __APPLE__
+    if (cgContext_) {
+        CGContextSaveGState(cgContext_);
+        CGPathRef path = CreatePerCornerRoundedRectPath(x, y, w, h, tl, tr, br, bl);
+        CGContextAddPath(cgContext_, path);
+        CGContextClip(cgContext_);
+        CGPathRelease(path);
+    }
+#else
+    (void)x; (void)y; (void)w; (void)h; (void)tl; (void)tr; (void)br; (void)bl;
 #endif
     clipDepth_++;
 }

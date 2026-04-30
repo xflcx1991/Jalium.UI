@@ -35,16 +35,16 @@
         </Setter>
 
         <Style.Triggers>
-            <PropertyTrigger Property="IsMouseOver" Value="True">
+            <Trigger Property="IsMouseOver" Value="True">
                 <Setter Property="BorderBrush" Value="{ThemeResource ControlBorderHover}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsFocused" Value="True">
+            </Trigger>
+            <Trigger Property="IsFocused" Value="True">
                 <Setter Property="BorderBrush" Value="{ThemeResource ControlBorderFocused}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsEnabled" Value="False">
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Background" Value="{ThemeResource ControlBackgroundDisabled}" />
                 <Setter Property="Foreground" Value="{ThemeResource TextDisabled}" />
-            </PropertyTrigger>
+            </Trigger>
         </Style.Triggers>
     </Style>
 
@@ -73,16 +73,16 @@
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
 
         <Style.Triggers>
-            <PropertyTrigger Property="IsMouseOver" Value="True">
+            <Trigger Property="IsMouseOver" Value="True">
                 <Setter Property="BorderBrush" Value="{ThemeResource ControlBorderHover}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsFocused" Value="True">
+            </Trigger>
+            <Trigger Property="IsFocused" Value="True">
                 <Setter Property="BorderBrush" Value="{ThemeResource ControlBorderFocused}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsEnabled" Value="False">
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Background" Value="{ThemeResource ControlBackgroundDisabled}" />
                 <Setter Property="Foreground" Value="{ThemeResource TextDisabled}" />
-            </PropertyTrigger>
+            </Trigger>
         </Style.Triggers>
     </Style>
 
@@ -157,16 +157,16 @@
         </Setter>
 
         <Style.Triggers>
-            <PropertyTrigger Property="IsMouseOver" Value="True">
+            <Trigger Property="IsMouseOver" Value="True">
                 <Setter Property="BorderBrush" Value="{ThemeResource ControlBorderHover}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsFocused" Value="True">
+            </Trigger>
+            <Trigger Property="IsFocused" Value="True">
                 <Setter Property="BorderBrush" Value="{ThemeResource ControlBorderFocused}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsEnabled" Value="False">
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Background" Value="{ThemeResource ControlBackgroundDisabled}" />
                 <Setter Property="Foreground" Value="{ThemeResource TextDisabled}" />
-            </PropertyTrigger>
+            </Trigger>
         </Style.Triggers>
     </Style>
 
@@ -221,16 +221,16 @@
         </Setter>
 
         <Style.Triggers>
-            <PropertyTrigger Property="IsMouseOver" Value="True">
+            <Trigger Property="IsMouseOver" Value="True">
                 <Setter Property="BorderBrush" Value="{ThemeResource ControlBorderHover}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsFocused" Value="True">
+            </Trigger>
+            <Trigger Property="IsFocused" Value="True">
                 <Setter Property="BorderBrush" Value="{ThemeResource ControlBorderFocused}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsEnabled" Value="False">
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Background" Value="{ThemeResource ControlBackgroundDisabled}" />
                 <Setter Property="Foreground" Value="{ThemeResource TextDisabled}" />
-            </PropertyTrigger>
+            </Trigger>
         </Style.Triggers>
     </Style>
 
@@ -246,9 +246,9 @@
         <Setter Property="CaretBrush" Value="{ThemeResource TextPrimary}" />
 
         <Style.Triggers>
-            <PropertyTrigger Property="IsKeyboardFocused" Value="True">
+            <Trigger Property="IsKeyboardFocused" Value="True">
                 <Setter Property="BorderBrush" Value="{ThemeResource ControlBorderFocused}" />
-            </PropertyTrigger>
+            </Trigger>
         </Style.Triggers>
     </Style>
 

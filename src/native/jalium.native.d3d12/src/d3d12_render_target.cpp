@@ -347,6 +347,11 @@ JaliumResult D3D12RenderTarget::BeginDraw() {
         return JALIUM_ERROR_INVALID_STATE;
     }
 
+    // Stale clip frames from a previous (potentially aborted) frame would
+    // poison the rounded-clip pop logic below.  DirectRenderer resets its own
+    // scissor / rounded-clip stacks in BeginFrame; mirror that here.
+    clipFrameIsRounded_.clear();
+
     if (backend_) {
         JaliumResult deviceStatus = backend_->CheckDeviceStatus();
         if (deviceStatus != JALIUM_OK) {
@@ -1290,17 +1295,36 @@ void D3D12RenderTarget::PushClip(float x, float y, float w, float h) {
         OutputDebugStringA("[PushClipRect OFFSCREEN] called\n");
     }
     if (directRenderer_) directRenderer_->PushScissor(x, y, w, h);
+    clipFrameIsRounded_.push_back(false);
     SyncScissorToImpeller();
 }
 
 void D3D12RenderTarget::PushClipAliased(float x, float y, float w, float h) {
     if (directRenderer_) directRenderer_->PushScissor(x, y, w, h);
+    clipFrameIsRounded_.push_back(false);
     SyncScissorToImpeller();
 }
 
-void D3D12RenderTarget::PushRoundedRectClip(float x, float y, float w, float h, float /*rx*/, float /*ry*/) {
-    // Approximate with axis-aligned scissor (no stencil support yet)
-    if (directRenderer_) directRenderer_->PushScissor(x, y, w, h);
+void D3D12RenderTarget::PushRoundedRectClip(float x, float y, float w, float h, float rx, float ry) {
+    // The axis-aligned scissor handles fast hardware culling; the rounded clip
+    // stack drives a per-pixel SDF discard inside the four batched pixel
+    // shaders so the corners are actually masked instead of leaking through.
+    if (directRenderer_) {
+        directRenderer_->PushScissor(x, y, w, h);
+        directRenderer_->PushRoundedClip(x, y, w, h, rx, ry);
+    }
+    clipFrameIsRounded_.push_back(true);
+    SyncScissorToImpeller();
+}
+
+void D3D12RenderTarget::PushPerCornerRoundedRectClip(float x, float y, float w, float h,
+    float tl, float tr, float br, float bl)
+{
+    if (directRenderer_) {
+        directRenderer_->PushScissor(x, y, w, h);
+        directRenderer_->PushPerCornerRoundedClip(x, y, w, h, tl, tr, br, bl);
+    }
+    clipFrameIsRounded_.push_back(true);
     SyncScissorToImpeller();
 }
 
@@ -1308,7 +1332,15 @@ void D3D12RenderTarget::PopClip() {
     if (directRenderer_ && directRenderer_->IsInOffscreenCapture()) {
         OutputDebugStringA("[PopClipRect OFFSCREEN] called\n");
     }
-    if (directRenderer_) directRenderer_->PopScissor();
+    bool wasRounded = false;
+    if (!clipFrameIsRounded_.empty()) {
+        wasRounded = clipFrameIsRounded_.back();
+        clipFrameIsRounded_.pop_back();
+    }
+    if (directRenderer_) {
+        if (wasRounded) directRenderer_->PopRoundedClip();
+        directRenderer_->PopScissor();
+    }
     SyncScissorToImpeller();
 }
 

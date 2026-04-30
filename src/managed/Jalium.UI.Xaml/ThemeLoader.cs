@@ -35,6 +35,13 @@ public static class ThemeLoader
         // Register AOT-safe type resolver for PropertyPath and other Core types
         TypeResolver.ResolveTypeByName = XamlTypeRegistry.GetType;
 
+        // 把 TypeConverterRegistry 注入到 Core.Style 作为字符串值转换 fallback。
+        // 这样 jalxaml 里写的 <Setter Property="Cursor" Value="Hand" /> 等字符串值，
+        // Style.ConvertValueIfNeeded 内置 fast-path 没命中时会走完整的 TypeConverter
+        // 管线（Brush / GridLength / IconElement 等），而不是把字符串原样塞进目标 DP
+        // 让渲染层强转崩溃。
+        Style.StringValueConverter = TypeConverterRegistry.ConvertValue;
+
         // If Application was already created but theme not yet loaded, load now
         if (Application.Current != null && !ThemeManager.IsInitialized)
         {
@@ -77,7 +84,10 @@ public static class ThemeLoader
             {
                 assembly = ResolveAssembly(packAssemblyName);
                 if (assembly == null)
+                {
+                    LogResourceDictionaryLoadFailure(sourceUri, $"Pack component assembly '{packAssemblyName}' could not be loaded.");
                     return null;
+                }
 
                 pathCandidates.AddRange(BuildPathCandidates(componentPath));
             }
@@ -87,14 +97,20 @@ public static class ThemeLoader
                 var (resourceAssembly, resourcePath) = ParseResourceUri(sourceUri.AbsoluteUri);
                 assembly = ResolveAssembly(resourceAssembly);
                 if (assembly == null)
+                {
+                    LogResourceDictionaryLoadFailure(sourceUri, $"Resource assembly '{resourceAssembly}' could not be loaded.");
                     return null;
+                }
 
                 pathCandidates.AddRange(BuildPathCandidates(resourcePath));
             }
             else
             {
                 if (assembly == null)
+                {
+                    LogResourceDictionaryLoadFailure(sourceUri, "Source assembly is null and URI is relative — no assembly to resolve embedded resource against.");
                     return null;
+                }
 
                 pathCandidates.AddRange(BuildPathCandidates(sourceUri.IsAbsoluteUri
                     ? sourceUri.AbsolutePath
@@ -102,21 +118,41 @@ public static class ThemeLoader
             }
 
             if (assembly == null || pathCandidates.Count == 0)
+            {
+                LogResourceDictionaryLoadFailure(sourceUri, $"No path candidates resolved (assembly={assembly?.GetName().Name ?? "<null>"}).");
                 return null;
+            }
 
             var attemptedResourceNames = new List<string>();
             using var stream = TryOpenEmbeddedResource(assembly, pathCandidates, attemptedResourceNames, out var resolvedResourceName);
             if (stream == null || string.IsNullOrEmpty(resolvedResourceName))
+            {
+                LogResourceDictionaryLoadFailure(sourceUri,
+                    $"Embedded resource not found in '{assembly.GetName().Name}'. Attempted: [{string.Join(", ", attemptedResourceNames)}].");
                 return null;
+            }
 
             using var payloadStream = new MemoryStream();
             stream.CopyTo(payloadStream);
             return LoadResourceDictionaryFromPayload(payloadStream.ToArray(), resolvedResourceName, assembly, sourceUri);
         }
-        catch
+        catch (Exception ex)
         {
+            LogResourceDictionaryLoadFailure(sourceUri, ex.ToString());
             return null;
         }
+    }
+
+    /// <summary>
+    /// 将 ResourceDictionary 加载失败的细节通过 Trace 暴露。静默吞匹配 WPF 行为
+    /// （单个 Source 失败不应让整个字典爆炸），但开发期需要看到具体原因，否则
+    /// 用户面对的就是"控件渲染空白、没有任何提示"的黑盒。
+    /// </summary>
+    private static void LogResourceDictionaryLoadFailure(Uri sourceUri, string detail)
+    {
+        var message = $"[Jalium.UI] ResourceDictionary 加载失败: '{sourceUri}'. {detail}";
+        System.Diagnostics.Trace.WriteLine(message);
+        System.Diagnostics.Debug.WriteLine(message);
     }
 
     /// <summary>

@@ -390,7 +390,7 @@ public class NavigationView : ContentControl
     #region Private Methods
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         if (_paneHeaderHost != null)
             _paneHeaderHost.SizeChanged -= OnPaneRegionSizeChanged;

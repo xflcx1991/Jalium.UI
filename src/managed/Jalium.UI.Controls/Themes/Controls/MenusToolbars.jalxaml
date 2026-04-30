@@ -37,19 +37,19 @@
             </ControlTemplate>
         </Setter>
         <Style.Triggers>
-            <PropertyTrigger Property="IsMouseOver" Value="True">
+            <Trigger Property="IsMouseOver" Value="True">
                 <Setter Property="Background" Value="{ThemeResource AppBarButtonBackgroundHover}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsPressed" Value="True">
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
                 <Setter Property="Background" Value="{ThemeResource AppBarButtonBackgroundPressed}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsEnabled" Value="False">
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Foreground" Value="{ThemeResource AppBarButtonForegroundDisabled}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsCompact" Value="True">
+            </Trigger>
+            <Trigger Property="IsCompact" Value="True">
                 <Setter TargetName="LabelText" Property="Visibility" Value="Collapsed" />
                 <Setter Property="MinHeight" Value="0" />
-            </PropertyTrigger>
+            </Trigger>
         </Style.Triggers>
     </Style>
 
@@ -107,22 +107,22 @@
             </ControlTemplate>
         </Setter>
         <Style.Triggers>
-            <PropertyTrigger Property="IsMouseOver" Value="True">
+            <Trigger Property="IsMouseOver" Value="True">
                 <Setter Property="Background" Value="{ThemeResource AppBarButtonBackgroundHover}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsPressed" Value="True">
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
                 <Setter Property="Background" Value="{ThemeResource AppBarButtonBackgroundPressed}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsChecked" Value="True">
+            </Trigger>
+            <Trigger Property="IsChecked" Value="True">
                 <Setter TargetName="CheckedIndicator" Property="Visibility" Value="Visible" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsEnabled" Value="False">
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Foreground" Value="{ThemeResource AppBarButtonForegroundDisabled}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsCompact" Value="True">
+            </Trigger>
+            <Trigger Property="IsCompact" Value="True">
                 <Setter TargetName="LabelText" Property="Visibility" Value="Collapsed" />
                 <Setter Property="MinHeight" Value="0" />
-            </PropertyTrigger>
+            </Trigger>
         </Style.Triggers>
     </Style>
 
@@ -136,9 +136,9 @@
         <Setter Property="MinHeight" Value="48" />
 
         <Style.Triggers>
-            <PropertyTrigger Property="IsKeyboardFocused" Value="True">
+            <Trigger Property="IsKeyboardFocused" Value="True">
                 <Setter Property="BorderBrush" Value="{ThemeResource ControlBorderFocused}" />
-            </PropertyTrigger>
+            </Trigger>
         </Style.Triggers>
     </Style>
 

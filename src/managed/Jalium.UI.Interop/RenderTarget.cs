@@ -545,6 +545,16 @@ public sealed class RenderTarget : IDisposable
     }
 
     /// <summary>
+    /// Pushes a per-corner rounded-rect clip with independent radii for each corner.
+    /// </summary>
+    public void PushPerCornerRoundedRectClip(float x, float y, float width, float height,
+        float tl, float tr, float br, float bl)
+    {
+        ThrowIfDisposed();
+        NativeMethods.PushPerCornerRoundedRectClip(_handle, x, y, width, height, tl, tr, br, bl);
+    }
+
+    /// <summary>
     /// Pops the current clip.
     /// </summary>
     public void PopClip()

@@ -5418,8 +5418,15 @@ bool VulkanRenderTarget::TryPopulateReplayClip(GpuReplayCommand& command) const
             command.roundedClipTop = clipWorldTop;
             command.roundedClipRight = clipWorldRight;
             command.roundedClipBottom = clipWorldBottom;
-            command.roundedClipRadiusX = std::fabs(clip.transform.m11) * std::min(clip.rx, clip.w * 0.5f);
-            command.roundedClipRadiusY = std::fabs(clip.transform.m22) * std::min(clip.ry, clip.h * 0.5f);
+            // GPU push-constant path is single-radius (rx, ry) for now; collapse
+            // the four corners to their maximum so the visible content is at
+            // least bounded by the largest corner.  CPU IsInsideClip performs
+            // the precise per-corner test below — that's the path Border content
+            // actually exercises today.  Per-corner GPU support would require
+            // expanding the push-constant block in every Vulkan fragment shader.
+            float rMax = std::max({ clip.radiusTL, clip.radiusTR, clip.radiusBR, clip.radiusBL });
+            command.roundedClipRadiusX = std::fabs(clip.transform.m11) * std::min(rMax, clip.w * 0.5f);
+            command.roundedClipRadiusY = std::fabs(clip.transform.m22) * std::min(rMax, clip.h * 0.5f);
         }
     }
 
@@ -5450,9 +5457,14 @@ bool VulkanRenderTarget::IsInsideClip(float x, float y) const
             continue;
         }
 
-        const float rx = std::min(clip.rx, clip.w * 0.5f);
-        const float ry = std::min(clip.ry, clip.h * 0.5f);
-        if (rx <= 0.0f || ry <= 0.0f) {
+        // Per-corner radii cap to half-min so a single corner can't exceed the
+        // available room — matches managed-side NormalizePerCornerRadii.
+        const float halfMin = std::min(clip.w, clip.h) * 0.5f;
+        const float rTL = std::min(clip.radiusTL, halfMin);
+        const float rTR = std::min(clip.radiusTR, halfMin);
+        const float rBR = std::min(clip.radiusBR, halfMin);
+        const float rBL = std::min(clip.radiusBL, halfMin);
+        if (rTL <= 0.0f && rTR <= 0.0f && rBR <= 0.0f && rBL <= 0.0f) {
             continue;
         }
 
@@ -5462,21 +5474,21 @@ bool VulkanRenderTarget::IsInsideClip(float x, float y) const
         const float bottom = clip.y + clip.h;
 
         bool insideRounded = true;
-        if (localX < left + rx && localY < top + ry) {
-            const float dx = (localX - (left + rx)) / rx;
-            const float dy = (localY - (top + ry)) / ry;
+        if (localX < left + rTL && localY < top + rTL && rTL > 0.0f) {
+            const float dx = (localX - (left + rTL)) / rTL;
+            const float dy = (localY - (top + rTL)) / rTL;
             insideRounded = (dx * dx + dy * dy) <= 1.0f;
-        } else if (localX > right - rx && localY < top + ry) {
-            const float dx = (localX - (right - rx)) / rx;
-            const float dy = (localY - (top + ry)) / ry;
+        } else if (localX > right - rTR && localY < top + rTR && rTR > 0.0f) {
+            const float dx = (localX - (right - rTR)) / rTR;
+            const float dy = (localY - (top + rTR)) / rTR;
             insideRounded = (dx * dx + dy * dy) <= 1.0f;
-        } else if (localX < left + rx && localY > bottom - ry) {
-            const float dx = (localX - (left + rx)) / rx;
-            const float dy = (localY - (bottom - ry)) / ry;
+        } else if (localX < left + rBL && localY > bottom - rBL && rBL > 0.0f) {
+            const float dx = (localX - (left + rBL)) / rBL;
+            const float dy = (localY - (bottom - rBL)) / rBL;
             insideRounded = (dx * dx + dy * dy) <= 1.0f;
-        } else if (localX > right - rx && localY > bottom - ry) {
-            const float dx = (localX - (right - rx)) / rx;
-            const float dy = (localY - (bottom - ry)) / ry;
+        } else if (localX > right - rBR && localY > bottom - rBR && rBR > 0.0f) {
+            const float dx = (localX - (right - rBR)) / rBR;
+            const float dy = (localY - (bottom - rBR)) / rBR;
             insideRounded = (dx * dx + dy * dy) <= 1.0f;
         }
 
@@ -8378,6 +8390,16 @@ void VulkanRenderTarget::PushClip(float x, float y, float w, float h)
 
 void VulkanRenderTarget::PushRoundedRectClip(float x, float y, float w, float h, float rx, float ry)
 {
+    // Symmetric variant: forward to per-corner with min(rx, ry) on every corner
+    // so the SDF stays circular regardless of any non-uniform XY scale that
+    // sneaks in via the captured transform.
+    float r = std::min(rx, ry);
+    PushPerCornerRoundedRectClip(x, y, w, h, r, r, r, r);
+}
+
+void VulkanRenderTarget::PushPerCornerRoundedRectClip(float x, float y, float w, float h,
+    float tl, float tr, float br, float bl)
+{
     TouchFrame();
 
     ClipState clip {};
@@ -8386,8 +8408,10 @@ void VulkanRenderTarget::PushRoundedRectClip(float x, float y, float w, float h,
     clip.y = y;
     clip.w = w;
     clip.h = h;
-    clip.rx = rx;
-    clip.ry = ry;
+    clip.radiusTL = tl;
+    clip.radiusTR = tr;
+    clip.radiusBR = br;
+    clip.radiusBL = bl;
     clip.transform = GetCurrentTransform();
     clip.hasInverse = TryInvertTransform(GetCurrentTransform(), clip.inverseTransform);
     clipStack_.push_back(clip);

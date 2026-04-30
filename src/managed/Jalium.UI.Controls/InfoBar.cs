@@ -226,7 +226,7 @@ public class InfoBar : ContentControl
     private Button? _closeButton;
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
 

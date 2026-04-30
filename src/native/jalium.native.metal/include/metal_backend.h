@@ -208,6 +208,8 @@ public:
     void PushClip(float x, float y, float w, float h) override;
     void PopClip() override;
     void PushRoundedRectClip(float x, float y, float w, float h, float rx, float ry) override;
+    void PushPerCornerRoundedRectClip(float x, float y, float w, float h,
+        float tl, float tr, float br, float bl) override;
     void PunchTransparentRect(float x, float y, float w, float h) override;
     void PushOpacity(float opacity) override;
     void PopOpacity() override;
@@ -257,6 +259,8 @@ private:
     void ApplyBrush(CGContextRef ctx, Brush* brush, bool forStroke);
     void ApplyGradientFill(CGContextRef ctx, Brush* brush);
     CGPathRef CreateRoundedRectPath(float x, float y, float w, float h, float rx, float ry);
+    CGPathRef CreatePerCornerRoundedRectPath(float x, float y, float w, float h,
+        float tl, float tr, float br, float bl);
     CGPathRef BuildCommandPath(float startX, float startY, const float* commands, uint32_t commandLength, bool closed);
 #endif
 

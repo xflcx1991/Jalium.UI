@@ -462,6 +462,70 @@ public sealed class PointCollectionConverter : TypeConverter
 }
 
 /// <summary>
+/// Converts strings to <see cref="Point"/> values. Accepts the standard XAML
+/// "x,y" format (whitespace and comma both serve as separators) and the
+/// space-separated "x y" form. Without this converter, properties like
+/// <see cref="LinearGradientBrush.StartPoint"/> can't be set from jalxaml
+/// (parser falls through to the unspecialised path which doesn't know how
+/// to materialise a Point), and the brush silently ends up with default
+/// endpoints — the gradient looks correct only by accident.
+/// </summary>
+public sealed class PointConverter : TypeConverter
+{
+    public override object? ConvertFrom(object? value)
+    {
+        if (value is not string str) return null;
+        return ParsePoint(str);
+    }
+
+    internal static Point ParsePoint(string str)
+    {
+        var parts = str.Split(new[] { ',', ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2)
+            throw new FormatException($"Point requires exactly two components (got '{str}').");
+        var x = double.Parse(parts[0], CultureInfo.InvariantCulture);
+        var y = double.Parse(parts[1], CultureInfo.InvariantCulture);
+        return new Point(x, y);
+    }
+}
+
+/// <summary>
+/// Converts strings to <see cref="Vector"/> values. Same "x,y" or "x y"
+/// grammar as <see cref="PointConverter"/>.
+/// </summary>
+public sealed class VectorConverter : TypeConverter
+{
+    public override object? ConvertFrom(object? value)
+    {
+        if (value is not string str) return null;
+        var parts = str.Split(new[] { ',', ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2)
+            throw new FormatException($"Vector requires exactly two components (got '{str}').");
+        var x = double.Parse(parts[0], CultureInfo.InvariantCulture);
+        var y = double.Parse(parts[1], CultureInfo.InvariantCulture);
+        return new Vector(x, y);
+    }
+}
+
+/// <summary>
+/// Converts strings to <see cref="Size"/> values. Format: "width,height"
+/// or "width height".
+/// </summary>
+public sealed class SizeConverter : TypeConverter
+{
+    public override object? ConvertFrom(object? value)
+    {
+        if (value is not string str) return null;
+        var parts = str.Split(new[] { ',', ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2)
+            throw new FormatException($"Size requires exactly two components (got '{str}').");
+        var w = double.Parse(parts[0], CultureInfo.InvariantCulture);
+        var h = double.Parse(parts[1], CultureInfo.InvariantCulture);
+        return new Size(w, h);
+    }
+}
+
+/// <summary>
 /// Registry of type converters.
 /// </summary>
 public static class TypeConverterRegistry
@@ -485,6 +549,9 @@ public static class TypeConverterRegistry
         [typeof(Type)] = new TypeTypeConverter(),
         [typeof(IconElement)] = new IconElementConverter(),
         [typeof(PointCollection)] = new PointCollectionConverter(),
+        [typeof(Point)] = new PointConverter(),
+        [typeof(Vector)] = new VectorConverter(),
+        [typeof(Size)] = new SizeConverter(),
     };
 
     /// <summary>

@@ -47,7 +47,7 @@ public class ListView : ListBox
     }
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
 
@@ -169,7 +169,7 @@ public class ListViewItem : ListBoxItem
     }
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
         _cellsPanel = GetTemplateChild("PART_CellsPanel") as StackPanel;

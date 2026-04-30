@@ -157,7 +157,7 @@ public class ItemsControl : Control
     /// <summary>
     /// Called when the template is applied.
     /// </summary>
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
 

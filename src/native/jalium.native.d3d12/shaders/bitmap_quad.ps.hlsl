@@ -1,3 +1,5 @@
+#include "rounded_clip.hlsli"
+
 Texture2D<float4> bitmapTexture : register(t1);
 
 // s0 — bilinear clamp (LowQuality / Linear)
@@ -17,6 +19,8 @@ struct PsInput
 
 float4 main(PsInput input) : SV_Target
 {
+    DiscardOutsideRoundedClip(input.clipPos.xy);
+
     int idx = (int)input.samplerIdx;
     float4 color;
     if (idx == 1)

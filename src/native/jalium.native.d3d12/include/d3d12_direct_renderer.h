@@ -138,6 +138,30 @@ struct DrawBatch {
     float sortOrder;       // painter's order (ascending)
     D3D12_RECT scissor;    // active scissor at submission time
     bool hasScissor;       // whether a custom scissor is active
+
+    // Rounded-rect clip (post-DPI physical-pixel coordinates, matching SV_Position).
+    // When hasRoundedClip is true, the pixel shader discards fragments outside the
+    // per-corner rounded-rect SDF defined by (roundedClipRect, roundedClipCornerRadii).
+    bool  hasRoundedClip = false;
+    float roundedClipRect[4]        = { 0, 0, 0, 0 }; // left, top, right, bottom
+    float roundedClipCornerRadii[4] = { 0, 0, 0, 0 }; // TL, TR, BR, BL (in physical pixels)
+};
+
+// ============================================================================
+// Rounded-rect clip stack entry (DIP-space, before DPI / transform).
+// Used by D3D12RenderTarget::PushRoundedRectClip — when present, every batch
+// recorded while the entry is on the stack carries the rounded-clip data and
+// every PSO discards fragments outside the SDF in the pixel shader.
+// ============================================================================
+
+struct RoundedClipState {
+    // DIP-space rectangle (top-left + size) and per-corner radii at push time.
+    // Layout matches CornerRadius: TopLeft, TopRight, BottomRight, BottomLeft.
+    float x, y, w, h;
+    float radiusTL = 0, radiusTR = 0, radiusBR = 0, radiusBL = 0;
+    // Captured transform at push time so the clip can be projected to physical
+    // pixels regardless of subsequent transform pushes/pops.
+    Transform2D transform;
 };
 
 // ============================================================================
@@ -281,6 +305,19 @@ public:
     void PopScissor();
     bool HasScissor() const { return !scissorStack_.empty(); }
     D3D12_RECT GetCurrentScissor() const { return scissorStack_.empty() ? D3D12_RECT{0,0,0,0} : scissorStack_.top(); }
+
+    // Rounded-rect clip — pushed on top of the regular scissor.  All batches
+    // recorded while a rounded clip is active receive the SDF clip data and
+    // their pixel shader discards fragments outside the rounded-rect.
+    // The matching scissor for fast hardware culling is still the caller's
+    // responsibility (PushScissor) — rounded clip is purely the SDF mask.
+    // Per-corner version is the canonical entry point; the symmetric variant
+    // forwards by populating all four corners with (rx).
+    void PushRoundedClip(float x, float y, float w, float h, float rx, float ry);
+    void PushPerCornerRoundedClip(float x, float y, float w, float h,
+        float tl, float tr, float br, float bl);
+    void PopRoundedClip();
+    bool HasRoundedClip() const { return !roundedClipStack_.empty(); }
     void SetOpacity(float opacity) { currentOpacity_ = opacity; }
     float GetOpacity() const { return currentOpacity_; }
     void SetShapeType(float type, float n) { currentShapeType_ = type; currentShapeN_ = n; }
@@ -385,12 +422,19 @@ private:
         void* constantsMappedPtr = nullptr;
         UINT constantsRingOffset = 0;                 // next free 256-byte slot in ring buffer
         uint64_t fenceValue = 0;
+
+        // Instance upload buffers retired by mid-frame growth.  When EnsureFrameInstanceCapacity
+        // replaces instanceUploadBuffer, earlier draws on the open command list still hold
+        // descriptor-table references to the old buffer's resource.  We park the old ComPtr
+        // here to keep its refcount > 0 until the GPU finishes this frame; BeginFrame clears
+        // the list after the per-frame fence wait succeeds.
+        std::vector<ComPtr<ID3D12Resource>> retiredInstanceBuffers;
     };
 
     // Grow the persistently-mapped UPLOAD heap that backs both per-frame instance
-    // SRVs and mid-frame constant buffers.  Safe to call after BeginFrame has waited
-    // this frame's previous fence and before any SRV referencing the buffer's GPU
-    // virtual address has been recorded onto the open command list.
+    // SRVs and mid-frame constant buffers.  Safe to call mid-frame: any old buffer
+    // is parked on FrameResources::retiredInstanceBuffers so the descriptors of
+    // already-recorded draws stay valid until BeginFrame's fence wait clears them.
     bool EnsureFrameInstanceCapacity(FrameResources& fr, size_t requiredBytes);
     static constexpr UINT kConstantsRingSize = 256 * 64;  // 64 flush slots per frame
     FrameResources frames_[kMaxFrames];
@@ -470,6 +514,13 @@ private:
     // State stacks
     std::stack<D3D12_RECT> scissorStack_;
     std::stack<Transform2D> transformStack_;
+    std::vector<RoundedClipState> roundedClipStack_;
+
+    // Resolves the active rounded-clip stack into the per-batch payload that
+    // RecordDrawCommands writes to the b2 root constants.  Returns false when
+    // no rounded clip is active or the resolution failed (e.g. inverse-singular
+    // transform); in that case the caller leaves DrawBatch.hasRoundedClip=false.
+    bool ResolveRoundedClipForBatch(DrawBatch& batch) const;
     float currentOpacity_ = 1.0f;
     float currentShapeType_ = 0.0f;  // 0 = RoundedRect, 1 = SuperEllipse
     float currentShapeN_ = 4.0f;

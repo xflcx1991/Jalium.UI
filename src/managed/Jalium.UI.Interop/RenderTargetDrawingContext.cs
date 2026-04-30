@@ -298,6 +298,20 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
         return (normalizedRadiusX, normalizedRadiusY);
     }
 
+    private static (float TL, float TR, float BR, float BL) NormalizePerCornerRadii(
+        float width, float height, double tl, double tr, double br, double bl)
+    {
+        static double Sanitize(double radius) =>
+            double.IsFinite(radius) && radius > 0 ? radius : 0;
+
+        var halfMin = Math.Max(0f, Math.Min(width, height)) / 2f;
+        return (
+            (float)Math.Min(Sanitize(tl), halfMin),
+            (float)Math.Min(Sanitize(tr), halfMin),
+            (float)Math.Min(Sanitize(br), halfMin),
+            (float)Math.Min(Sanitize(bl), halfMin));
+    }
+
     private const double SnapEpsilon = 0.0001;
 
     private void FillTransientOverlay(float x, float y, float width, float height, float radiusX, float radiusY,
@@ -433,7 +447,7 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
         var height = (float)rectangle.Height;
 
         // Fill
-        if (brush != null)
+        if (brush != null && !TryFillRectangleAsImageBrush(brush, x, y, width, height))
         {
             var nativeBrush = GetNativeBrush(brush, x, y, width, height);
             if (nativeBrush != null)
@@ -471,7 +485,7 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
         var (rx, ry) = NormalizeRoundedRectRadii(width, height, radiusX, radiusY);
 
         // Fill
-        if (brush != null)
+        if (brush != null && !TryFillRoundedRectangleAsImageBrush(brush, x, y, width, height, rx, ry))
         {
             var nativeBrush = GetNativeBrush(brush, x, y, width, height);
             if (nativeBrush != null)
@@ -514,7 +528,7 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
         var br = (float)Math.Min(cornerRadius.BottomRight, maxR);
         var bl = (float)Math.Min(cornerRadius.BottomLeft, maxR);
 
-        if (brush != null)
+        if (brush != null && !TryFillPerCornerRoundedAsImageBrush(brush, x, y, width, height, tl, tr, br, bl))
         {
             var nativeBrush = GetNativeBrush(brush, x, y, width, height);
             if (nativeBrush != null)
@@ -669,7 +683,7 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
         float bx = cx - rx, by = cy - ry, bw = rx * 2, bh = ry * 2;
 
         // Fill
-        if (brush != null)
+        if (brush != null && !TryFillEllipseAsImageBrush(brush, cx, cy, rx, ry))
         {
             var nativeBrush = GetNativeBrush(brush, bx, by, bw, bh);
             if (nativeBrush != null)
@@ -1077,9 +1091,15 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
 
         if (cmds.Count == 0) return;
 
+        var screenBounds = new Rect(geoBounds.X + ox, geoBounds.Y + oy, geoBounds.Width, geoBounds.Height);
+        if (TryFillPathAsImageBrush(brush, screenBounds))
+        {
+            return;
+        }
+
         var nativeBrush = GetNativeBrush(brush,
-            (float)(geoBounds.X + ox), (float)(geoBounds.Y + oy),
-            (float)geoBounds.Width, (float)geoBounds.Height);
+            (float)screenBounds.X, (float)screenBounds.Y,
+            (float)screenBounds.Width, (float)screenBounds.Height);
         if (nativeBrush != null)
         {
             int rule = fillRule == FillRule.Nonzero ? 1 : 0;
@@ -1551,18 +1571,25 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
 
         if (brush != null && figure.IsFilled)
         {
-            long brushStart = _svgDiagActive ? Stopwatch.GetTimestamp() : 0;
-            var nativeBrush = GetNativeBrush(brush, bx, by, bw, bh);
-            if (_svgDiagActive)
-                _svgGetBrushTicks += Stopwatch.GetTimestamp() - brushStart;
-
-            if (nativeBrush != null)
+            if (brush is ImageBrush)
             {
-                int rule = fillRule == FillRule.Nonzero ? 1 : 0;
-                long nativeStart = _svgDiagActive ? Stopwatch.GetTimestamp() : 0;
-                _renderTarget.FillPath(startX, startY, cmdArray, nativeBrush, rule);
+                TryFillPathAsImageBrush(brush, new Rect(bx, by, bw, bh));
+            }
+            else
+            {
+                long brushStart = _svgDiagActive ? Stopwatch.GetTimestamp() : 0;
+                var nativeBrush = GetNativeBrush(brush, bx, by, bw, bh);
                 if (_svgDiagActive)
-                    _svgNativeCallTicks += Stopwatch.GetTimestamp() - nativeStart;
+                    _svgGetBrushTicks += Stopwatch.GetTimestamp() - brushStart;
+
+                if (nativeBrush != null)
+                {
+                    int rule = fillRule == FillRule.Nonzero ? 1 : 0;
+                    long nativeStart = _svgDiagActive ? Stopwatch.GetTimestamp() : 0;
+                    _renderTarget.FillPath(startX, startY, cmdArray, nativeBrush, rule);
+                    if (_svgDiagActive)
+                        _svgNativeCallTicks += Stopwatch.GetTimestamp() - nativeStart;
+                }
             }
         }
 
@@ -1723,11 +1750,18 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
 
         if (brush != null && figure.IsFilled && points.Count >= 3)
         {
-            int rule = fillRule == FillRule.Nonzero ? 1 : 0;
-            var nativeBrush = GetNativeBrush(brush, bx, by, bw, bh);
-            if (nativeBrush != null)
+            if (brush is ImageBrush)
             {
-                _renderTarget.FillPolygon(pointArray, nativeBrush, rule);
+                TryFillPathAsImageBrush(brush, new Rect(bx, by, bw, bh));
+            }
+            else
+            {
+                int rule = fillRule == FillRule.Nonzero ? 1 : 0;
+                var nativeBrush = GetNativeBrush(brush, bx, by, bw, bh);
+                if (nativeBrush != null)
+                {
+                    _renderTarget.FillPolygon(pointArray, nativeBrush, rule);
+                }
             }
         }
 
@@ -2373,10 +2407,26 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
         }
         _clipBoundsStack.Push(effectiveClip);
 
-        if (clipGeometry is RectangleGeometry rectGeom && (rectGeom.RadiusX > 0 || rectGeom.RadiusY > 0))
+        if (clipGeometry is RectangleGeometry rectGeom)
         {
-            var (rx, ry) = NormalizeRoundedRectRadii(w, h, rectGeom.RadiusX, rectGeom.RadiusY);
-            _renderTarget.PushRoundedRectClip(x, y, w, h, rx, ry);
+            if (rectGeom.HasPerCornerRadii)
+            {
+                var (tl, tr, br, bl) = NormalizePerCornerRadii(w, h,
+                    rectGeom.CornerRadius.TopLeft,
+                    rectGeom.CornerRadius.TopRight,
+                    rectGeom.CornerRadius.BottomRight,
+                    rectGeom.CornerRadius.BottomLeft);
+                _renderTarget.PushPerCornerRoundedRectClip(x, y, w, h, tl, tr, br, bl);
+            }
+            else if (rectGeom.RadiusX > 0 || rectGeom.RadiusY > 0)
+            {
+                var (rx, ry) = NormalizeRoundedRectRadii(w, h, rectGeom.RadiusX, rectGeom.RadiusY);
+                _renderTarget.PushRoundedRectClip(x, y, w, h, rx, ry);
+            }
+            else
+            {
+                _renderTarget.PushClip(x, y, w, h);
+            }
         }
         else
         {
@@ -2397,8 +2447,6 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
         var y = (float)(bounds.Y + Offset.Y);
         var w = (float)bounds.Width;
         var h = (float)bounds.Height;
-        var r = (float)Math.Max(Math.Max(cornerRadius.TopLeft, cornerRadius.TopRight),
-                                Math.Max(cornerRadius.BottomRight, cornerRadius.BottomLeft));
 
         var clipRect = new Rect(x, y, w, h);
         Rect? effectiveClip = clipRect;
@@ -2409,7 +2457,48 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
         }
         _clipBoundsStack.Push(effectiveClip);
 
-        _renderTarget.PushRoundedRectClip(x, y, w, h, r, r);
+        bool perCorner =
+            cornerRadius.TopLeft != cornerRadius.TopRight ||
+            cornerRadius.TopRight != cornerRadius.BottomRight ||
+            cornerRadius.BottomRight != cornerRadius.BottomLeft;
+        if (perCorner)
+        {
+            var (tl, tr, br, bl) = NormalizePerCornerRadii(w, h,
+                cornerRadius.TopLeft, cornerRadius.TopRight,
+                cornerRadius.BottomRight, cornerRadius.BottomLeft);
+            _renderTarget.PushPerCornerRoundedRectClip(x, y, w, h, tl, tr, br, bl);
+        }
+        else
+        {
+            var r = (float)cornerRadius.TopLeft;
+            _renderTarget.PushRoundedRectClip(x, y, w, h, r, r);
+        }
+        _stateStack.Push(new DrawingState(DrawingStateType.Clip, Point.Zero));
+    }
+
+    /// <inheritdoc />
+    public void PushPerCornerRoundedRectClip(Rect bounds, CornerRadius cornerRadius)
+    {
+        if (_closed) return;
+
+        var x = (float)(bounds.X + Offset.X);
+        var y = (float)(bounds.Y + Offset.Y);
+        var w = (float)bounds.Width;
+        var h = (float)bounds.Height;
+
+        var clipRect = new Rect(x, y, w, h);
+        Rect? effectiveClip = clipRect;
+        if (_clipBoundsStack.Count > 0)
+        {
+            var parentClip = _clipBoundsStack.Peek();
+            effectiveClip = parentClip.HasValue ? parentClip.Value.Intersect(clipRect) : clipRect;
+        }
+        _clipBoundsStack.Push(effectiveClip);
+
+        var (tl, tr, br, bl) = NormalizePerCornerRadii(w, h,
+            cornerRadius.TopLeft, cornerRadius.TopRight,
+            cornerRadius.BottomRight, cornerRadius.BottomLeft);
+        _renderTarget.PushPerCornerRoundedRectClip(x, y, w, h, tl, tr, br, bl);
         _stateStack.Push(new DrawingState(DrawingStateType.Clip, Point.Zero));
     }
 
@@ -2896,7 +2985,332 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
             return CreateNativeRadialGradient(radial, bx, by, bw, bh);
         }
 
+        if (brush is ImageBrush imageBrush)
+        {
+            // Stroke fallback: degrade an ImageBrush stroke to a SolidColorBrush
+            // approximating the average pixel of the image. The fill path uses
+            // the dedicated TryFill*AsImageBrush helpers, which clip + tile the
+            // bitmap directly and never reach this method for the fill brush.
+            return GetImageBrushStrokeFallback(imageBrush);
+        }
+
         return null;
+    }
+
+    /// <summary>
+    /// Returns a <see cref="NativeBrush"/> approximating the average color of
+    /// <paramref name="imageBrush"/>'s source. Used as a graceful degradation
+    /// for code paths that paint a stroke or compound shape with an ImageBrush —
+    /// real bitmap-tiled strokes need a path-clipped opacity-mask backend that
+    /// the framework does not expose yet, so a flat-color stand-in keeps the
+    /// silhouette visible instead of dropping the stroke entirely.
+    /// </summary>
+    /// <remarks>
+    /// Cached on the brush instance and invalidated when the underlying
+    /// <see cref="ImageSource"/> reference changes — a single ImageBrush whose
+    /// source is reassigned (e.g. for a sprite swap) re-samples on the next
+    /// stroke, while a shared brush keeps reusing the cached native solid.
+    /// </remarks>
+    private NativeBrush? GetImageBrushStrokeFallback(ImageBrush imageBrush)
+    {
+        if (_brushCache.TryGetValue(imageBrush, out var cached))
+        {
+            // CachedSourceRef tracks the ImageSource the brush was sampled from.
+            // When the brush points at a different source, drop the stale entry
+            // and re-sample below; otherwise reuse the existing native solid.
+            if (ReferenceEquals(cached.CachedImageSource, imageBrush.ImageSource))
+            {
+                cached.LastAccessSequence = ++_brushCacheSequence;
+                return cached;
+            }
+            cached.Dispose();
+            _brushCache.Remove(imageBrush);
+        }
+
+        var color = SampleAverageColor(imageBrush.ImageSource) ?? Color.FromArgb(0, 0, 0, 0);
+        if (color.A == 0)
+        {
+            return null;
+        }
+
+        var alpha = color.A / 255f * (float)imageBrush.Opacity;
+        var nb = _context.CreateSolidBrush(color.R / 255f, color.G / 255f, color.B / 255f, alpha);
+        nb.CachedColor = Color.FromArgb((byte)(alpha * 255f), color.R, color.G, color.B);
+        nb.CachedImageSource = imageBrush.ImageSource;
+        nb.LastAccessSequence = ++_brushCacheSequence;
+        _brushCache[imageBrush] = nb;
+        return nb;
+    }
+
+    private static Color? SampleAverageColor(ImageSource? source)
+    {
+        if (source is BitmapImage bitmap && bitmap.RawPixelData is { Length: >= 4 } pixels)
+        {
+            // Pixels are BGRA8 stored as Pbgra32. Sample on a coarse grid to
+            // keep this O(1) — full-image averaging on a 4K texture is wasted
+            // work for a fallback color.
+            const int MaxSamples = 64;
+            int totalPixels = pixels.Length / 4;
+            int step = Math.Max(1, totalPixels / MaxSamples);
+
+            long sumB = 0, sumG = 0, sumR = 0, sumA = 0;
+            int count = 0;
+            for (int i = 0; i < totalPixels; i += step)
+            {
+                int off = i * 4;
+                sumB += pixels[off];
+                sumG += pixels[off + 1];
+                sumR += pixels[off + 2];
+                sumA += pixels[off + 3];
+                count++;
+            }
+
+            if (count == 0) return null;
+            return Color.FromArgb(
+                (byte)(sumA / count),
+                (byte)(sumR / count),
+                (byte)(sumG / count),
+                (byte)(sumB / count));
+        }
+
+        return null;
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    //  ImageBrush fill: clip the shape, tile the bitmap.
+    //
+    //  The native brush API only knows solid + gradient brushes, so an
+    //  ImageBrush fill cannot be passed through GetNativeBrush — we reach
+    //  for the bitmap pipeline instead. The shape's geometry becomes a
+    //  clip layer; TileBrushHelper lays out the bitmap tiles inside that
+    //  clip according to the brush's Viewport / Viewbox / Stretch / Tile
+    //  / Alignment properties; each tile is one DrawBitmap call (with an
+    //  optional flip transform around the tile center for FlipX / FlipY /
+    //  FlipXY tile modes).
+    //
+    //  Each TryFill*AsImageBrush helper returns true if it claims the brush —
+    //  i.e. the call site must NOT fall through to GetNativeBrush. The
+    //  return value does NOT signal that pixels were actually emitted: a
+    //  null ImageSource or a degenerate viewport is still a successful
+    //  "claim" because the alternative (a black SolidColorBrush stand-in)
+    //  is worse than nothing.
+
+    /// <summary>
+    /// Encodes which native clip primitive bounds an ImageBrush fill. Avoids
+    /// allocating a per-call closure on the rendering hot path by passing the
+    /// shape parameters by-value.
+    /// </summary>
+    private enum ImageBrushClipKind
+    {
+        /// <summary>Axis-aligned rectangular clip via <c>PushClip</c>.</summary>
+        Rect,
+        /// <summary>Rounded-rectangle clip via <c>PushRoundedRectClip</c>.</summary>
+        RoundedRect,
+        /// <summary>Ellipse clip — degenerate rounded-rect with rx = w/2, ry = h/2.</summary>
+        Ellipse
+    }
+
+    private bool TryFillRectangleAsImageBrush(Brush? brush, float x, float y, float w, float h)
+    {
+        if (brush is not ImageBrush imageBrush) return false;
+        FillImageBrushTiles(imageBrush, new Rect(x, y, w, h),
+            ImageBrushClipKind.Rect, x, y, w, h, 0, 0);
+        return true;
+    }
+
+    private bool TryFillRoundedRectangleAsImageBrush(Brush? brush,
+        float x, float y, float w, float h, float rx, float ry)
+    {
+        if (brush is not ImageBrush imageBrush) return false;
+        var kind = (rx > 0 || ry > 0) ? ImageBrushClipKind.RoundedRect : ImageBrushClipKind.Rect;
+        FillImageBrushTiles(imageBrush, new Rect(x, y, w, h),
+            kind, x, y, w, h, rx, ry);
+        return true;
+    }
+
+    private bool TryFillPerCornerRoundedAsImageBrush(Brush? brush,
+        float x, float y, float w, float h,
+        float tl, float tr, float br, float bl)
+    {
+        if (brush is not ImageBrush imageBrush) return false;
+        // Native side has no 4-corner clip primitive — degrade to a uniform
+        // clip using the largest corner radius. For the common case where
+        // all four corners are equal this is exact; otherwise the clip is
+        // looser than the rendered border but never tighter (image never
+        // bleeds past the visible border edge).
+        var maxR = Math.Max(Math.Max(tl, tr), Math.Max(br, bl));
+        var kind = maxR > 0 ? ImageBrushClipKind.RoundedRect : ImageBrushClipKind.Rect;
+        FillImageBrushTiles(imageBrush, new Rect(x, y, w, h),
+            kind, x, y, w, h, maxR, maxR);
+        return true;
+    }
+
+    private bool TryFillEllipseAsImageBrush(Brush? brush,
+        float cx, float cy, float radiusX, float radiusY)
+    {
+        if (brush is not ImageBrush imageBrush) return false;
+        var x = cx - radiusX;
+        var y = cy - radiusY;
+        var w = radiusX * 2;
+        var h = radiusY * 2;
+        // PushRoundedRectClip with rx=radiusX, ry=radiusY on a (2r × 2r) box
+        // is exactly an ellipse — the native rounded-rect clip degenerates
+        // to a pure ellipse path when corner radius equals half-extent.
+        FillImageBrushTiles(imageBrush, new Rect(x, y, w, h),
+            ImageBrushClipKind.Ellipse, x, y, w, h, radiusX, radiusY);
+        return true;
+    }
+
+    private bool TryFillPathAsImageBrush(Brush? brush, Rect geoBoundsScreen)
+    {
+        if (brush is not ImageBrush imageBrush) return false;
+        if (geoBoundsScreen.Width <= 0 || geoBoundsScreen.Height <= 0) return true;
+
+        // Arbitrary path geometry has no clip primitive on the native side —
+        // bound the image to the path's bounding box. The result fills more
+        // pixels than the path geometry for non-rectangular paths, but keeps
+        // the brush visible (and is correct for the common rectangle/rounded
+        // /ellipse paths that already route through their dedicated helpers).
+        FillImageBrushTiles(imageBrush, geoBoundsScreen,
+            ImageBrushClipKind.Rect,
+            (float)geoBoundsScreen.X, (float)geoBoundsScreen.Y,
+            (float)geoBoundsScreen.Width, (float)geoBoundsScreen.Height,
+            0, 0);
+        return true;
+    }
+
+    /// <summary>
+    /// Common ImageBrush fill driver: resolves the source bitmap, computes the
+    /// tile placements, pushes the shape clip described by
+    /// (<paramref name="clipKind"/>, <paramref name="clipX"/>, <paramref name="clipY"/>,
+    /// <paramref name="clipW"/>, <paramref name="clipH"/>, <paramref name="clipRx"/>,
+    /// <paramref name="clipRy"/>), and emits one DrawBitmap call per tile (with a flip
+    /// transform when the tile mode requires it). Bails out cleanly if the source is
+    /// missing or the layout produces no tiles — the shape clip is pushed only after
+    /// we know there is something to draw, so callers always get matched push/pop pairs.
+    /// </summary>
+    private void FillImageBrushTiles(ImageBrush imageBrush, Rect shapeBounds,
+        ImageBrushClipKind clipKind,
+        float clipX, float clipY, float clipW, float clipH,
+        float clipRx, float clipRy)
+    {
+        if (imageBrush.ImageSource is null) return;
+        var nativeBitmap = GetNativeBitmap(imageBrush.ImageSource);
+        if (nativeBitmap is null) return;
+
+        var imgW = (double)nativeBitmap.Width;
+        var imgH = (double)nativeBitmap.Height;
+        if (imgW <= 0 || imgH <= 0) return;
+
+        var placements = TileBrushHelper.ComputeTilePlacements(imageBrush, shapeBounds, imgW, imgH);
+        if (placements.Count == 0) return;
+
+        var opacity = (float)Math.Clamp(imageBrush.Opacity, 0.0, 1.0);
+        if (opacity <= 0) return;
+
+        var scalingMode = BitmapScalingMode.Unspecified;
+
+        // For the common default case (Viewport == shape, TileMode.None,
+        // Stretch.Fill, no Viewbox crop) the single placement's ClipRect
+        // equals shapeBounds — the per-tile clip would be redundant. Detect
+        // and skip it to halve native PushClip / PopClip pressure on the
+        // hot path (Border.Background = ImageBrush is by far the most
+        // common scenario).
+        bool perTileClipNeeded = placements.Count > 1 ||
+            !RectsApproximatelyEqual(placements[0].ClipRect, shapeBounds);
+
+        PushImageBrushShapeClip(clipKind, clipX, clipY, clipW, clipH, clipRx, clipRy);
+        try
+        {
+            for (int i = 0; i < placements.Count; i++)
+            {
+                DrawImageBrushTile(nativeBitmap, placements[i], opacity, scalingMode, perTileClipNeeded);
+            }
+        }
+        finally
+        {
+            _renderTarget.PopClip();
+        }
+    }
+
+    private void PushImageBrushShapeClip(ImageBrushClipKind kind,
+        float x, float y, float w, float h, float rx, float ry)
+    {
+        switch (kind)
+        {
+            case ImageBrushClipKind.RoundedRect:
+            case ImageBrushClipKind.Ellipse:
+                _renderTarget.PushRoundedRectClip(x, y, w, h, rx, ry);
+                break;
+            case ImageBrushClipKind.Rect:
+            default:
+                _renderTarget.PushClip(x, y, w, h);
+                break;
+        }
+    }
+
+    // Reusable matrix buffer for per-tile flip transforms — keeps the inner
+    // tile loop allocation-free. Row layout matches PushTransform's contract:
+    // [m11, m12, m21, m22, dx, dy].
+    private readonly float[] _imageBrushFlipMatrix = new float[6];
+
+    private void DrawImageBrushTile(NativeBitmap bitmap, TileBrushHelper.TilePlacement placement,
+        float opacity, BitmapScalingMode scalingMode, bool pushTileClip)
+    {
+        var clip = placement.ClipRect;
+        var dst = placement.ImageDestRect;
+
+        // Tile out of the screen entirely — skip the native call.
+        if (clip.Width <= 0 || clip.Height <= 0) return;
+        if (dst.Width <= 0 || dst.Height <= 0) return;
+
+        if (pushTileClip)
+        {
+            _renderTarget.PushClip((float)clip.X, (float)clip.Y, (float)clip.Width, (float)clip.Height);
+        }
+
+        bool needsFlip = placement.FlipX || placement.FlipY;
+        if (needsFlip)
+        {
+            // Flip about the tile's center so the bitmap stays inside its
+            // clip rectangle. The native compose rule is `new = old * incoming`,
+            // so this matrix is applied to the bitmap-local coords first and
+            // composes correctly with any caller-pushed transform on top.
+            var cx = (float)(clip.X + clip.Width * 0.5);
+            var cy = (float)(clip.Y + clip.Height * 0.5);
+            var sx = placement.FlipX ? -1f : 1f;
+            var sy = placement.FlipY ? -1f : 1f;
+            var dx = placement.FlipX ? 2f * cx : 0f;
+            var dy = placement.FlipY ? 2f * cy : 0f;
+            var m = _imageBrushFlipMatrix;
+            m[0] = sx; m[1] = 0f;
+            m[2] = 0f; m[3] = sy;
+            m[4] = dx; m[5] = dy;
+            _renderTarget.PushTransform(m);
+        }
+
+        try
+        {
+            _renderTarget.DrawBitmap(bitmap,
+                (float)dst.X, (float)dst.Y,
+                (float)dst.Width, (float)dst.Height,
+                opacity,
+                scalingMode);
+        }
+        finally
+        {
+            if (needsFlip) _renderTarget.PopTransform();
+            if (pushTileClip) _renderTarget.PopClip();
+        }
+    }
+
+    private static bool RectsApproximatelyEqual(Rect a, Rect b)
+    {
+        const double Eps = 0.5; // half-pixel tolerance — clip rects are pixel-snapped on the native side
+        return Math.Abs(a.X - b.X) < Eps &&
+               Math.Abs(a.Y - b.Y) < Eps &&
+               Math.Abs(a.Width - b.Width) < Eps &&
+               Math.Abs(a.Height - b.Height) < Eps;
     }
 
     private static float[] MarshalGradientStops(List<GradientStop> stops)

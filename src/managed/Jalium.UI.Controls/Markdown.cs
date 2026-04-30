@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Linq;
 using Jalium.UI.Media;
 
@@ -243,7 +243,7 @@ public class Markdown : Control
 
     internal IReadOnlyList<MarkdownBlock> DebugBlocks => _blocks;
 
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         if (_container != null && _scrollViewer != null && ReferenceEquals(_container.Child, _scrollViewer))
         {

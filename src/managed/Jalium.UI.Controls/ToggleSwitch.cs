@@ -202,7 +202,7 @@ public class ToggleSwitch : Control
 
     #region Template Initialization
 
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
 

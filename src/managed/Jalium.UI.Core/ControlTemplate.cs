@@ -18,7 +18,7 @@ public class ControlTemplate
     /// <summary>
     /// Gets the collection of triggers.
     /// </summary>
-    public IList<Trigger> Triggers { get; } = new List<Trigger>();
+    public IList<TriggerBase> Triggers { get; } = new List<TriggerBase>();
 
     /// <summary>
     /// Gets a value that indicates whether the template is read-only.

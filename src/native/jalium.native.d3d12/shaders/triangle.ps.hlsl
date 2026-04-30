@@ -1,3 +1,5 @@
+#include "rounded_clip.hlsli"
+
 struct PsInput
 {
     float4 clipPos : SV_Position;
@@ -6,6 +8,8 @@ struct PsInput
 
 float4 main(PsInput input) : SV_Target
 {
+    DiscardOutsideRoundedClip(input.clipPos.xy);
+
     if (input.color.a < 1.0 / 255.0) discard;
     return input.color;
 }

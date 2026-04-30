@@ -481,7 +481,7 @@ public class JsonTreeViewer : Control
     #region Template
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         // Unhook old event handlers
         if (_searchBox != null)

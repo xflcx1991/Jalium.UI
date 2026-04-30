@@ -156,7 +156,7 @@ public class Expander : ContentControl
     private DispatcherTimer? _animationTimer;
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         // Unsubscribe from old header border
         if (_headerBorder != null)

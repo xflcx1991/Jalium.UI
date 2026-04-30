@@ -457,7 +457,7 @@ public class ContentDialog : ContentControl
         return overlaySize;
     }
 
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         DetachButtonHandlers();
         base.OnApplyTemplate();

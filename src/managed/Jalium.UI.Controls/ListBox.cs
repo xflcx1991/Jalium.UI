@@ -923,7 +923,7 @@ public class ListBoxItem : ContentControl
 
     #endregion
 
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
 

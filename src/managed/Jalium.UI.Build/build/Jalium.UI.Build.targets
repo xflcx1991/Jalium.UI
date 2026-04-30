@@ -264,6 +264,47 @@
     <Message Text="Embedded original JALXAML sources: @(_EffectiveJalxamlSources)" Importance="normal" />
   </Target>
 
+  <!--
+    Embed `<Resource>` items as manifest resources so BitmapImage / ImageSource
+    relative URIs (e.g. `Assets/Templates/desktop.png`) can be resolved at
+    runtime via Assembly.GetManifestResourceStream — see
+    Jalium.UI.Media.ImageSource.BitmapImage.LoadFromUri.
+
+    Why a custom target: SDK-style projects do NOT recognise the WPF-flavoured
+    `<Resource>` ItemGroup unless they enable `<UseWPF>true</UseWPF>`, which
+    pulls in the entire WPF SDK (and only works on net*-windows TFMs).  Jalium
+    is a cross-platform UI framework that targets bare `net10.0`, so we
+    re-implement the embedding step ourselves with a shape that matches how
+    JALXAML sources are embedded above (see EmbedJalxamlSources): the logical
+    name is `<RootNamespace>.<sanitised-relative-path>` so `Assets\Templates\
+    desktop.png` becomes `<RootNamespace>.Assets.Templates.desktop.png`.
+    BitmapImage's relative-URI loader generates the same candidate name when
+    looking up a resource, which keeps consumer XAML / code-behind free of
+    assembly-prefix bookkeeping.
+
+    The `<Resource>` items are removed afterwards because the SDK has no
+    built-in target that consumes them — leaving them in place would just be
+    dead metadata in the final project.
+  -->
+  <Target Name="EmbedJaliumResourceItems"
+          BeforeTargets="AssignTargetPaths;PrepareResources;CoreCompile"
+          Condition="'@(Resource)' != ''">
+
+    <ItemGroup>
+      <_JaliumResourceToEmbed Include="@(Resource)">
+        <JaliumResourceLogicalName>$(RootNamespace).$([System.String]::Copy('%(Resource.RelativeDir)%(Resource.Filename)%(Resource.Extension)').Replace('\','.').Replace('/','.').TrimStart('.'))</JaliumResourceLogicalName>
+      </_JaliumResourceToEmbed>
+      <EmbeddedResource Include="@(_JaliumResourceToEmbed)">
+        <ManifestResourceName>%(_JaliumResourceToEmbed.JaliumResourceLogicalName)</ManifestResourceName>
+        <LogicalName>%(_JaliumResourceToEmbed.JaliumResourceLogicalName)</LogicalName>
+      </EmbeddedResource>
+      <Resource Remove="@(Resource)" />
+    </ItemGroup>
+
+    <Message Text="Embedded Resource items as manifest resources: @(_JaliumResourceToEmbed -> '%(JaliumResourceLogicalName)')"
+             Importance="normal" />
+  </Target>
+
   <!-- Compile project-defined HLSL shaders. -->
   <Target Name="CompileHlslShaders"
           BeforeTargets="PrepareResources;CoreCompile"

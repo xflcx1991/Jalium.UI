@@ -140,7 +140,7 @@ public class Label : ContentControl
     private Border? _labelBorder;
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
         _labelBorder = GetTemplateChild("LabelBorder") as Border;

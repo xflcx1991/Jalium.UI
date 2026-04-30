@@ -1,3 +1,5 @@
+#include "rounded_clip.hlsli"
+
 Texture2D<float4> glyphAtlas : register(t1);
 SamplerState glyphSampler : register(s1);  // point sampler for pixel-exact glyph sampling
 
@@ -19,6 +21,8 @@ struct PsOutput
 
 PsOutput main(PsInput input)
 {
+    DiscardOutsideRoundedClip(input.clipPos.xy);
+
     // Atlas is R8G8B8A8_UNORM: .rgb = per-channel sub-pixel coverage, .a = max coverage
     float4 atlas = glyphAtlas.Sample(glyphSampler, input.uv);
     float3 coverage = atlas.rgb;

@@ -48,6 +48,8 @@ public:
     void PopTransform() override;
     void PushClip(float x, float y, float w, float h) override;
     void PushRoundedRectClip(float x, float y, float w, float h, float rx, float ry) override;
+    void PushPerCornerRoundedRectClip(float x, float y, float w, float h,
+        float tl, float tr, float br, float bl) override;
     void PopClip() override;
     void PunchTransparentRect(float x, float y, float w, float h) override;
     void PushOpacity(float opacity) override;
@@ -136,8 +138,13 @@ private:
         float y = 0.0f;
         float w = 0.0f;
         float h = 0.0f;
-        float rx = 0.0f;
-        float ry = 0.0f;
+        // Per-corner radii (TL, TR, BR, BL) — for the symmetric variant the
+        // four are populated with the same value, so consumers don't need to
+        // branch on rectangular vs per-corner.
+        float radiusTL = 0.0f;
+        float radiusTR = 0.0f;
+        float radiusBR = 0.0f;
+        float radiusBL = 0.0f;
         CpuTransform transform {};
         CpuTransform inverseTransform {};
         bool hasInverse = true;

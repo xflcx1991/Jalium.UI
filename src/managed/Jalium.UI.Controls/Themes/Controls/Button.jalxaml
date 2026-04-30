@@ -58,11 +58,11 @@
                 </MultiTrigger.Conditions>
                 <Setter Property="Background" Value="{ThemeResource ButtonBackgroundPressed}" />
             </MultiTrigger>
-            <PropertyTrigger Property="IsEnabled" Value="False">
+            <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Background" Value="{ThemeResource ControlBackgroundDisabled}" />
                 <Setter Property="Foreground" Value="{ThemeResource TextDisabled}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource ControlBorderDisabled}" />
-            </PropertyTrigger>
+            </Trigger>
         </Style.Triggers>
     </Style>
 
@@ -126,11 +126,11 @@
         </Setter>
 
         <Style.Triggers>
-            <PropertyTrigger Property="IsEnabled" Value="False">
+            <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Background" Value="{ThemeResource ControlBackgroundDisabled}" />
                 <Setter Property="Foreground" Value="{ThemeResource TextDisabled}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource ControlBorderDisabled}" />
-            </PropertyTrigger>
+            </Trigger>
         </Style.Triggers>
     </Style>
 
@@ -197,12 +197,12 @@
                 <Setter TargetName="StateOverlay" Property="Background" Value="{ThemeResource ButtonBackgroundPressed}" />
                 <Setter TargetName="StateOverlay" Property="Opacity" Value="1" />
             </MultiTrigger>
-            <PropertyTrigger Property="IsEnabled" Value="False">
+            <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="StateOverlay" Property="Opacity" Value="0" />
                 <Setter Property="Background" Value="{ThemeResource ControlBackgroundDisabled}" />
                 <Setter Property="Foreground" Value="{ThemeResource TextDisabled}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource ControlBorderDisabled}" />
-            </PropertyTrigger>
+            </Trigger>
         </Style.Triggers>
     </Style>
 
@@ -258,12 +258,12 @@
                 </MultiTrigger.Conditions>
                 <Setter Property="Foreground" Value="{ThemeResource HyperlinkForegroundPressed}" />
             </MultiTrigger>
-            <PropertyTrigger Property="IsEnabled" Value="False">
+            <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Foreground" Value="{ThemeResource TextDisabled}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsUnderlined" Value="False">
+            </Trigger>
+            <Trigger Property="IsUnderlined" Value="False">
                 <Setter TargetName="UnderlineBorder" Property="Visibility" Value="Collapsed" />
-            </PropertyTrigger>
+            </Trigger>
         </Style.Triggers>
     </Style>
 

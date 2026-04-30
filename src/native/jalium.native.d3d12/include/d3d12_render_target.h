@@ -89,6 +89,8 @@ public:
     void PushClip(float x, float y, float w, float h) override;
     void PushClipAliased(float x, float y, float w, float h) override;
     void PushRoundedRectClip(float x, float y, float w, float h, float rx, float ry) override;
+    void PushPerCornerRoundedRectClip(float x, float y, float w, float h,
+        float tl, float tr, float br, float bl) override;
     void PopClip() override;
     void PunchTransparentRect(float x, float y, float w, float h) override;
     void PushOpacity(float opacity) override;
@@ -241,6 +243,11 @@ private:
 
     // Opacity stack (DirectRenderer only has SetOpacity, so we manage the stack here)
     std::stack<float> opacityStack_;
+
+    // Tracks whether each PushClip/PushClipAliased/PushRoundedRectClip frame was
+    // a rounded clip, so the matching PopClip can pop both the scissor and the
+    // rounded-clip stack on the underlying DirectRenderer.
+    std::vector<bool> clipFrameIsRounded_;
 
     // Actual swap chain creation flags (tracked for correct ResizeBuffers calls)
     UINT swapChainCreationFlags_ = 0;

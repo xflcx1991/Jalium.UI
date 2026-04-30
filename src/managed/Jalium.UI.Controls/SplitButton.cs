@@ -98,7 +98,7 @@ public class SplitButton : ContentControl
     }
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
 

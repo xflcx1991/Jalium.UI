@@ -173,8 +173,10 @@ internal static class SoftwareVectorRasterizer
     /// <summary>
     /// Extracts a representative BGRA color from any brush type.
     /// For SolidColorBrush: exact color. For gradients: first stop color.
-    /// This ensures gradient-filled SVG elements render with an approximate
-    /// color instead of being completely invisible.
+    /// For ImageBrush: an average sampled from the source's pixel buffer.
+    /// This ensures filled SVG elements render with at least an approximate
+    /// color instead of being completely invisible when the brush type is
+    /// not natively supported by the software rasterizer.
     /// </summary>
     private static (byte B, byte G, byte R, byte A) ExtractBrushColor(Brush brush, double opacity)
     {
@@ -202,8 +204,58 @@ internal static class SoftwareVectorRasterizer
             return (c.B, c.G, c.R, a);
         }
 
+        if (brush is ImageBrush imageBrush)
+        {
+            var sampled = SampleImageAverage(imageBrush.ImageSource);
+            if (sampled.HasValue)
+            {
+                var c = sampled.Value;
+                var a = (byte)(c.A * opacity * imageBrush.Opacity);
+                return (c.B, c.G, c.R, a);
+            }
+            // No pixel data available (decode pending or vector source) —
+            // fall through to the opaque-black last resort below.
+        }
+
         // Unknown brush type — render as opaque black as last resort
         return (0, 0, 0, (byte)(255 * opacity));
+    }
+
+    /// <summary>
+    /// Samples a coarse-grid average BGRA color from <paramref name="source"/>
+    /// when its raw pixel buffer is reachable. Returns <see langword="null"/>
+    /// for sources that have not been decoded yet or do not expose pixels
+    /// (e.g. <see cref="SvgImage"/> / <see cref="DrawingImage"/>).
+    /// </summary>
+    private static Color? SampleImageAverage(ImageSource? source)
+    {
+        if (source is BitmapImage bitmap && bitmap.RawPixelData is { Length: >= 4 } pixels)
+        {
+            const int MaxSamples = 64;
+            int totalPixels = pixels.Length / 4;
+            int step = Math.Max(1, totalPixels / MaxSamples);
+
+            long sumB = 0, sumG = 0, sumR = 0, sumA = 0;
+            int count = 0;
+            for (int i = 0; i < totalPixels; i += step)
+            {
+                int off = i * 4;
+                sumB += pixels[off];
+                sumG += pixels[off + 1];
+                sumR += pixels[off + 2];
+                sumA += pixels[off + 3];
+                count++;
+            }
+
+            if (count == 0) return null;
+            return Color.FromArgb(
+                (byte)(sumA / count),
+                (byte)(sumR / count),
+                (byte)(sumG / count),
+                (byte)(sumB / count));
+        }
+
+        return null;
     }
 
     #region Scanline Fill

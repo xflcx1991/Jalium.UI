@@ -100,7 +100,7 @@ public class TreeView : ItemsControl
     #region Template
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
     }
@@ -610,7 +610,7 @@ public class TreeViewItem : HeaderedItemsControl
     #region Template
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
         StopExpandAnimation();

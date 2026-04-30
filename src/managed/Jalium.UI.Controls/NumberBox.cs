@@ -473,7 +473,7 @@ public class NumberBox : TextBoxBase, IImeSupport
     }
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         // Detach previous handlers
         if (_upSpinButton != null)

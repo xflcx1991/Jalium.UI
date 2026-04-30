@@ -91,20 +91,21 @@ JALIUM_API JaliumContext* jalium_context_create(JaliumBackend backend) {
     LOGI_CTX("jalium_context_create: requested backend=%d", (int)backend);
 
     // Honor JALIUM_RENDER_BACKEND unconditionally, because the managed
-    // RenderBackendSelector on Windows resolves Auto → D3D12 *before* reaching
-    // the native layer (via IsBackendAvailable which only returns true for
-    // whatever the NativeMethods static ctor eagerly init'd — D3D12 on Windows).
-    // By the time we get here "backend" is already D3D12 even if the user asked
-    // for Auto with the env var hoping to pick Vulkan. Override it here.
+    // RenderBackendSelector resolves Auto → first-available concrete backend
+    // *before* reaching the native layer (via IsBackendAvailable, which only
+    // returns true for backends whose DLL has been loaded into this process).
+    // By the time we get here "backend" is already the platform default even
+    // if the user set the env var hoping to pick a different one. Override it
+    // here so the env var still wins after-the-fact.
     {
         JaliumBackend envOverride = ReadBackendEnvOverride();
         if (envOverride != JALIUM_BACKEND_AUTO) {
-            // The per-platform NativeMethods static ctor only eagerly initializes
-            // one GPU backend (D3D12 on Windows, Metal on macOS, Vulkan on
-            // Linux/Android). Secondary backends stay unloaded until something
-            // calls into their DLL. If the user asked for a backend that hasn't
-            // been loaded yet, dlopen it so its DllMain/constructor registers
-            // its factory. Only then can registry.IsAvailable return the truth.
+            // Every backend in NativeMethods is strictly lazy — DLLs aren't
+            // brought in until EnsureBackendInitialized fires for that backend.
+            // If the env override picks a backend that nobody has loaded yet,
+            // dlopen it here so its DllMain / __attribute__((constructor)) can
+            // register its factory. Only after that can registry.IsAvailable
+            // return the truth.
             if (!registry.IsAvailable(envOverride)) {
 #ifdef _WIN32
                 const char* libName = nullptr;

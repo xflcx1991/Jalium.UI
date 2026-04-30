@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -413,7 +413,7 @@ public class TreeDataGrid : Control, IColumnHeaderHost
 
     #region Template
 
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
 
@@ -2093,7 +2093,7 @@ public class TreeDataGridRow : Control
         Focusable = false;
     }
 
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
 

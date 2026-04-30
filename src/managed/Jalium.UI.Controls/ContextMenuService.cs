@@ -29,12 +29,12 @@ public static class ContextMenuService
     #region Attached Properties
 
     /// <summary>
-    /// Identifies the ContextMenu attached dependency property.
+    /// Identifies the ContextMenu attached dependency property. Aliased to
+    /// <see cref="FrameworkElement.ContextMenuProperty"/> so that <c>FrameworkElement.ContextMenu</c>
+    /// (the WPF-style instance property) and <c>ContextMenuService.ContextMenu</c> share a single store.
     /// </summary>
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Other)]
-    public static readonly DependencyProperty ContextMenuProperty =
-        DependencyProperty.RegisterAttached("ContextMenu", typeof(ContextMenu), typeof(ContextMenuService),
-            new PropertyMetadata(null));
+    public static readonly DependencyProperty ContextMenuProperty = FrameworkElement.ContextMenuProperty;
 
     /// <summary>
     /// Identifies the IsEnabled attached dependency property.

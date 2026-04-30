@@ -243,7 +243,132 @@ internal sealed class JalxamlReader : XmlReader, IXmlLineInfo
         return attrs[i].Value;
     }
 
-    public override string? LookupNamespace(string prefix) => null;
+    public override string? LookupNamespace(string prefix)
+    {
+        // tokenizer 已经把每个 element 的 xmlns / xmlns:* 声明保留在 Event.Attributes 里
+        // （它们没有被自动剥离），这里要做的就是按 XML namespace scoping 规则向上回溯
+        // 当前元素及其祖先链，找到第一个声明该 prefix 的元素的 xmlns 值。
+        //
+        // 这条 API 是 XAML 解析器把 "controls:WelcomeActionCard" 这种 prefix:Type 字符串
+        // 解析成 CLR Type 的关键 — 之前直接 return null 让所有 prefix-aware 的 Type 引用
+        // （Style.TargetType、{x:Type ...}、RelativeSource AncestorType 等）都解析失败，
+        // 应用层自定义 Style 因此永远命不到 implicit-style 查找，控件渲染空白。
+        if (_index < 0 || _index >= _events.Count)
+            return null;
+
+        prefix ??= string.Empty;
+
+        // 起点：当前事件自身。如果当前焦点不是 Element（例如刚 Read 到一个 Text 节点），
+        // 仍然以这个事件的 Depth 作为起点，向前找最近的 Element。
+        var focusDepth = _events[_index].Depth;
+
+        for (var i = _index; i >= 0; i--)
+        {
+            var ev = _events[i];
+            if (ev.NodeType != XmlNodeType.Element)
+                continue;
+
+            if (ev.Depth > focusDepth)
+                continue; // 跳过同级或更深处的兄弟/已闭合元素
+
+            var found = TryLookupNamespaceOnAttributes(ev.Attributes, prefix);
+            if (found != null)
+                return found;
+
+            // 跳到下一个祖先层级
+            focusDepth = ev.Depth - 1;
+            if (focusDepth < 0)
+                break;
+        }
+
+        // XML 内置前缀，按惯例必须可解析。
+        if (prefix == "xml")
+            return "http://www.w3.org/XML/1998/namespace";
+        if (prefix == "xmlns")
+            return "http://www.w3.org/2000/xmlns/";
+
+        return null;
+    }
+
+    private static string? TryLookupNamespaceOnAttributes(AttrEntry[]? attrs, string prefix)
+    {
+        if (attrs == null || attrs.Length == 0)
+            return null;
+
+        for (var i = 0; i < attrs.Length; i++)
+        {
+            var a = attrs[i];
+
+            if (string.IsNullOrEmpty(prefix))
+            {
+                // 默认命名空间： xmlns="..."。tokenizer 把这个声明识别为
+                // Prefix=""，LocalName="xmlns"。
+                if (string.IsNullOrEmpty(a.Prefix) && a.LocalName == "xmlns")
+                    return a.Value;
+            }
+            else
+            {
+                // 带前缀声明： xmlns:foo="..."。tokenizer 把这个声明识别为
+                // Prefix="xmlns"，LocalName="foo"。
+                if (a.Prefix == "xmlns" && a.LocalName == prefix)
+                    return a.Value;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// 快照当前焦点元素 + 全部祖先链上声明的 xmlns 映射。Key 是 prefix（默认命名空间为空字符串），
+    /// Value 是 namespace URI。仅向 XAML 模板捕获路径暴露 — DataTemplate / ControlTemplate /
+    /// ItemsPanelTemplate 把内容存为字符串后再延迟解析，原 reader 上下文已不存在；新 reader
+    /// 解析 fragment 时无法看到外层 xmlns 声明，导致 prefix:Type 引用（如
+    /// <c>controls:WelcomeTemplateCard</c>）解析失败。把外层声明注入到 fragment 的 root
+    /// open-tag 即可让 fragment 自包含。
+    ///
+    /// 当多层级声明同一 prefix 时，最近的 element（最深的）优先 — 这与 XML namespace
+    /// scoping 规则一致。
+    /// </summary>
+    internal IReadOnlyDictionary<string, string> SnapshotNamespacesInScope()
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (_index < 0 || _index >= _events.Count)
+            return result;
+
+        var focusDepth = _events[_index].Depth;
+
+        for (var i = _index; i >= 0; i--)
+        {
+            var ev = _events[i];
+            if (ev.NodeType != XmlNodeType.Element)
+                continue;
+
+            if (ev.Depth > focusDepth)
+                continue; // 跳过同级或更深的兄弟/已闭合元素
+
+            if (ev.Attributes != null)
+            {
+                foreach (var a in ev.Attributes)
+                {
+                    if (string.IsNullOrEmpty(a.Prefix) && a.LocalName == "xmlns")
+                    {
+                        // 默认命名空间。最近的赢，所以只在尚未记录时填入。
+                        result.TryAdd(string.Empty, a.Value);
+                    }
+                    else if (a.Prefix == "xmlns")
+                    {
+                        result.TryAdd(a.LocalName, a.Value);
+                    }
+                }
+            }
+
+            focusDepth = ev.Depth - 1;
+            if (focusDepth < 0)
+                break;
+        }
+
+        return result;
+    }
 
     public override void MoveToAttribute(int i)
     {

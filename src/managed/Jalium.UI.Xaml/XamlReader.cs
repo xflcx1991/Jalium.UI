@@ -447,10 +447,10 @@ public static class XamlReader
         {
             PostProcessSetter(setter, context, lineNumber, linePosition);
         }
-        // Post-process PropertyTrigger to convert Value based on Property type
-        else if (instance is PropertyTrigger propertyTrigger)
+        // Post-process Trigger to convert Value based on Property type
+        else if (instance is Trigger trigger)
         {
-            PostProcessPropertyTrigger(propertyTrigger, context, lineNumber, linePosition);
+            PostProcessTrigger(trigger, context, lineNumber, linePosition);
         }
         // Post-process DataTrigger to convert Value based on the binding's result type
         else if (instance is DataTrigger dataTrigger)
@@ -470,6 +470,8 @@ public static class XamlReader
     private static object ParseAttributes(XmlReader reader, object instance, XamlParserContext context)
     {
         var currentInstance = instance;
+        // Capture before MoveToAttribute repositions the reader to attribute scope.
+        var elementNamespaceUri = reader.NamespaceURI;
 
         for (int i = 0; i < reader.AttributeCount; i++)
         {
@@ -478,6 +480,7 @@ public static class XamlReader
             var attrName = reader.LocalName;
             var attrValue = reader.Value;
             var prefix = reader.Prefix;
+            var attrNamespaceUri = reader.NamespaceURI;
 
             // Skip xmlns declarations
             if (prefix == "xmlns" || reader.Name == "xmlns")
@@ -495,7 +498,7 @@ public static class XamlReader
             // Check for attached property (e.g., Grid.Row)
             if (attrName.Contains('.'))
             {
-                SetAttachedProperty(currentInstance, attrName, attrValue, context);
+                SetAttachedProperty(currentInstance, attrName, attrValue, context, attrNamespaceUri, elementNamespaceUri);
             }
             else
             {
@@ -540,7 +543,7 @@ public static class XamlReader
     }
 
     [RequiresUnreferencedCode("Resolves attached property setters via reflection on the owner type.")]
-    private static void SetAttachedProperty(object instance, string propertyPath, string value, XamlParserContext context)
+    private static void SetAttachedProperty(object instance, string propertyPath, string value, XamlParserContext context, string attributeNamespaceUri, string elementNamespaceUri)
     {
         var parts = propertyPath.Split('.');
         if (parts.Length != 2)
@@ -551,11 +554,24 @@ public static class XamlReader
         var ownerTypeName = parts[0];
         var propertyName = parts[1];
 
-        // Resolve the owner type
-        var ownerType = context.ResolveType("http://schemas.microsoft.com/winfx/2006/xaml/presentation", ownerTypeName);
+        // Prefer the attribute's own namespace, set when the author used an explicit prefix
+        // (e.g. `b:AnimatedBg.StartWindow` where `b` maps to a clr-namespace URI).
+        Type? ownerType = null;
+        if (!string.IsNullOrEmpty(attributeNamespaceUri))
+        {
+            ownerType = context.ResolveType(attributeNamespaceUri, ownerTypeName);
+        }
+
+        // Unprefixed attached properties (e.g. `Grid.Row`) inherit XML's no-namespace rule,
+        // so look them up under the host element's xmlns instead.
+        if (ownerType == null && !string.IsNullOrEmpty(elementNamespaceUri))
+        {
+            ownerType = context.ResolveType(elementNamespaceUri, ownerTypeName);
+        }
+
+        // Fall back to the AOT-safe simple-name registry as a last resort.
         if (ownerType == null)
         {
-            // Try to find in current assembly
             ownerType = FindTypeByName(ownerTypeName);
         }
 
@@ -1328,6 +1344,174 @@ public static class XamlReader
     }
 
     /// <summary>
+    /// 把当前 reader 上活动的 xmlns 声明合并到 <paramref name="fragment"/> 的 root
+    /// open-tag。模板（DataTemplate / ControlTemplate / ItemsPanelTemplate）通过
+    /// <c>ReadOuterXml</c> 把内容存为字符串后延迟解析，但 ReadOuterXml 只切原文，
+    /// 不带外层声明。延迟解析时新 reader 找不到 prefix 映射，导致
+    /// <c>controls:WelcomeTemplateCard</c> 之类的 prefix:Type 引用全部解析失败 —
+    /// 比如 <c>RelativeSource={RelativeSource AncestorType=controls:WelcomeTemplateCard}</c>
+    /// 拿到 null AncestorType，FindAncestor 立刻返回 null，binding 永远 Unattached。
+    /// 这里把外层 xmlns 注入到 fragment 自身的 root 标签上，让 fragment 自包含。
+    ///
+    /// fragment 自己已经声明的 prefix 优先（更近的 scope），不被外层声明覆盖。
+    /// </summary>
+    private static string InjectAmbientNamespaces(string fragment, XmlReader reader)
+    {
+        if (string.IsNullOrEmpty(fragment))
+            return fragment;
+        if (reader is not Markup.JalxamlReader jalxaml)
+            return fragment;
+
+        var snapshot = jalxaml.SnapshotNamespacesInScope();
+        if (snapshot.Count == 0)
+            return fragment;
+
+        // 找 root element 的 open-tag。跳过前导空白 + comments / processing instructions。
+        int cursor = 0;
+        while (cursor < fragment.Length)
+        {
+            // 跳过空白
+            while (cursor < fragment.Length && char.IsWhiteSpace(fragment[cursor])) cursor++;
+            if (cursor >= fragment.Length || fragment[cursor] != '<') return fragment;
+
+            // 跳过 <!-- ... --> / <? ... ?>
+            if (cursor + 3 < fragment.Length && fragment[cursor + 1] == '!' && fragment[cursor + 2] == '-' && fragment[cursor + 3] == '-')
+            {
+                var endComment = fragment.IndexOf("-->", cursor + 4, StringComparison.Ordinal);
+                if (endComment < 0) return fragment;
+                cursor = endComment + 3;
+                continue;
+            }
+            if (cursor + 1 < fragment.Length && fragment[cursor + 1] == '?')
+            {
+                var endPi = fragment.IndexOf("?>", cursor + 2, StringComparison.Ordinal);
+                if (endPi < 0) return fragment;
+                cursor = endPi + 2;
+                continue;
+            }
+            break;
+        }
+
+        if (cursor >= fragment.Length || fragment[cursor] != '<')
+            return fragment;
+
+        int openTagStart = cursor;
+        // element name 起点：'<' 后的第一个非空白字符，跳过 '<'
+        int nameStart = openTagStart + 1;
+        // element name 结束：第一个空白、'/'、或 '>'
+        int nameEnd = nameStart;
+        while (nameEnd < fragment.Length &&
+               !char.IsWhiteSpace(fragment[nameEnd]) &&
+               fragment[nameEnd] != '/' &&
+               fragment[nameEnd] != '>')
+        {
+            nameEnd++;
+        }
+        if (nameEnd >= fragment.Length) return fragment;
+
+        // open-tag 结束：往后找第一个 '>'，但要跳过引号内的内容（属性值可能包含 '>')
+        int openTagEnd = nameEnd;
+        char inQuote = '\0';
+        while (openTagEnd < fragment.Length)
+        {
+            var ch = fragment[openTagEnd];
+            if (inQuote != '\0')
+            {
+                if (ch == inQuote) inQuote = '\0';
+            }
+            else
+            {
+                if (ch == '"' || ch == '\'') inQuote = ch;
+                else if (ch == '>') break;
+            }
+            openTagEnd++;
+        }
+        if (openTagEnd >= fragment.Length) return fragment;
+
+        // 扫描 open-tag 内已有的 xmlns 声明，避免在同一元素上重复声明（XML 解析器会拒绝）。
+        var existing = new HashSet<string>(StringComparer.Ordinal);
+        int scan = nameEnd;
+        char scanQuote = '\0';
+        while (scan < openTagEnd)
+        {
+            var ch = fragment[scan];
+            if (scanQuote != '\0')
+            {
+                if (ch == scanQuote) scanQuote = '\0';
+                scan++;
+                continue;
+            }
+            if (ch == '"' || ch == '\'')
+            {
+                scanQuote = ch;
+                scan++;
+                continue;
+            }
+            // 检查 "xmlns" 或 "xmlns:" 出现位置
+            if ((ch == 'x' || ch == 'X') && scan + 4 < openTagEnd &&
+                string.Compare(fragment, scan, "xmlns", 0, 5, StringComparison.OrdinalIgnoreCase) == 0)
+            {
+                int afterXmlns = scan + 5;
+                if (afterXmlns < openTagEnd && fragment[afterXmlns] == ':')
+                {
+                    int prefixStart = afterXmlns + 1;
+                    int prefixEnd = prefixStart;
+                    while (prefixEnd < openTagEnd &&
+                           !char.IsWhiteSpace(fragment[prefixEnd]) &&
+                           fragment[prefixEnd] != '=')
+                    {
+                        prefixEnd++;
+                    }
+                    existing.Add(fragment.Substring(prefixStart, prefixEnd - prefixStart));
+                    scan = prefixEnd;
+                }
+                else
+                {
+                    existing.Add(string.Empty);
+                    scan = afterXmlns;
+                }
+                continue;
+            }
+            scan++;
+        }
+
+        // 构造需要注入的 xmlns 声明。
+        var sb = new System.Text.StringBuilder();
+        foreach (var kvp in snapshot)
+        {
+            if (existing.Contains(kvp.Key)) continue;
+            sb.Append(' ');
+            if (string.IsNullOrEmpty(kvp.Key))
+            {
+                sb.Append("xmlns=\"").Append(EscapeXmlAttribute(kvp.Value)).Append('"');
+            }
+            else
+            {
+                sb.Append("xmlns:").Append(kvp.Key).Append("=\"").Append(EscapeXmlAttribute(kvp.Value)).Append('"');
+            }
+        }
+
+        if (sb.Length == 0) return fragment;
+
+        // 在 element name 之后插入注入字符串。
+        return string.Concat(
+            fragment.AsSpan(0, nameEnd),
+            sb.ToString(),
+            fragment.AsSpan(nameEnd));
+    }
+
+    private static string EscapeXmlAttribute(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return string.Empty;
+        if (value.IndexOfAny(['&', '"', '<', '>']) < 0) return value;
+        return value
+            .Replace("&", "&amp;")
+            .Replace("\"", "&quot;")
+            .Replace("<", "&lt;")
+            .Replace(">", "&gt;");
+    }
+
+    /// <summary>
     /// Parses ControlTemplate content, capturing the visual tree XAML for deferred parsing.
     /// </summary>
     private static void ParseControlTemplateContent(XmlReader reader, ControlTemplate template, XamlParserContext context)
@@ -1373,7 +1557,7 @@ public static class XamlReader
                 // First non-property child is the visual tree root
                 // Capture it as XML for deferred parsing
                 var wasEmpty = reader.IsEmptyElement;
-                visualTreeXaml.Append(reader.ReadOuterXml());
+                visualTreeXaml.Append(InjectAmbientNamespaces(reader.ReadOuterXml(), reader));
                 hasVisualTree = true;
 
                 // For non-empty elements, ReadOuterXml advances the reader past the end tag
@@ -1421,7 +1605,7 @@ public static class XamlReader
             if (reader.NodeType == XmlNodeType.Element)
             {
                 var trigger = ParseElement(reader, context);
-                if (trigger is Trigger t)
+                if (trigger is TriggerBase t)
                 {
                     template.Triggers.Add(t);
                 }
@@ -1459,13 +1643,15 @@ public static class XamlReader
             }
             else if (!hasVisualTree)
             {
-                // Capture the visual tree as XML
-                visualTreeXaml.Append(reader.ReadOuterXml());
+                // Capture the visual tree as XML.
+                // ReadOuterXml 对非空元素会推进 reader 到该元素之后的下一节点，
+                // 对 self-closing(空) 元素则保持在该元素上 — skipRead 必须按
+                // wasEmpty 区分,否则空元素根（如 <StackPanel/>）会被当作"第二个根"
+                // 二次进入此分支,继而被错误地抛 "only one visual tree root" 异常。
+                var wasEmpty = reader.IsEmptyElement;
+                visualTreeXaml.Append(InjectAmbientNamespaces(reader.ReadOuterXml(), reader));
                 hasVisualTree = true;
-
-                // ReadOuterXml advances the reader past this element to the next node.
-                // Re-process that node without calling Read() again.
-                skipRead = true;
+                skipRead = !wasEmpty;
             }
             else
             {
@@ -1511,12 +1697,14 @@ public static class XamlReader
             }
             else if (!hasVisualTree)
             {
-                // Capture the visual tree as XML
-                visualTreeXaml.Append(reader.ReadOuterXml());
+                // 与 DataTemplate / ControlTemplate 同样的空元素处理：ReadOuterXml
+                // 对 self-closing 元素不推进 reader,如果一律 skipRead=true 会把同一个
+                // 根元素当成"第二个 visual tree root" 抛异常,典型现场是
+                // <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>。
+                var wasEmpty = reader.IsEmptyElement;
+                visualTreeXaml.Append(InjectAmbientNamespaces(reader.ReadOuterXml(), reader));
                 hasVisualTree = true;
-
-                // ReadOuterXml advances the reader past this element to the next node.
-                skipRead = true;
+                skipRead = !wasEmpty;
             }
             else
             {
@@ -1609,6 +1797,9 @@ public static class XamlReader
                     loadedDict.SourceAssembly = context.SourceAssembly;
                     return loadedDict;
                 }
+
+                LogMergedDictionaryFailure(sourceUri,
+                    $"SourceLoader returned null for '{sourceUri}'. SourceAssembly={context.SourceAssembly?.GetName().Name ?? "<null>"}.");
             }
             else
             {
@@ -1616,12 +1807,30 @@ public static class XamlReader
                 return LoadResourceDictionaryFromUri(resourceDict, sourceUri, context, parentDict);
             }
         }
-        catch (XamlParseException)
+        catch (XamlParseException ex)
         {
-            // Ignore and continue loading remaining merged dictionaries.
+            // 静默吞匹配 WPF 行为，但开发期需要诊断信息；写入 trace + 文件日志。
+            LogMergedDictionaryFailure(sourceUri, ex.ToString());
+        }
+        catch (Exception ex)
+        {
+            // 兜住意料之外的异常类型，避免一处出错让整个字典链崩塌而无任何提示。
+            LogMergedDictionaryFailure(sourceUri, ex.ToString());
         }
 
         return resourceDict;
+    }
+
+    /// <summary>
+    /// 静默吞 MergedDictionary 加载异常匹配 WPF 行为（单个 Source 失败不应让整个字典爆炸），
+    /// 但开发期需要看到具体原因，否则 "卡片渲染空白却没有任何提示" 这种场景无从下手。
+    /// 通过 Trace.WriteLine 暴露给 Debug 输出 / DiagnosticsTraceListener。
+    /// </summary>
+    private static void LogMergedDictionaryFailure(Uri sourceUri, string detail)
+    {
+        var message = $"[Jalium.UI] MergedDictionary 加载失败: '{sourceUri}'. {detail}";
+        System.Diagnostics.Trace.WriteLine(message);
+        System.Diagnostics.Debug.WriteLine(message);
     }
 
     private static Uri ResolveResourceDictionarySourceUri(string sourceValue, XamlParserContext context)
@@ -1923,9 +2132,30 @@ public static class XamlReader
 
         if (value is string stringValue)
         {
-            // Special handling for DependencyProperty type (for Setter.Property, PropertyTrigger.Property, Condition.Property, etc.)
+            // Special handling for DependencyProperty type (for Setter.Property, Trigger.Property, Condition.Property, etc.)
             // Also handle nullable DependencyProperty? type
             var propertyType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+
+            // Special handling for Type — XAML attribute values like "prefix:TypeName" or
+            // "TypeName" must be resolved via XML namespace context. The default
+            // TypeConverter only does simple-name lookup against XamlTypeRegistry, which
+            // returns null for any namespace-prefixed reference (e.g. Style TargetType
+            // referencing an application-defined custom control). That silently produced
+            // a Style with TargetType=null, causing implicit-style lookup to miss and the
+            // control to render empty. Resolve the prefix via the live XmlReader's
+            // namespace map so user-defined controls work the same as framework ones.
+            if (propertyType == typeof(Type))
+            {
+                var resolvedType = ResolveTypeFromXamlString(stringValue, context, reader);
+                if (resolvedType != null)
+                {
+                    property.SetValue(instance, resolvedType);
+                    return instance;
+                }
+                // 解析不出来时不立刻报错：TypeConverter fallback 仍会尝试 simple-name 查找,
+                // 之后再走通用 markup-extension / type-conversion 路径,以保证向后兼容。
+            }
+
             if (propertyType == typeof(DependencyProperty))
             {
                 // Find the target type from the parent Style
@@ -1950,7 +2180,7 @@ public static class XamlReader
                     return instance;
                 }
 
-                if (instance is PropertyTrigger || instance is Condition)
+                if (instance is Trigger || instance is Condition)
                 {
                     // The enclosing Style's TargetType may not yet be known at the moment this
                     // child element is being parsed (for example when the Style is declared inside
@@ -1999,6 +2229,56 @@ public static class XamlReader
         }
 
         return instance;
+    }
+
+    /// <summary>
+    /// 将 XAML 属性值（形如 "TypeName" 或 "prefix:TypeName"）解析成 CLR <see cref="Type"/>。
+    /// 这条路径专门服务于 Style.TargetType / DataTemplate.DataType 这类 Type 类型属性 —
+    /// 它们必须通过当前 XML reader 的命名空间映射把 prefix 解析成 namespace URI，
+    /// 然后再走 <see cref="XamlParserContext.ResolveType"/> 的标准查找链
+    /// （clr-namespace / XmlnsDefinition / XamlTypeRegistry / 默认 fallback）。
+    /// 默认的 <c>TypeTypeConverter</c> 只做 simple-name 查找，遇到 prefix 永远返回 null。
+    /// </summary>
+    private static Type? ResolveTypeFromXamlString(string typeName, XamlParserContext context, XmlReader? reader)
+    {
+        if (string.IsNullOrWhiteSpace(typeName))
+            return null;
+
+        var trimmed = typeName.Trim();
+        var colonIndex = trimmed.IndexOf(':');
+
+        if (colonIndex < 0)
+        {
+            // 无前缀：优先 AOT-safe simple-name registry，覆盖框架内置控件
+            // （它们在 ModuleInitializer 里都注册了简单名）。
+            var registryType = XamlTypeRegistry.GetType(trimmed);
+            if (registryType != null)
+                return registryType;
+
+            // Fallback：用元素的默认命名空间走 ResolveType，避免漏掉
+            // xmlns="clr-namespace:..." 这种"匿名前缀"场景。
+            if (reader != null)
+            {
+                var defaultNs = reader.LookupNamespace(string.Empty);
+                if (!string.IsNullOrEmpty(defaultNs))
+                {
+                    return context.ResolveType(defaultNs, trimmed);
+                }
+            }
+            return null;
+        }
+
+        var prefix = trimmed.Substring(0, colonIndex);
+        var localName = trimmed.Substring(colonIndex + 1);
+
+        if (reader == null)
+            return null;
+
+        var namespaceUri = reader.LookupNamespace(prefix);
+        if (string.IsNullOrEmpty(namespaceUri))
+            return null;
+
+        return context.ResolveType(namespaceUri, localName);
     }
 
     private static string Truncate(object? value)
@@ -2271,7 +2551,7 @@ public static class XamlReader
         }
     }
 
-    private static void PostProcessPropertyTrigger(PropertyTrigger trigger, XamlParserContext context, int lineNumber, int linePosition)
+    private static void PostProcessTrigger(Trigger trigger, XamlParserContext context, int lineNumber, int linePosition)
     {
         if (trigger.Property == null)
         {
@@ -2288,7 +2568,7 @@ public static class XamlReader
             var targetType = trigger.Property.PropertyType;
 
             // Check for markup extension first
-            if (MarkupExtensionParser.TryParse(stringValue, trigger, typeof(PropertyTrigger).GetProperty("Value")!, context, out var extensionResult))
+            if (MarkupExtensionParser.TryParse(stringValue, trigger, typeof(Trigger).GetProperty("Value")!, context, out var extensionResult))
             {
                 if (extensionResult is not BindingExpressionBase)
                 {
@@ -2355,7 +2635,7 @@ public static class XamlReader
 
             if (condition.Property == null)
             {
-                // Same rationale as PostProcessPropertyTrigger — tolerate unresolved
+                // Same rationale as PostProcessTrigger — tolerate unresolved
                 // Property so the enclosing dictionary can finish loading. The MultiTrigger
                 // evaluates conditions conjunctively and a null Property keeps the
                 // condition in a never-true state, which is the safe default.
@@ -2994,7 +3274,6 @@ public static class XamlTypeRegistry
         Register<Style>(types);
         Register<Setter>(types);
         Register<Trigger>(types);
-        Register<PropertyTrigger>(types);
         Register<MultiTrigger>(types);
         Register<Condition>(types);
         Register<DataTrigger>(types);

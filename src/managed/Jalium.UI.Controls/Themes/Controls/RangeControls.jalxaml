@@ -34,9 +34,9 @@
         </Setter>
 
         <Style.Triggers>
-            <PropertyTrigger Property="IsEnabled" Value="False">
+            <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="ProgressBrush" Value="{ThemeResource AccentBrushDisabled}" />
-            </PropertyTrigger>
+            </Trigger>
         </Style.Triggers>
     </Style>
 
@@ -84,9 +84,9 @@
         </Setter>
 
         <Style.Triggers>
-            <PropertyTrigger Property="IsEnabled" Value="False">
+            <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Foreground" Value="{ThemeResource AccentBrushDisabled}" />
-            </PropertyTrigger>
+            </Trigger>
         </Style.Triggers>
     </Style>
 
@@ -176,17 +176,17 @@
         </Setter>
 
         <Style.Triggers>
-            <PropertyTrigger Property="IsMouseOver" Value="True">
+            <Trigger Property="IsMouseOver" Value="True">
                 <Setter Property="Background" Value="{ThemeResource ControlBackgroundHover}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource ControlBorderHover}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsDragging" Value="True">
+            </Trigger>
+            <Trigger Property="IsDragging" Value="True">
                 <Setter Property="Background" Value="{ThemeResource ControlBackgroundPressed}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsEnabled" Value="False">
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Background" Value="{ThemeResource ControlBackgroundDisabled}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource ControlBorderDisabled}" />
-            </PropertyTrigger>
+            </Trigger>
         </Style.Triggers>
     </Style>
 

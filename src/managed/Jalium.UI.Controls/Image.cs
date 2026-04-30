@@ -99,7 +99,7 @@ public class Image : Control, IReclaimableResource
     }
 
     /// <inheritdoc />
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
 

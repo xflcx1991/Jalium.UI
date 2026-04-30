@@ -985,7 +985,7 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
         RequestFullInvalidation();
     }
 
-    protected override void OnApplyTemplate()
+    public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
         InvalidateMeasure();

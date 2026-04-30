@@ -1,3 +1,5 @@
+#include "rounded_clip.hlsli"
+
 struct PsInput
 {
     float4 clipPos      : SV_Position;
@@ -69,6 +71,8 @@ float4 SampleGradient(PsInput input, float t)
 
 float4 main(PsInput input) : SV_Target
 {
+    DiscardOutsideRoundedClip(input.clipPos.xy);
+
     float2 halfSize = input.rectSize * 0.5;
     float2 p = input.localPos - halfSize;
 

@@ -156,16 +156,16 @@
         </Setter>
 
         <Style.Triggers>
-            <PropertyTrigger Property="IsMouseOver" Value="True">
+            <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="PART_ItemBorder" Property="Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsSelected" Value="True">
+            </Trigger>
+            <Trigger Property="IsSelected" Value="True">
                 <Setter TargetName="PART_ItemBorder" Property="Background" Value="{ThemeResource SelectionBackgroundWeak}" />
                 <Setter TargetName="PART_SelectionIndicator" Property="Visibility" Value="Visible" />
-            </PropertyTrigger>
-            <PropertyTrigger Property="IsPressed" Value="True">
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
                 <Setter TargetName="PART_ItemBorder" Property="Background" Value="{ThemeResource SubtleFillColorTertiaryBrush}" />
-            </PropertyTrigger>
+            </Trigger>
             <MultiTrigger>
                 <MultiTrigger.Conditions>
                     <Condition Property="IsSelected" Value="True" />

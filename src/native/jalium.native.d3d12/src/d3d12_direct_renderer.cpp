@@ -306,6 +306,9 @@ void D3D12DirectRenderer::Shutdown()
             frames_[i].constantsBuffer->Unmap(0, nullptr);
             frames_[i].constantsMappedPtr = nullptr;
         }
+        // GPU is idle (waited above) — buffers retired by mid-frame growth in the
+        // last submitted frame are no longer referenced and can be released now.
+        frames_[i].retiredInstanceBuffers.clear();
     }
 
     if (fenceEvent_) {
@@ -462,22 +465,29 @@ bool D3D12DirectRenderer::EnsureFrameInstanceCapacity(FrameResources& fr, size_t
         return true;
     }
 
-    // Caller contract: BeginFrame has already waited fr.fenceValue, so the GPU
-    // is no longer reading the current upload buffer.  Mid-frame growth would
-    // be unsafe because the open command list may already reference the old
-    // buffer's GPU virtual address through SRVs / VBVs / root CBVs — those
-    // descriptors must not be rebound.  UploadInstances grows once at the top
-    // of the frame, before any SRV referencing this buffer is recorded.
+    // Mid-frame growth is supported.  Earlier draws on the open command list may
+    // hold descriptor-table or VBV references to the existing instanceUploadBuffer
+    // resource; releasing it now would trigger
+    // D3D12 ERROR #921 OBJECT_DELETED_WHILE_STILL_IN_USE on commandList_->Close().
+    // Instead, the old buffer is parked on fr.retiredInstanceBuffers, which keeps
+    // its refcount alive until BeginFrame clears the list after this slot's fence
+    // completes.  uploadBufferOffset_ is intentionally not reset: data the GPU
+    // still needs from the old buffer remains there (the parked ComPtr keeps the
+    // resource resident), while new writes from the rest of this frame land in the
+    // new buffer at offset uploadBufferOffset_+ — and the SRVs created for those
+    // new writes correctly point to the new resource.
     size_t newCap = std::max<size_t>(fr.instanceCapacity, kInitialInstanceCapacityBytes);
     while (newCap < requiredBytes) {
         newCap *= 2;
     }
 
-    if (fr.instanceMappedPtr) {
-        fr.instanceUploadBuffer->Unmap(0, nullptr);
-        fr.instanceMappedPtr = nullptr;
+    if (fr.instanceUploadBuffer) {
+        if (fr.instanceMappedPtr) {
+            fr.instanceUploadBuffer->Unmap(0, nullptr);
+            fr.instanceMappedPtr = nullptr;
+        }
+        fr.retiredInstanceBuffers.push_back(std::move(fr.instanceUploadBuffer));
     }
-    fr.instanceUploadBuffer.Reset();
 
     auto heapProps = MakeHeapProps(D3D12_HEAP_TYPE_UPLOAD);
     auto bufDesc = MakeBufferDesc(newCap);
@@ -508,7 +518,7 @@ bool D3D12DirectRenderer::CreateRootSignature()
     srvRange.RegisterSpace = 0;
     srvRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-    D3D12_ROOT_PARAMETER params[3] = {};
+    D3D12_ROOT_PARAMETER params[4] = {};
     // [0] Root CBV for frame constants (b0)
     params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
     params[0].Descriptor.ShaderRegister = 0;
@@ -521,12 +531,30 @@ bool D3D12DirectRenderer::CreateRootSignature()
     params[1].DescriptorTable.pDescriptorRanges = &srvRange;
     params[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-    // [2] Root 32-bit constant — instance base offset (b1)
+    // [2] Root 32-bit constant — instance base offset (b1).
+    //     Custom-effect VS / liquid-glass also reuse b1 with their own cbuffer
+    //     layouts; the 8-dword window is large enough for the largest of those
+    //     (geom = float4 + viewport float2 + pad float2).
     params[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
     params[2].Constants.ShaderRegister = 1;
     params[2].Constants.RegisterSpace = 0;
     params[2].Constants.Num32BitValues = 8;
-    params[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+    params[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+    // [3] Root 32-bit constant — rounded-rect clip data (b2).
+    //     Layout (12 dwords / 48 bytes):
+    //         uint  hasRoundedClip
+    //         uint3 _pad
+    //         float4 roundedClipRect    // (left, top, right, bottom) in physical pixels
+    //         float4 roundedClipRadius  // (rx, ry, _, _) in physical pixels
+    //     Read only by the four batched pixel shaders (sdf_rect / bitmap_quad /
+    //     bitmap_text / triangle); custom-effect / liquid-glass shaders simply
+    //     don't declare the cbuffer and the data sits unused.
+    params[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+    params[3].Constants.ShaderRegister = 2;
+    params[3].Constants.RegisterSpace = 0;
+    params[3].Constants.Num32BitValues = 12;
+    params[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
     // Static samplers
     // s0 — bilinear clamp (Linear / LowQuality bitmap path; general texture sampling)
@@ -559,7 +587,7 @@ bool D3D12DirectRenderer::CreateRootSignature()
     samplers[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
     D3D12_ROOT_SIGNATURE_DESC rootSigDesc = {};
-    rootSigDesc.NumParameters = 3;
+    rootSigDesc.NumParameters = 4;
     rootSigDesc.pParameters = params;
     rootSigDesc.NumStaticSamplers = 3;
     rootSigDesc.pStaticSamplers = samplers;
@@ -749,6 +777,14 @@ bool D3D12DirectRenderer::BeginFrame(UINT frameIndex, UINT width, UINT height,
         }
     }
 
+    // The previous use of this slot is GPU-complete: any instance upload buffers
+    // that mid-frame growth retired during that previous frame are no longer
+    // referenced by the GPU and can now be released.  Clearing the ComPtr vector
+    // drops the last refcount on each retired resource.
+    if (!fr.retiredInstanceBuffers.empty()) {
+        fr.retiredInstanceBuffers.clear();
+    }
+
     // Reset allocator + command list
     fr.commandAllocator->Reset();
     commandList_->Reset(fr.commandAllocator.Get(), nullptr);
@@ -817,6 +853,7 @@ bool D3D12DirectRenderer::BeginFrame(UINT frameIndex, UINT width, UINT height,
 
     // Reset scissor stack
     while (!scissorStack_.empty()) scissorStack_.pop();
+    roundedClipStack_.clear();
 
     // Reset pre-glass snapshot flag for fused panels
     preGlassSnapshotCaptured_ = false;
@@ -1004,6 +1041,7 @@ void D3D12DirectRenderer::AddSdfRect(const SdfRectInstance& inst)
     if (batch.hasScissor) {
         batch.scissor = scissorStack_.top();
     }
+    ResolveRoundedClipForBatch(batch);
     batches_.push_back(batch);
 
     // Premultiply fill/border alpha (SDF rect shader expects premultiplied RGBA).
@@ -1098,6 +1136,7 @@ void D3D12DirectRenderer::AddText(IDWriteTextLayout* layout, float x, float y,
         batch.sortOrder = drawOrder_++;
         batch.hasScissor = !scissorStack_.empty();
         if (batch.hasScissor) batch.scissor = scissorStack_.top();
+        ResolveRoundedClipForBatch(batch);
         batches_.push_back(batch);
     }
 
@@ -1168,6 +1207,7 @@ void D3D12DirectRenderer::AddBitmap(float x, float y, float w, float h, float op
     batch.sortOrder = drawOrder_++;
     batch.hasScissor = !scissorStack_.empty();
     if (batch.hasScissor) batch.scissor = scissorStack_.top();
+    ResolveRoundedClipForBatch(batch);
 
     BitmapBatchTexture tex;
     tex.batchIndex = (uint32_t)batches_.size();
@@ -1222,6 +1262,7 @@ void D3D12DirectRenderer::AddTriangles(const TriangleVertex* vertices, uint32_t 
     batch.sortOrder = drawOrder_++;
     batch.hasScissor = !scissorStack_.empty();
     if (batch.hasScissor) batch.scissor = scissorStack_.top();
+    ResolveRoundedClipForBatch(batch);
     batches_.push_back(batch);
 }
 
@@ -1244,6 +1285,7 @@ void D3D12DirectRenderer::AddTrianglesPreTransformed(const TriangleVertex* verti
     batch.sortOrder = drawOrder_++;
     batch.hasScissor = !scissorStack_.empty();
     if (batch.hasScissor) batch.scissor = scissorStack_.top();
+    ResolveRoundedClipForBatch(batch);
     batches_.push_back(batch);
 }
 
@@ -1313,6 +1355,86 @@ void D3D12DirectRenderer::PopScissor()
 {
     if (!scissorStack_.empty())
         scissorStack_.pop();
+}
+
+void D3D12DirectRenderer::PushRoundedClip(float x, float y, float w, float h, float rx, float ry)
+{
+    // Symmetric variant: all four corners get the same radius.  Use min(rx, ry)
+    // so the SDF stays valid (sd_round_box assumes a single radius per corner).
+    float r = std::min(rx, ry);
+    PushPerCornerRoundedClip(x, y, w, h, r, r, r, r);
+}
+
+void D3D12DirectRenderer::PushPerCornerRoundedClip(float x, float y, float w, float h,
+    float tl, float tr, float br, float bl)
+{
+    RoundedClipState s {};
+    s.x = x; s.y = y; s.w = w; s.h = h;
+    s.radiusTL = tl;
+    s.radiusTR = tr;
+    s.radiusBR = br;
+    s.radiusBL = bl;
+    s.transform = transformStack_.empty() ? Transform2D::Identity() : transformStack_.top();
+    roundedClipStack_.push_back(s);
+}
+
+void D3D12DirectRenderer::PopRoundedClip()
+{
+    if (!roundedClipStack_.empty())
+        roundedClipStack_.pop_back();
+}
+
+bool D3D12DirectRenderer::ResolveRoundedClipForBatch(DrawBatch& batch) const
+{
+    if (roundedClipStack_.empty())
+        return false;
+
+    // Pick the innermost rounded clip — it dominates because the matching
+    // axis-aligned scissor (set via PushScissor) already bounds the visible
+    // region to the intersection.  The pixel-shader SDF only needs to mask
+    // the corners of that innermost rounded rect.
+    const auto& clip = roundedClipStack_.back();
+
+    // Project the DIP-space rect through the captured transform, then through
+    // dpiScale_ so the coordinates match SV_Position (physical pixels).
+    const auto& t = clip.transform;
+    auto applyT = [&](float x, float y, float& outX, float& outY) {
+        outX = x * t.m11 + y * t.m21 + t.dx;
+        outY = x * t.m12 + y * t.m22 + t.dy;
+    };
+
+    float x0, y0, x1, y1, x2, y2, x3, y3;
+    applyT(clip.x,           clip.y,           x0, y0);
+    applyT(clip.x + clip.w,  clip.y,           x1, y1);
+    applyT(clip.x + clip.w,  clip.y + clip.h,  x2, y2);
+    applyT(clip.x,           clip.y + clip.h,  x3, y3);
+
+    float minX = (std::min)({ x0, x1, x2, x3 });
+    float minY = (std::min)({ y0, y1, y2, y3 });
+    float maxX = (std::max)({ x0, x1, x2, x3 });
+    float maxY = (std::max)({ y0, y1, y2, y3 });
+
+    // Approximate uniform scale from the transform's diagonal.  Border
+    // CornerRadius is expressed in DIP-space and is symmetric: a single
+    // scale factor (the smaller of X/Y) keeps the SDF circular even when
+    // the transform contains slight non-uniform stretch, which avoids
+    // ellipse-clip artifacts at corners that should remain circular.
+    float scaleX = std::sqrt(t.m11 * t.m11 + t.m12 * t.m12);
+    float scaleY = std::sqrt(t.m21 * t.m21 + t.m22 * t.m22);
+    if (scaleX <= 0.0f) scaleX = 1.0f;
+    if (scaleY <= 0.0f) scaleY = 1.0f;
+    float scale = std::min(scaleX, scaleY);
+
+    batch.hasRoundedClip = true;
+    batch.roundedClipRect[0] = minX * dpiScale_;
+    batch.roundedClipRect[1] = minY * dpiScale_;
+    batch.roundedClipRect[2] = maxX * dpiScale_;
+    batch.roundedClipRect[3] = maxY * dpiScale_;
+    batch.roundedClipCornerRadii[0] = clip.radiusTL * scale * dpiScale_;
+    batch.roundedClipCornerRadii[1] = clip.radiusTR * scale * dpiScale_;
+    batch.roundedClipCornerRadii[2] = clip.radiusBR * scale * dpiScale_;
+    batch.roundedClipCornerRadii[3] = clip.radiusBL * scale * dpiScale_;
+    return true;
 }
 
 void D3D12DirectRenderer::ApplyScissorToVello()
@@ -1712,6 +1834,29 @@ void D3D12DirectRenderer::RecordDrawCommands()
             D3D12_RECT fullScissor = { 0, 0, (LONG)viewportWidth_, (LONG)viewportHeight_ };
             commandList_->RSSetScissorRects(1, &fullScissor);
         }
+
+        // Per-batch rounded-rect clip — written to b2 (root parameter 3).
+        // The four batched pixel shaders read the cbuffer and discard fragments
+        // outside the SDF.  Layout matches RoundedClipConstants in the shaders.
+        // Per-corner radii are TL, TR, BR, BL in physical pixels.
+        struct RoundedClipB2 {
+            uint32_t hasRoundedClip;
+            uint32_t _pad[3];
+            float    rect[4];
+            float    cornerRadii[4]; // TL, TR, BR, BL
+        } clipB2 = {};
+        clipB2.hasRoundedClip = batch.hasRoundedClip ? 1u : 0u;
+        if (batch.hasRoundedClip) {
+            clipB2.rect[0] = batch.roundedClipRect[0];
+            clipB2.rect[1] = batch.roundedClipRect[1];
+            clipB2.rect[2] = batch.roundedClipRect[2];
+            clipB2.rect[3] = batch.roundedClipRect[3];
+            clipB2.cornerRadii[0] = batch.roundedClipCornerRadii[0];
+            clipB2.cornerRadii[1] = batch.roundedClipCornerRadii[1];
+            clipB2.cornerRadii[2] = batch.roundedClipCornerRadii[2];
+            clipB2.cornerRadii[3] = batch.roundedClipCornerRadii[3];
+        }
+        commandList_->SetGraphicsRoot32BitConstants(3, 12, &clipB2, 0);
 
         // Triangle batches use vertex buffer directly (not StructuredBuffer)
         if (batch.type == DrawBatchType::Triangle) {
@@ -2463,6 +2608,7 @@ void D3D12DirectRenderer::DrawSnapshotBlurred(float x, float y, float w, float h
             batch.sortOrder = drawOrder_++;
             batch.hasScissor = !scissorStack_.empty();
             if (batch.hasScissor) batch.scissor = scissorStack_.top();
+            ResolveRoundedClipForBatch(batch);
             batches_.push_back(batch);
             bitmapInstances_.push_back(inst);
         }
@@ -3113,6 +3259,7 @@ void D3D12DirectRenderer::DrawOffscreenBitmapCropped(int slot,
     batch.sortOrder = drawOrder_++;
     batch.hasScissor = !scissorStack_.empty();
     if (batch.hasScissor) batch.scissor = scissorStack_.top();
+    ResolveRoundedClipForBatch(batch);
 
     BitmapBatchTexture tex;
     tex.batchIndex = (uint32_t)batches_.size();
@@ -3223,11 +3370,13 @@ void D3D12DirectRenderer::DrawCustomShaderEffect(int slot,
     const size_t cbSize = ((std::max<size_t>(constantBytes, 16) + 255) / 256) * 256;
     size_t cbOffset = ((uploadBufferOffset_ + 255) / 256) * 256;
     if (cbOffset + cbSize > fr.instanceCapacity) {
-        // Buffer was sized at UploadInstances time — mid-frame growth would
-        // invalidate the SRVs/CBVs already recorded on this command list.
-        // Skip the custom shader and use the simple offscreen blit fallback.
-        DrawOffscreenBitmap(slot, x, y, w, h, 1.0f);
-        return;
+        // Mid-frame growth is safe — EnsureFrameInstanceCapacity parks the old
+        // buffer on fr.retiredInstanceBuffers so any earlier draw's descriptors
+        // remain valid until BeginFrame's fence wait clears them.
+        if (!EnsureFrameInstanceCapacity(fr, cbOffset + cbSize)) {
+            DrawOffscreenBitmap(slot, x, y, w, h, 1.0f);
+            return;
+        }
     }
 
     auto* cbPtr = static_cast<uint8_t*>(fr.instanceMappedPtr) + cbOffset;
@@ -3856,10 +4005,13 @@ void D3D12DirectRenderer::DrawLiquidGlass(
     constexpr size_t cbAligned = 256; // D3D12 CBV alignment
     size_t cbOffset = ((uploadBufferOffset_ + cbAligned - 1) / cbAligned) * cbAligned;
     if (cbOffset + cbAligned > fr.instanceCapacity) {
-        // Mid-frame buffer growth would invalidate already-recorded GPU VAs.
-        // Fall back to plain blur+tint when the per-frame UPLOAD heap is full.
-        DrawSnapshotBlurred(x, y, w, h, blurRadius, tintR, tintG, tintB, tintOpacity, cornerRadius);
-        return;
+        // Mid-frame growth is safe — the old buffer is parked on
+        // fr.retiredInstanceBuffers and freed once BeginFrame's fence wait
+        // confirms the GPU is done with it.  Fall back only if allocation fails.
+        if (!EnsureFrameInstanceCapacity(fr, cbOffset + cbAligned)) {
+            DrawSnapshotBlurred(x, y, w, h, blurRadius, tintR, tintG, tintB, tintOpacity, cornerRadius);
+            return;
+        }
     }
 
     // Blur the snapshot for refraction sampling

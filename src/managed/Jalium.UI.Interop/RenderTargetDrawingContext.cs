@@ -2347,25 +2347,23 @@ public sealed class RenderTargetDrawingContext : DrawingContext, IOffsetDrawingC
 
     /// <summary>
     /// Explicit implementation of ITransformDrawingContext.PushTransform.
-    /// Accepts an object and delegates to the typed PushTransform, composing with origin offset.
+    /// Composes the transform with the requested origin offset and forwards to
+    /// the typed PushTransform.
     /// </summary>
-    void ITransformDrawingContext.PushTransform(object transform, double originX, double originY)
+    void ITransformDrawingContext.PushTransform(Transform transform, double originX, double originY)
     {
-        if (transform is Transform t)
+        if (originX != 0 || originY != 0)
         {
-            if (originX != 0 || originY != 0)
-            {
-                // Compose: T(-origin) * transform * T(+origin)
-                var m = t.Value;
-                var pre = new Matrix(1, 0, 0, 1, -originX, -originY);
-                var post = new Matrix(1, 0, 0, 1, originX, originY);
-                var combined = Matrix.Multiply(Matrix.Multiply(pre, m), post);
-                PushTransform(new MatrixTransform(combined));
-            }
-            else
-            {
-                PushTransform(t);
-            }
+            // Compose: T(-origin) * transform * T(+origin)
+            var m = transform.Value;
+            var pre = new Matrix(1, 0, 0, 1, -originX, -originY);
+            var post = new Matrix(1, 0, 0, 1, originX, originY);
+            var combined = Matrix.Multiply(Matrix.Multiply(pre, m), post);
+            PushTransform(new MatrixTransform(combined));
+        }
+        else
+        {
+            PushTransform(transform);
         }
     }
 

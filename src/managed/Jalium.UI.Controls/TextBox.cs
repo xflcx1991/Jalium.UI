@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using Jalium.UI.Automation;
 using Jalium.UI.Controls.Automation;
 using Jalium.UI.Controls.Primitives;
@@ -1263,7 +1263,7 @@ public class TextBox : TextBoxBase, IImeSupport
     #region Rendering
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
         base.OnRender(drawingContext);
 
@@ -1272,8 +1272,7 @@ public class TextBox : TextBoxBase, IImeSupport
             return;
 
         // Direct rendering mode
-        if (drawingContext is not DrawingContext dc)
-            return;
+        var dc = drawingContext;
 
         var border = BorderThickness;
         var padding = Padding;
@@ -1312,10 +1311,9 @@ public class TextBox : TextBoxBase, IImeSupport
     }
 
     /// <inheritdoc />
-    internal override void RenderTextContent(object drawingContext)
+    internal override void RenderTextContent(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc)
-            return;
+        var dc = drawingContext;
 
         EnsureLinesValid();
 

@@ -1,4 +1,4 @@
-using Jalium.UI.Input;
+﻿using Jalium.UI.Input;
 using Jalium.UI.Interop;
 using Jalium.UI.Media;
 using Jalium.UI.Media.Animation;
@@ -722,7 +722,7 @@ public class NavigationViewItemHeader : ContentControl
         InvalidateVisual();
     }
 
-    protected override void OnRender(object drawingContextObj)
+    protected override void OnRender(DrawingContext drawingContextObj)
     {
         if (drawingContextObj is not DrawingContext dc)
             return;
@@ -781,13 +781,9 @@ public class NavigationViewItemSeparator : Control
         Focusable = false;
     }
 
-    protected override void OnRender(object drawingContextObj)
+    protected override void OnRender(DrawingContext drawingContextObj)
     {
-        if (drawingContextObj is not DrawingContext dc)
-        {
-            base.OnRender(drawingContextObj);
-            return;
-        }
+        var dc = drawingContextObj;
 
         var brush = ResolveBackgroundBrush();
         dc.DrawRectangle(brush, null, new Rect(0, 0, ActualWidth, 1));

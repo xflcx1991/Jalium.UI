@@ -12,9 +12,9 @@ public class XamlTriggerValidationTests
         const string xaml = """
             <Style xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="Button">
                 <Style.Triggers>
-                    <PropertyTrigger Property="NotExist" Value="True">
+                    <Trigger Property="NotExist" Value="True">
                         <Setter Property="Opacity" Value="0.5" />
-                    </PropertyTrigger>
+                    </Trigger>
                 </Style.Triggers>
             </Style>
             """;

@@ -1,4 +1,4 @@
-using Jalium.UI.Controls.Primitives;
+﻿using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Input;
 using Jalium.UI.Interop;
 using Jalium.UI.Controls.Themes;
@@ -497,10 +497,9 @@ public class Calendar : Control
     #region Rendering
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc)
-            return;
+        var dc = drawingContext;
 
         var rect = new Rect(RenderSize);
         var padding = Padding;

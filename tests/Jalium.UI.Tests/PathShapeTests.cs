@@ -282,7 +282,7 @@ public class PathShapeTests
     {
         public Size MeasureResult { get; private set; }
 
-        public void Render(DrawingContext drawingContext)
+        public new void Render(DrawingContext drawingContext)
         {
             OnRender(drawingContext);
         }

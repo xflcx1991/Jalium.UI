@@ -1,5 +1,13 @@
 using Jalium.UI.Controls;
 using Jalium.UI.Media.Effects;
+using DrawingContext = Jalium.UI.Media.DrawingContext;
+using Pen = Jalium.UI.Media.Pen;
+using Brush = Jalium.UI.Media.Brush;
+using Geometry = Jalium.UI.Media.Geometry;
+using Transform = Jalium.UI.Media.Transform;
+using ImageSource = Jalium.UI.Media.ImageSource;
+using FormattedText = Jalium.UI.Media.FormattedText;
+using IBackdropEffect = Jalium.UI.IBackdropEffect;
 
 namespace Jalium.UI.Tests;
 
@@ -39,7 +47,7 @@ public class EffectCaptureBoundsTests
         Assert.Equal(begin, apply);
     }
 
-    private sealed class RecordingEffectContext : IOffsetDrawingContext, IEffectDrawingContext
+    private sealed class RecordingEffectContext : DrawingContext, IOffsetDrawingContext, IEffectDrawingContext
     {
         public Point Offset { get; set; }
 
@@ -63,13 +71,33 @@ public class EffectCaptureBoundsTests
 
         public void ApplyElementEffect(IEffect effect, float x, float y, float w, float h, float captureOriginX = 0, float captureOriginY = 0, float cornerTL = 0, float cornerTR = 0, float cornerBR = 0, float cornerBL = 0)
         {
-            // 这里可以添加效果应用的逻辑
-            // 例如，使用 effect 对象的属性来修改元素的外观
-            // 具体实现取决于 IEffect 接口的定义和效果类型
-            // 这只是一个示例，实际逻辑可能会有所不同
-            // 例如：
-            // effect.Apply(x, y, w, h, cornerTL, cornerTR, cornerBR, cornerBL);
+            // Interface-conforming overload. Visual.RenderDirect dispatches to
+            // this 11-arg variant, supplying element bounds in (x,y,w,h) and
+            // the snapped capture origin in (captureOriginX,captureOriginY).
+            // Reconstruct the snapped capture extents from the effect padding
+            // so the test can compare BeginEffectCapture and ApplyElementEffect
+            // against the same rectangle.
+            var padding = effect.EffectPadding;
+            var snappedRight = (float)Math.Ceiling(x + w + padding.Right);
+            var snappedBottom = (float)Math.Ceiling(y + h + padding.Bottom);
+            var capW = snappedRight - captureOriginX;
+            var capH = snappedBottom - captureOriginY;
+            ApplyCalls.Add(new CaptureBounds(captureOriginX, captureOriginY, capW, capH));
         }
+
+        public override void DrawLine(Pen pen, Point point0, Point point1) { }
+        public override void DrawRectangle(Brush? brush, Pen? pen, Rect rectangle) { }
+        public override void DrawRoundedRectangle(Brush? brush, Pen? pen, Rect rectangle, double radiusX, double radiusY) { }
+        public override void DrawEllipse(Brush? brush, Pen? pen, Point center, double radiusX, double radiusY) { }
+        public override void DrawText(FormattedText formattedText, Point origin) { }
+        public override void DrawGeometry(Brush? brush, Pen? pen, Geometry geometry) { }
+        public override void DrawImage(ImageSource imageSource, Rect rectangle) { }
+        public override void DrawBackdropEffect(Rect rectangle, IBackdropEffect effect, CornerRadius cornerRadius) { }
+        public override void PushTransform(Transform transform) { }
+        public override void PushClip(Geometry clipGeometry) { }
+        public override void PushOpacity(double opacity) { }
+        public override void Pop() { }
+        public override void Close() { }
     }
 
     private readonly record struct CaptureBounds(float X, float Y, float Width, float Height);

@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using Jalium.UI.Controls.Themes;
 using Jalium.UI.Interop;
 using Jalium.UI.Media;
@@ -432,10 +432,9 @@ public abstract class ChartBase : Control
     #region Rendering
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc)
-            return;
+        var dc = drawingContext;
 
         var bounds = new Rect(0, 0, RenderSize.Width, RenderSize.Height);
 

@@ -1,4 +1,4 @@
-using Jalium.UI.Media;
+﻿using Jalium.UI.Media;
 using Jalium.UI.Media.Imaging;
 using Jalium.UI.Media.Native;
 using Jalium.UI.Media.Pipeline;
@@ -269,9 +269,9 @@ public class CameraView : Control
     }
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc) return;
+        var dc = drawingContext;
 
         ImageSource? image;
         lock (_frameLock) image = _currentFrame;

@@ -10,9 +10,9 @@ namespace Jalium.UI.Rendering;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The marker exists because <c>OnRender(object)</c> accepts any context
-/// type and user code is free to pattern-match the argument for context-
-/// specific logic (<c>if (drawingContext is not MyProbe) return;</c>).
+/// The marker exists because <c>OnRender(DrawingContext)</c> accepts any
+/// concrete subclass and user code is free to pattern-match the argument
+/// for context-specific logic (<c>if (drawingContext is not MyProbe) return;</c>).
 /// Replacing such a context with a recorder on cached frames would cause
 /// the pattern match to fail, silently dropping the intended draws on the
 /// first frame and replaying nothing afterwards.

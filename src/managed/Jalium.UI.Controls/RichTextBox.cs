@@ -1,4 +1,4 @@
-using Jalium.UI.Documents;
+﻿using Jalium.UI.Documents;
 using Jalium.UI.Input;
 using Jalium.UI.Interop;
 using Jalium.UI.Media;
@@ -1124,12 +1124,11 @@ public class RichTextBox : Control, IImeSupport
     #region Rendering
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
         base.OnRender(drawingContext);
 
-        if (drawingContext is not DrawingContext dc)
-            return;
+        var dc = drawingContext;
 
         var bounds = new Rect(0, 0, RenderSize.Width, RenderSize.Height);
 

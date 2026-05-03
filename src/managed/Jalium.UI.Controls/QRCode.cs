@@ -128,12 +128,9 @@ public class QRCode : Control
     }
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc)
-        {
-            return;
-        }
+        var dc = drawingContext;
 
         EnsureModules();
 

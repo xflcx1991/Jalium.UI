@@ -62,7 +62,7 @@ public class StyleTriggerPrecedenceWpfTests
         var style = new Style(typeof(TriggerProbeElement));
         style.Setters.Add(new Setter(TriggerProbeElement.TokenProperty, "Style"));
 
-        var trigger1 = new PropertyTrigger
+        var trigger1 = new Trigger
         {
             Property = TriggerProbeElement.FlagProperty,
             Value = true
@@ -70,7 +70,7 @@ public class StyleTriggerPrecedenceWpfTests
         trigger1.Setters.Add(new Setter(TriggerProbeElement.TokenProperty, "Flag"));
         style.Triggers.Add(trigger1);
 
-        var trigger2 = new PropertyTrigger
+        var trigger2 = new Trigger
         {
             Property = TriggerProbeElement.AltFlagProperty,
             Value = true

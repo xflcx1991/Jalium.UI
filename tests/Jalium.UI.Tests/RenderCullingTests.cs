@@ -33,7 +33,7 @@ public class RenderCullingTests
     {
         public int RenderCount { get; private set; }
 
-        protected override void OnRender(object drawingContext)
+        protected override void OnRender(DrawingContext drawingContext)
         {
             RenderCount++;
         }

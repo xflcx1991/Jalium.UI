@@ -1,4 +1,4 @@
-using Jalium.UI.Controls.Primitives;
+﻿using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Documents;
 using Jalium.UI.Input;
 using Jalium.UI.Interop;
@@ -28,6 +28,10 @@ public class TextBlock : FrameworkElement
     private string? _layoutText;
     private List<FormattedText>? _cachedFormattedLines;
     private bool _formattedLinesCacheDirty = true;
+    // Foreground 是“绘制属性”而非“布局属性”：变了不需要重 layout，但必须同步到
+    // _cachedFormattedLines 里每个 FormattedText.Foreground，否则 OnRender 用旧 brush。
+    // 用单独的 dirty 标志驱动，平时 OnRender 0 开销，只在 Foreground 真变后下一帧同步一次。
+    private bool _foregroundCacheNeedsSync;
 
     private string? _cachedFontFamily;
     private double _cachedFontSize;
@@ -394,7 +398,7 @@ public class TextBlock : FrameworkElement
     }
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
         if (_isRenderingText)
         {
@@ -406,10 +410,11 @@ public class TextBlock : FrameworkElement
         {
             base.OnRender(drawingContext);
 
-            if (drawingContext is not DrawingContext dc || string.IsNullOrEmpty(Text) || Foreground == null)
+            if (string.IsNullOrEmpty(Text) || Foreground == null)
             {
                 return;
             }
+            var dc = drawingContext;
 
             EnsureLayout(GetLayoutConstraintWidth(RenderSize.Width));
 
@@ -477,6 +482,24 @@ public class TextBlock : FrameworkElement
                 _cachedFormattedLines.Add(formattedText);
             }
             _formattedLinesCacheDirty = false;
+            // 整体重建时新 FormattedText 已经用最新 Foreground 创建，下一帧无需再同步。
+            _foregroundCacheNeedsSync = false;
+        }
+        else if (_foregroundCacheNeedsSync)
+        {
+            // 仅在 Foreground 真变化后这一帧执行同步——见字段注释。
+            // OnVisualPropertyChanged 早就过滤过 Equals(old, new)，进到这里 brush 必然不同；
+            // 仍用 ReferenceEquals 二次保护，避免 cache 重建后第一帧多余写。
+            var current = Foreground;
+            for (int i = 0; i < _cachedFormattedLines.Count; i++)
+            {
+                var ft = _cachedFormattedLines[i];
+                if (ft != null && !ReferenceEquals(ft.Foreground, current))
+                {
+                    ft.Foreground = current;
+                }
+            }
+            _foregroundCacheNeedsSync = false;
         }
 
         for (int i = 0; i < _cachedFormattedLines.Count; i++)
@@ -1287,7 +1310,15 @@ public class TextBlock : FrameworkElement
             return;
         }
 
-        if (e.Property == TextAlignmentProperty || e.Property == SelectionBrushProperty || e.Property == ForegroundProperty)
+        if (e.Property == ForegroundProperty)
+        {
+            // Foreground 不影响布局/字体度量，但要把新 brush 推到 _cachedFormattedLines。
+            textBlock._foregroundCacheNeedsSync = true;
+            textBlock.InvalidateVisual();
+            return;
+        }
+
+        if (e.Property == TextAlignmentProperty || e.Property == SelectionBrushProperty)
         {
             textBlock.InvalidateVisual();
             return;

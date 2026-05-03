@@ -1664,6 +1664,8 @@ public static class XamlReader
         {
             template.VisualTreeXaml = visualTreeXaml.ToString();
             template.SourceAssembly = context.SourceAssembly;
+            // 记下解析时刻栈中的 ResourceDictionary 链，让 LoadContent 时可解析祖先 {StaticResource}。
+            template.AmbientResourceDictionaries = context.SnapshotAmbientResourceDictionaries();
 
             // Register the XAML parser callback if not already set
             DataTemplate.XamlParser ??= ParseTemplateXaml;
@@ -1717,6 +1719,7 @@ public static class XamlReader
         {
             template.VisualTreeXaml = visualTreeXaml.ToString();
             template.SourceAssembly = context.SourceAssembly;
+            template.AmbientResourceDictionaries = context.SnapshotAmbientResourceDictionaries();
 
             // Register the XAML parser callback if not already set
             ItemsPanelTemplate.XamlParser ??= ParseTemplateXaml;
@@ -1753,6 +1756,19 @@ public static class XamlReader
         {
             SourceAssembly = sourceAssembly
         };
+
+        // 把模板被声明时的祖先 ResourceDictionary 链注入新解析上下文的 ambient 栈底，
+        // 让模板内 {StaticResource X} 能找到外层 UserControl.Resources / Window.Resources 等
+        // 声明的资源（如 BooleanToVisibilityConverter）。
+        var inheritedAmbient = TemplateAmbientResourceContext.Current;
+        if (inheritedAmbient != null && inheritedAmbient.Count > 0)
+        {
+            // 反向 push 让最外层资源在栈底，模板自身资源（首次 push 进栈的）保持在上方优先匹配。
+            for (int i = inheritedAmbient.Count - 1; i >= 0; i--)
+            {
+                context.PushParent(inheritedAmbient[i]);
+            }
+        }
 
         while (xmlReader.Read())
         {
@@ -2980,6 +2996,46 @@ internal sealed class XamlParserContext : IAmbientResourceProvider
     /// Pops an object from the parent stack.
     /// </summary>
     public void PopParent() { if (_parentStack.Count > 0) _parentStack.Pop(); }
+
+    /// <summary>
+    /// 拍下当前解析栈中所有"可作为资源源"的 ResourceDictionary 引用。
+    /// 用于把祖先 UserControl.Resources / Window.Resources / 显式 ResourceDictionary
+    /// 透传给延迟解析的模板（DataTemplate / ItemsPanelTemplate）。
+    ///
+    /// 顺序保持"近 → 远"：栈顶（最近的祖先）在前，栈底（最外层）在后。
+    /// 遍历 _parentStack 自带"栈顶在前"语义，符合预期。
+    /// </summary>
+    internal IReadOnlyList<ResourceDictionary>? SnapshotAmbientResourceDictionaries()
+    {
+        List<ResourceDictionary>? snapshot = null;
+        foreach (var parent in _parentStack)
+        {
+            ResourceDictionary? rd = null;
+            if (parent is ResourceDictionary direct)
+            {
+                rd = direct;
+            }
+            else if (parent is FrameworkElement fe)
+            {
+                // 仅当 Resources 已经被实例化（含至少一项）才纳入，避免每个元素都建空字典污染栈。
+                var feResources = fe.HasResources ? fe.Resources : null;
+                if (feResources != null && feResources.Count > 0)
+                {
+                    rd = feResources;
+                }
+            }
+
+            if (rd != null)
+            {
+                snapshot ??= new List<ResourceDictionary>();
+                if (!snapshot.Contains(rd))
+                {
+                    snapshot.Add(rd);
+                }
+            }
+        }
+        return snapshot;
+    }
 
     /// <summary>
     /// Finds a parent of the specified type in the parent stack.

@@ -91,6 +91,12 @@ public sealed class ItemsPanelTemplate
     internal System.Reflection.Assembly? SourceAssembly { get; set; }
 
     /// <summary>
+    /// 模板被 XAML 解析器扫描到时的祖先 ResourceDictionary 快照。
+    /// LoadContent() 时通过 <see cref="TemplateAmbientResourceContext"/> 桥接给延迟解析器。
+    /// </summary>
+    internal IReadOnlyList<ResourceDictionary>? AmbientResourceDictionaries { get; set; }
+
+    /// <summary>
     /// Gets or sets a callback used by LoadContent to parse XAML.
     /// </summary>
     public static Func<string, System.Reflection.Assembly?, FrameworkElement?>? XamlParser { get; set; }
@@ -158,7 +164,11 @@ public sealed class ItemsPanelTemplate
 
         if (!string.IsNullOrEmpty(VisualTreeXaml) && XamlParser != null)
         {
-            return XamlParser(VisualTreeXaml, SourceAssembly);
+            // 与 DataTemplate 同样的祖先资源透传机制。
+            using (TemplateAmbientResourceContext.Push(AmbientResourceDictionaries))
+            {
+                return XamlParser(VisualTreeXaml, SourceAssembly);
+            }
         }
 
         return null;

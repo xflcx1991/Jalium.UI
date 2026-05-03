@@ -225,9 +225,25 @@ public class WrapPanel : Panel
             else totalWidth += secondaryTotal;
         }
 
-        return new Size(
-            double.IsInfinity(availableSize.Width) ? totalWidth : Math.Min(totalWidth, availableSize.Width),
-            double.IsInfinity(availableSize.Height) ? totalHeight : Math.Min(totalHeight, availableSize.Height));
+        // Measure 阶段必须报告"真实所需"尺寸，否则放在 ScrollViewer 内时
+        // ScrollViewer 永远看不到溢出 → 滚动条触发不了。
+        //
+        // - Horizontal orientation：宽度方向受 availableSize.Width 限制（用于换行决策），
+        //   返回时 width clamp 到 availableSize.Width；
+        //   但高度方向 必须 报告真实总行高，不可 clamp，否则垂直滚动条无法触发。
+        // - Vertical orientation：反过来。
+        if (Orientation == Orientation.Horizontal)
+        {
+            return new Size(
+                double.IsInfinity(availableSize.Width) ? totalWidth : Math.Min(totalWidth, availableSize.Width),
+                totalHeight);
+        }
+        else
+        {
+            return new Size(
+                totalWidth,
+                double.IsInfinity(availableSize.Height) ? totalHeight : Math.Min(totalHeight, availableSize.Height));
+        }
     }
 
     protected override Size ArrangeOverride(Size finalSize)

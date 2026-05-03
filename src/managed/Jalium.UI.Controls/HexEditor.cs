@@ -1,4 +1,4 @@
-using Jalium.UI.Controls.Primitives;
+﻿using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Controls.Themes;
 using Jalium.UI.Input;
 using Jalium.UI.Interop;
@@ -783,9 +783,9 @@ public class HexEditor : Control
     #region Rendering
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc) return;
+        var dc = drawingContext;
         if (RenderSize.Width <= 0 || RenderSize.Height <= 0) return;
 
         var data = Data;

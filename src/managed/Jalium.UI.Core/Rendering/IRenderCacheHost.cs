@@ -1,27 +1,27 @@
+using Jalium.UI.Media;
+
 namespace Jalium.UI.Rendering;
 
 /// <summary>
 /// Installs retained-mode drawing-command caching for <see cref="Visual"/>.
 /// Implemented by <c>Jalium.UI.Media.Rendering.MediaRenderCacheHost</c> and
-/// registered at runtime via <c>Visual.RenderCacheHost</c>. Core only sees the
-/// opaque <see cref="object"/> contract so the Media/Drawing types stay on one
-/// side of the layer boundary.
+/// registered at runtime via <c>Visual.RenderCacheHost</c>.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The contract is: when a visual is about to invoke <c>OnRender(object)</c>
-/// the render loop asks the host for a recorder, passes the recorder to
-/// <c>OnRender</c> instead of the live drawing context, finishes recording to
-/// obtain an opaque <em>Drawing</em> handle, caches the handle on the visual,
-/// and replays it against the live drawing context. Subsequent frames skip
-/// <c>OnRender</c> entirely until the visual marks itself render-dirty — then
-/// the cached handle is discarded and the cycle repeats.
+/// The contract is: when a visual is about to invoke <c>OnRender</c> the render
+/// loop asks the host for a recorder, passes the recorder to <c>OnRender</c>
+/// instead of the live drawing context, finishes recording to obtain an opaque
+/// <em>Drawing</em> handle, caches the handle on the visual, and replays it
+/// against the live drawing context. Subsequent frames skip <c>OnRender</c>
+/// entirely until the visual marks itself render-dirty — then the cached
+/// handle is discarded and the cycle repeats.
 /// </para>
 /// <para>
-/// The recorder returned by <see cref="CreateRecorder"/> must simultaneously
-/// satisfy the abstract <c>Jalium.UI.Media.DrawingContext</c> surface (so it
-/// accepts every draw / push / pop call) and the Core-side drawing-context
-/// interfaces (<c>IOffsetDrawingContext</c>, <c>IClipDrawingContext</c>,
+/// The recorder returned by <see cref="CreateRecorder"/> must inherit from
+/// <see cref="DrawingContext"/> (so it accepts every draw / push / pop call)
+/// and also implement the Core-side drawing-context interfaces
+/// (<c>IOffsetDrawingContext</c>, <c>IClipDrawingContext</c>,
 /// <c>IOpacityDrawingContext</c>, <c>ITransformDrawingContext</c>,
 /// <c>IClipBoundsDrawingContext</c>) so the existing <c>RenderDirect</c>
 /// pipeline can use it interchangeably with the live context.
@@ -41,10 +41,10 @@ public interface IRenderCacheHost
     /// forward draws to it; it only mirrors ambient state.
     /// </param>
     /// <returns>
-    /// An opaque recorder that callers must pass to <see cref="FinishRecord"/>
+    /// A recorder that callers must pass to <see cref="FinishRecord"/>
     /// exactly once. Do not retain it after <see cref="FinishRecord"/>.
     /// </returns>
-    object CreateRecorder(object targetDrawingContext);
+    DrawingContext CreateRecorder(DrawingContext targetDrawingContext);
 
     /// <summary>
     /// Closes the recording and returns an immutable handle representing the
@@ -55,7 +55,7 @@ public interface IRenderCacheHost
     /// <see cref="CreateRecorder"/>.</param>
     /// <returns>An opaque <em>Drawing</em> handle suitable for
     /// <see cref="Replay"/>.</returns>
-    object FinishRecord(object recorder);
+    object FinishRecord(DrawingContext recorder);
 
     /// <summary>
     /// Plays every captured command from <paramref name="drawing"/> back
@@ -64,5 +64,5 @@ public interface IRenderCacheHost
     /// but without allocating temporary brushes / pens / geometries or
     /// re-running user code.
     /// </summary>
-    void Replay(object drawing, object targetDrawingContext);
+    void Replay(object drawing, DrawingContext targetDrawingContext);
 }

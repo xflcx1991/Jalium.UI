@@ -1,4 +1,5 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
+using Jalium.UI.Media;
 
 namespace Jalium.UI.Documents;
 
@@ -197,7 +198,7 @@ public sealed class AdornerLayer : FrameworkElement
     /// <summary>
     /// Renders the adorner layer.
     /// </summary>
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
         // AdornerLayer itself doesn't render anything
         // The adorners render themselves

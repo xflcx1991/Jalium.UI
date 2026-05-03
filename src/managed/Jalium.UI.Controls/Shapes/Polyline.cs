@@ -1,4 +1,4 @@
-using Jalium.UI.Media;
+﻿using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls.Shapes;
 
@@ -76,10 +76,9 @@ public class Polyline : Shape
     /// <summary>
     /// Renders the polyline.
     /// </summary>
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc)
-            return;
+        var dc = drawingContext;
 
         var points = Points;
         if (points == null || points.Count < 2)

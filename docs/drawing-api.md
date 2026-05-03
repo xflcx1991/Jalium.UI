@@ -23,7 +23,7 @@ Jalium.UI 的绘图接口主要分三层：
 
 ### 1.1 `DrawingContext`
 
-高层通用绘图上下文，也是控件在 `OnRender(object drawingContext)` 中最常接触到的 API。
+高层通用绘图上下文，也是控件在 `OnRender(DrawingContext drawingContext)` 中最常接触到的 API。
 
 特点：
 
@@ -65,14 +65,11 @@ using Jalium.UI.Media;
 
 public sealed class DemoBadge : Control
 {
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc)
-            return;
-
         var rect = new Rect(0, 0, ActualWidth, ActualHeight);
 
-        dc.DrawRoundedRectangle(
+        drawingContext.DrawRoundedRectangle(
             new SolidColorBrush(Color.FromRgb(27, 94, 32)),
             new Pen(new SolidColorBrush(Color.FromRgb(200, 230, 201)), 1),
             rect,
@@ -83,7 +80,7 @@ public sealed class DemoBadge : Control
             Foreground = new SolidColorBrush(Color.White)
         };
 
-        dc.DrawText(text, new Point(10, 6));
+        drawingContext.DrawText(text, new Point(10, 6));
     }
 }
 ```
@@ -537,14 +534,11 @@ dc.DrawBackdropEffect(
 先判断并转成 `RenderTargetDrawingContext`：
 
 ```csharp
-protected override void OnRender(object drawingContext)
+protected override void OnRender(DrawingContext drawingContext)
 {
-    if (drawingContext is not DrawingContext dc)
-        return;
-
     var rect = new Rect(RenderSize);
 
-    dc.DrawRoundedRectangle(
+    drawingContext.DrawRoundedRectangle(
         new SolidColorBrush(Color.FromArgb(40, 255, 255, 255)),
         null,
         rect,

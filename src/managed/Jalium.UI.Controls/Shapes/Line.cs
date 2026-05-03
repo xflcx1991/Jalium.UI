@@ -1,4 +1,4 @@
-using Jalium.UI.Media;
+﻿using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls.Shapes;
 
@@ -109,10 +109,9 @@ public class Line : Shape
     /// <summary>
     /// Renders the line.
     /// </summary>
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc)
-            return;
+        var dc = drawingContext;
 
         var stroke = Stroke;
         var strokeThickness = StrokeThickness;

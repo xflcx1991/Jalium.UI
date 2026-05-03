@@ -64,7 +64,7 @@ public class PathIconTests
 
     private sealed class TestPathIcon : PathIcon
     {
-        public void Render(DrawingContext drawingContext)
+        public new void Render(DrawingContext drawingContext)
         {
             OnRender(drawingContext);
         }

@@ -1,4 +1,4 @@
-using Jalium.UI.Controls;
+﻿using Jalium.UI.Controls;
 using Jalium.UI;
 using Jalium.UI.Input;
 using Jalium.UI.Media;
@@ -338,7 +338,7 @@ public class Thumb : Control
     #region Rendering
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
         // If using template, let the template handle rendering
         if (_thumbBorder != null)
@@ -346,8 +346,7 @@ public class Thumb : Control
             return;
         }
 
-        if (drawingContext is not DrawingContext dc)
-            return;
+        var dc = drawingContext;
 
         var rect = new Rect(RenderSize);
         var cornerRadius = CornerRadius;

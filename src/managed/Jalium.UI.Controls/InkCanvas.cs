@@ -1,4 +1,4 @@
-using System.Buffers;
+﻿using System.Buffers;
 using System.Collections.Specialized;
 using Jalium.UI.Controls.Ink;
 using Jalium.UI.Controls.Ink.Shaders;
@@ -343,7 +343,7 @@ public class InkCanvas : FrameworkElement
     #region Rendering
 
     /// <inheritdoc/>
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
         // Background and committed strokes are rendered by _committedLayer
         // (a child visual). Active content (current mouse stroke, multi-touch
@@ -353,10 +353,9 @@ public class InkCanvas : FrameworkElement
     }
 
     /// <inheritdoc/>
-    protected override void OnPostRender(object drawingContext)
+    protected override void OnPostRender(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc)
-            return;
+        var dc = drawingContext;
 
         // Shader-based active preview. The preview bitmap is fully rebuilt
         // every frame (cleared + re-dispatched) so the user sees the exact
@@ -1422,10 +1421,9 @@ public class InkCanvas : FrameworkElement
 
         protected override Size ArrangeOverride(Size finalSize) => finalSize;
 
-        protected override void OnRender(object drawingContext)
+        protected override void OnRender(DrawingContext drawingContext)
         {
-            if (drawingContext is not DrawingContext dc)
-                return;
+            var dc = drawingContext;
 
             var background = _owner.Background;
             if (background != null)

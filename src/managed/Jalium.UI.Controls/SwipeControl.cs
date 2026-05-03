@@ -1,4 +1,4 @@
-using Jalium.UI.Input;
+﻿using Jalium.UI.Input;
 using Jalium.UI.Controls.Themes;
 using Jalium.UI.Media;
 
@@ -119,9 +119,9 @@ public class SwipeControl : ContentControl
     }
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc) return;
+        var dc = drawingContext;
 
         // Draw swipe item backgrounds behind the content
         if (_translateX > 0 && LeftItems != null && LeftItems.Count > 0)

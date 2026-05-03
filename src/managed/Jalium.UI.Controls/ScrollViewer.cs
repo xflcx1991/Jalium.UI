@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Input;
@@ -945,11 +945,6 @@ public partial class ScrollViewer : Control
             return true;
         }
 
-        if (clip is Rect rect)
-        {
-            return rect.Contains(localPoint);
-        }
-
         if (clip is Media.Geometry geometry)
         {
             // Honor rounded-rect / custom-shape viewport clips so hit-testing
@@ -1161,7 +1156,7 @@ public partial class ScrollViewer : Control
     /// Returns a clip geometry for the viewport area.
     /// Respects the ClipToBounds property - when false, no clipping is applied.
     /// </summary>
-    internal override object? GetLayoutClip()
+    internal override Geometry? GetLayoutClip()
     {
         if (!ClipToBounds)
         {
@@ -1818,12 +1813,11 @@ public partial class ScrollViewer : Control
     #region Rendering
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
         base.OnRender(drawingContext);
 
-        if (drawingContext is not DrawingContext dc)
-            return;
+        var dc = drawingContext;
 
         var bounds = new Rect(0, 0, RenderSize.Width, RenderSize.Height);
 

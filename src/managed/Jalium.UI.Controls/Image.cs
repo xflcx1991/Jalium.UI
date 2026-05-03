@@ -1,4 +1,4 @@
-using Jalium.UI.Media;
+﻿using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
 
@@ -174,10 +174,9 @@ internal sealed class ImageHost : FrameworkElement
         return finalSize;
     }
 
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc)
-            return;
+        var dc = drawingContext;
 
         var source = Owner?.Source;
         if (source == null || source.Width <= 0 || source.Height <= 0)

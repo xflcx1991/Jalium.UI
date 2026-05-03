@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Input;
 using Jalium.UI.Interop;
@@ -211,7 +211,7 @@ public class HyperlinkButton : ButtonBase
     #region Rendering
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
         // If using template, let the template handle rendering
         if (Template != null)
@@ -219,8 +219,7 @@ public class HyperlinkButton : ButtonBase
             return;
         }
 
-        if (drawingContext is not DrawingContext dc)
-            return;
+        var dc = drawingContext;
 
         var rect = new Rect(RenderSize);
         var padding = Padding;

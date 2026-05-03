@@ -1,4 +1,4 @@
-using Jalium.UI.Media;
+﻿using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls.Primitives;
 
@@ -65,7 +65,7 @@ internal sealed class TextBoxContentHost : FrameworkElement
     }
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
         // Delegate rendering to the owner
         _owner.RenderTextContent(drawingContext);

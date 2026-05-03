@@ -1,4 +1,4 @@
-using Jalium.UI.Controls.Primitives;
+﻿using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Input;
 using Jalium.UI.Controls.Themes;
 using Jalium.UI.Media;
@@ -545,13 +545,14 @@ public class ToastNotificationItem : ContentControl
     #region Rendering
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
         if (_rootBorder != null)
             return;
 
-        if (drawingContext is not DrawingContext dc || !IsOpen)
+        if (!IsOpen)
             return;
+        var dc = drawingContext;
 
         var rect = new Rect(RenderSize);
         var padding = Padding;

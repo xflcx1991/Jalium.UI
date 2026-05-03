@@ -391,22 +391,23 @@ public class MultiDataTriggerTests
 }
 
 /// <summary>
-/// Extension methods to expose internal methods for testing.
+/// Extension methods to expose internal Attach/Detach for tests across all
+/// TriggerBase subclasses (Trigger / DataTrigger / MultiTrigger / MultiDataTrigger).
 /// </summary>
 public static class TriggerTestExtensions
 {
-    public static void AttachForTest(this Trigger trigger, FrameworkElement element)
+    public static void AttachForTest(this TriggerBase trigger, FrameworkElement element)
     {
-        // Use reflection to call internal Attach method
-        var method = typeof(Trigger).GetMethod("Attach",
+        // Attach is declared abstract on TriggerBase; reflection on the base type
+        // resolves the override at virtual-dispatch time when Invoke runs.
+        var method = typeof(TriggerBase).GetMethod("Attach",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         method?.Invoke(trigger, new object[] { element });
     }
 
-    public static void DetachForTest(this Trigger trigger, FrameworkElement element)
+    public static void DetachForTest(this TriggerBase trigger, FrameworkElement element)
     {
-        // Use reflection to call internal Detach method
-        var method = typeof(Trigger).GetMethod("Detach",
+        var method = typeof(TriggerBase).GetMethod("Detach",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         method?.Invoke(trigger, new object[] { element });
     }

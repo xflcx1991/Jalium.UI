@@ -1,4 +1,4 @@
-using Jalium.UI.Controls.Themes;
+﻿using Jalium.UI.Controls.Themes;
 using Jalium.UI.Input;
 using Jalium.UI.Media;
 
@@ -630,7 +630,7 @@ public class RangeSlider : Control
     #region Rendering
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
         // Template-driven layout updates the borders directly. Skip OnRender when a template is in use.
         if (_startThumbBorder != null || _endThumbBorder != null)
@@ -638,10 +638,7 @@ public class RangeSlider : Control
             return;
         }
 
-        if (drawingContext is not DrawingContext dc)
-        {
-            return;
-        }
+        var dc = drawingContext;
 
         var bounds = new Rect(0, 0, RenderSize.Width, RenderSize.Height);
 

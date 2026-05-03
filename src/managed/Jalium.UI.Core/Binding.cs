@@ -423,6 +423,16 @@ public sealed class BindingExpression : BindingExpressionBase
     private bool _isLostFocusUpdate;
     private List<(INotifyPropertyChanged Notify, string PropertyName)>? _intermediateSubscriptions;
 
+    // Converter / ConverterParameter 自身的可变状态订阅。
+    // 若 Converter 实现 INotifyPropertyChanged 或继承自 DependencyObject，其属性变化时
+    // 必须重新执行 Convert()，否则会出现 “通知属性变了但目标没刷新” 的脏数据。
+    // ConverterParameter 同理 —— 例如以 ViewModel/DependencyObject 作为参数对象。
+    // 同一对象优先按 DependencyObject 订阅（避免极少数同时实现 INPC + DO 时双触发）。
+    private INotifyPropertyChanged? _converterNotify;
+    private DependencyObject? _converterDepObj;
+    private INotifyPropertyChanged? _converterParamNotify;
+    private DependencyObject? _converterParamDepObj;
+
     /// <summary>
     /// Gets the parent binding.
     /// </summary>
@@ -458,7 +468,13 @@ public sealed class BindingExpression : BindingExpressionBase
         {
             Status = BindingStatus.Unattached;
             if (Target is FrameworkElement pendingFe)
+            {
+                // 防重 subscribe — 多次 Activate 失败时（XAML 解析时 + ReactivateBindings 时
+                // visual tree 仍未就绪等场景）不应叠加多份 handler，否则 DataContext 后续
+                // 就绪时 OnDataContextChanged 会被调用多次，徒增 SubscribeToSource 累积。
+                pendingFe.DataContextChanged -= OnDataContextChanged;
                 pendingFe.DataContextChanged += OnDataContextChanged;
+            }
             BindingDiagnostics.NotifyStatus(this, "Unattached — source not resolved");
             return;
         }
@@ -992,9 +1008,13 @@ public sealed class BindingExpression : BindingExpressionBase
 
     private void SubscribeToSource()
     {
+        // 全部 subscribe 都先 unsubscribe 防重 — 调用方（OnDataContextChanged、Activate 二次激活等）
+        // 可能在没 UnsubscribeFromSource 的情况下调本方法，避免 handler 累积
+        // 让 PropertyChanged 触发数倍数 UpdateTarget。
         if (ResolvedSource is INotifyPropertyChanged notify)
         {
             _sourceNotify = notify;
+            _sourceNotify.PropertyChanged -= OnSourcePropertyChanged;
             _sourceNotify.PropertyChanged += OnSourcePropertyChanged;
         }
 
@@ -1002,12 +1022,14 @@ public sealed class BindingExpression : BindingExpressionBase
         if (ResolvedSource is DependencyObject depObj)
         {
             _sourceDependencyObject = depObj;
+            _sourceDependencyObject.PropertyChangedInternal -= OnSourceDependencyPropertyChanged;
             _sourceDependencyObject.PropertyChangedInternal += OnSourceDependencyPropertyChanged;
         }
 
         // Also subscribe to DataContext changes
         if (Target is FrameworkElement fe)
         {
+            fe.DataContextChanged -= OnDataContextChanged;
             fe.DataContextChanged += OnDataContextChanged;
         }
 
@@ -1029,6 +1051,10 @@ public sealed class BindingExpression : BindingExpressionBase
 
         // Subscribe to intermediate objects for nested property paths (e.g., Address.City)
         SubscribeToIntermediates();
+
+        // Subscribe to mutations on the converter and its parameter so that target
+        // re-conversion happens automatically when their notification properties change.
+        SubscribeToConverter();
     }
 
     private void UnsubscribeFromSource()
@@ -1062,6 +1088,100 @@ public sealed class BindingExpression : BindingExpressionBase
         }
 
         UnsubscribeFromIntermediates();
+        UnsubscribeFromConverter();
+    }
+
+    private void SubscribeToConverter()
+    {
+        // 先解除任何遗留订阅（与 source/intermediate 同样的 “防重” 风格），允许多次 Activate
+        // 或 DataContext 切换路径都安全调用本方法。
+        UnsubscribeFromConverter();
+
+        var converter = _binding.Converter;
+        if (converter != null)
+        {
+            // 同一实例若同时实现 DependencyObject 与 INotifyPropertyChanged，
+            // 优先走 DP 通道避免双触发；纯 INPC 实现则走 PropertyChanged。
+            if (converter is DependencyObject convDo)
+            {
+                _converterDepObj = convDo;
+                convDo.PropertyChangedInternal += OnConverterDependencyPropertyChanged;
+            }
+            else if (converter is INotifyPropertyChanged convNpc)
+            {
+                _converterNotify = convNpc;
+                convNpc.PropertyChanged += OnConverterPropertyChanged;
+            }
+        }
+
+        var parameter = _binding.ConverterParameter;
+        if (parameter != null)
+        {
+            if (parameter is DependencyObject paramDo)
+            {
+                _converterParamDepObj = paramDo;
+                paramDo.PropertyChangedInternal += OnConverterParameterDependencyPropertyChanged;
+            }
+            else if (parameter is INotifyPropertyChanged paramNpc)
+            {
+                _converterParamNotify = paramNpc;
+                paramNpc.PropertyChanged += OnConverterParameterPropertyChanged;
+            }
+        }
+    }
+
+    private void UnsubscribeFromConverter()
+    {
+        if (_converterNotify != null)
+        {
+            _converterNotify.PropertyChanged -= OnConverterPropertyChanged;
+            _converterNotify = null;
+        }
+
+        if (_converterDepObj != null)
+        {
+            _converterDepObj.PropertyChangedInternal -= OnConverterDependencyPropertyChanged;
+            _converterDepObj = null;
+        }
+
+        if (_converterParamNotify != null)
+        {
+            _converterParamNotify.PropertyChanged -= OnConverterParameterPropertyChanged;
+            _converterParamNotify = null;
+        }
+
+        if (_converterParamDepObj != null)
+        {
+            _converterParamDepObj.PropertyChangedInternal -= OnConverterParameterDependencyPropertyChanged;
+            _converterParamDepObj = null;
+        }
+    }
+
+    private void OnConverterPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // Converter 任意属性变化都应触发整套 binding 重算 —— Converter 没有 “路径” 概念，
+        // 任何状态字段都可能影响 Convert/ConvertBack 的输出。_isUpdating 防止 Convert
+        // 内部对自身属性 setter 的副作用产生递归。
+        if (_isUpdating || !IsActive) return;
+        UpdateTarget();
+    }
+
+    private void OnConverterDependencyPropertyChanged(DependencyProperty dp, object? oldValue, object? newValue)
+    {
+        if (_isUpdating || !IsActive) return;
+        UpdateTarget();
+    }
+
+    private void OnConverterParameterPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_isUpdating || !IsActive) return;
+        UpdateTarget();
+    }
+
+    private void OnConverterParameterDependencyPropertyChanged(DependencyProperty dp, object? oldValue, object? newValue)
+    {
+        if (_isUpdating || !IsActive) return;
+        UpdateTarget();
     }
 
     private void UnsubscribeFromIntermediates()
@@ -1218,6 +1338,27 @@ public sealed class BindingExpression : BindingExpressionBase
         // Re-resolve the data source when DataContext changes
         UnsubscribeFromSource();
         ResolveDataSource();
+
+        // 关键：首次 Activate 时若 visual tree 还没建立，ResolvedSource = null →
+        // Status 设为 Unattached、IsActive = false，仅 subscribe Target.DataContextChanged
+        // 等 DataContext 后续就绪。
+        // 当 DataContext 终于就绪触发本回调时，必须把 IsActive 升回 true，否则
+        // 下方 UpdateTarget() 会因 if (!IsActive) 直接 return —— 表现为
+        // "Source PropertyChanged 永远到不了 Converter / Target 永远停留在初值"。
+        // 同时把 Subscribe 重新挂上（DataContextChanged 路径上 SubscribeToSource 也会再 subscribe
+        // DataContextChanged，UnsubscribeFromSource 已先解除避免重复）。
+        if (ResolvedSource != null || _binding.Source != null)
+        {
+            IsActive = true;
+            Status = BindingStatus.Active;
+        }
+        else
+        {
+            // DataContext 已切回 null：把 binding 标回 Unattached，等下一次再就绪。
+            IsActive = false;
+            Status = BindingStatus.Unattached;
+        }
+
         SubscribeToSource();
         UpdateTarget();
     }

@@ -1038,13 +1038,9 @@ public class DockTabPanel : Selector
         return gapRight > gapLeft;
     }
 
-    protected override void OnRender(object drawingContextObj)
+    protected override void OnRender(DrawingContext drawingContextObj)
     {
-        if (drawingContextObj is not DrawingContext dc)
-        {
-            base.OnRender(drawingContextObj);
-            return;
-        }
+        var dc = drawingContextObj;
 
         var panelBackground = ResolvePanelBackgroundBrush();
         var tabStripBrush = ResolveTabStripBackgroundBrush();
@@ -1126,9 +1122,9 @@ public class DockTabPanel : Selector
         base.OnRender(drawingContextObj);
     }
 
-    protected override void OnPostRender(object drawingContextObj)
+    protected override void OnPostRender(DrawingContext drawingContextObj)
     {
-        if (drawingContextObj is not DrawingContext dc) return;
+        var dc = drawingContextObj;
         if (TabStripPlacement == Dock.Top)
         {
             var stripRect = _tabStripRect.Width > 0 && _tabStripRect.Height > 0

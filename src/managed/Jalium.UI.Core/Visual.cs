@@ -1,3 +1,4 @@
+using Jalium.UI.Media;
 using Jalium.UI.Rendering;
 
 namespace Jalium.UI;
@@ -17,8 +18,8 @@ public abstract class Visual : DependencyObject
     // render loop records OnRender output into an opaque Drawing handle on
     // the first dirty frame and replays it from this slot on subsequent
     // clean frames. SetRenderDirty() implicitly invalidates the cache because
-    // RenderDirect re-records whenever _isRenderDirty is true. Kept as
-    // object so Core doesn't leak the Media.Rendering.Drawing type.
+    // RenderDirect re-records whenever _isRenderDirty is true. Kept as object
+    // so Core doesn't leak the Media.Rendering.Drawing concrete type.
     private object? _cachedDrawing;
 
     // Wall-clock tick (Environment.TickCount64) of the last time this visual
@@ -351,8 +352,8 @@ public abstract class Visual : DependencyObject
     /// Performs rendering using the specified drawing context.
     /// Renders this element and all visible children.
     /// </summary>
-    /// <param name="drawingContext">The drawing context (should be cast to DrawingContext from Media).</param>
-    public void Render(object drawingContext)
+    /// <param name="drawingContext">The drawing context.</param>
+    public void Render(DrawingContext drawingContext)
     {
         _renderPath ??= new HashSet<Visual>();
 
@@ -382,7 +383,7 @@ public abstract class Visual : DependencyObject
         }
     }
 
-    private void RenderDirect(object drawingContext)
+    private void RenderDirect(DrawingContext drawingContext)
     {
         // Respect UIElement visibility at render entry.
         // Hidden and Collapsed should not render.
@@ -446,7 +447,7 @@ public abstract class Visual : DependencyObject
 
         // Push clip BEFORE OnRender so the element's own drawing is also clipped
         // (matches WPF semantics: ClipToBounds clips the element itself + children).
-        object? clipGeometry = null;
+        Geometry? clipGeometry = null;
         if (this is UIElement thisElement)
         {
             clipGeometry = thisElement.GetLayoutClip();
@@ -466,8 +467,8 @@ public abstract class Visual : DependencyObject
         // The cached handle survives across frames; SetRenderDirty simply
         // flips _isRenderDirty, and RenderDirect re-records when it notices.
         //
-        // The marker gate exists because OnRender(object) accepts any
-        // context type — user code (typically tests) may pattern-match the
+        // The marker gate exists because OnRender accepts any DrawingContext
+        // subclass — user code (typically tests) may pattern-match the
         // argument for context-specific probing. Substituting a recorder for
         // such a context would break the match. Only contexts that advertise
         // themselves as cache-safe participate in caching.
@@ -612,7 +613,7 @@ public abstract class Visual : DependencyObject
         return new CornerRadius(0);
     }
 
-    private static bool ShouldRenderChild(object drawingContext, UIElement child, Point childOffset)
+    private static bool ShouldRenderChild(DrawingContext drawingContext, UIElement child, Point childOffset)
     {
         if (drawingContext is not IClipBoundsDrawingContext { CurrentClipBounds: Rect clipBounds })
         {
@@ -636,8 +637,8 @@ public abstract class Visual : DependencyObject
     /// <summary>
     /// Override to provide custom rendering.
     /// </summary>
-    /// <param name="drawingContext">The drawing context (should be cast to DrawingContext from Media).</param>
-    protected virtual void OnRender(object drawingContext)
+    /// <param name="drawingContext">The drawing context.</param>
+    protected virtual void OnRender(DrawingContext drawingContext)
     {
     }
 
@@ -645,7 +646,7 @@ public abstract class Visual : DependencyObject
     /// Override to render content after children (useful for overlays like scrollbars).
     /// </summary>
     /// <param name="drawingContext">The drawing context.</param>
-    protected virtual void OnPostRender(object drawingContext)
+    protected virtual void OnPostRender(DrawingContext drawingContext)
     {
     }
 

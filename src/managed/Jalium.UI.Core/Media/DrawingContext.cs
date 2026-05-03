@@ -7,29 +7,6 @@ namespace Jalium.UI.Media;
 /// </summary>
 public abstract class DrawingContext : IDisposable, IClipDrawingContext
 {
-    /// <summary>
-    /// Pushes a clip region onto the clip stack (IClipDrawingContext implementation).
-    /// </summary>
-    /// <param name="clipGeometry">The clipping geometry (Geometry or Rect).</param>
-    void IClipDrawingContext.PushClip(object clipGeometry)
-    {
-        if (clipGeometry is Geometry geometry)
-        {
-            PushClip(geometry);
-        }
-        else if (clipGeometry is Rect rect)
-        {
-            PushClip(new RectangleGeometry(rect));
-        }
-    }
-
-    /// <summary>
-    /// Pops the most recent clip from the clip stack (IClipDrawingContext implementation).
-    /// </summary>
-    void IClipDrawingContext.Pop()
-    {
-        Pop();
-    }
 
     /// <summary>
     /// Draws a line between two points.

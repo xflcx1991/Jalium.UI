@@ -1,4 +1,4 @@
-using Jalium.UI.Interop;
+﻿using Jalium.UI.Interop;
 using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
@@ -39,7 +39,7 @@ internal sealed class DockIndicatorVisual : FrameworkElement
         return finalSize;
     }
 
-    protected override void OnRender(object drawingContextObj)
+    protected override void OnRender(DrawingContext drawingContextObj)
     {
         if (drawingContextObj is not DrawingContext dc)
             return;

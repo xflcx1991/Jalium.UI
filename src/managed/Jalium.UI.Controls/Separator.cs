@@ -1,4 +1,4 @@
-using Jalium.UI.Media;
+﻿using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
 
@@ -133,7 +133,7 @@ public class Separator : Control
     #region Rendering
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
         // If using template, let the template handle rendering
         if (_separatorBorder != null)
@@ -141,8 +141,7 @@ public class Separator : Control
             return;
         }
 
-        if (drawingContext is not DrawingContext dc)
-            return;
+        var dc = drawingContext;
 
         var brush = StrokeBrush ?? BorderBrush ?? s_defaultStrokeBrush;
         var thickness = StrokeThickness;

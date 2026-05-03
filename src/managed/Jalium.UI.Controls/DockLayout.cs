@@ -1,4 +1,4 @@
-using Jalium.UI.Controls.Themes;
+﻿using Jalium.UI.Controls.Themes;
 using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
@@ -53,13 +53,9 @@ public class DockLayout : ContentControl
         Unloaded += (_, _) => DockManager.Unregister(this);
     }
 
-    protected override void OnRender(object drawingContextObj)
+    protected override void OnRender(DrawingContext drawingContextObj)
     {
-        if (drawingContextObj is not DrawingContext dc)
-        {
-            base.OnRender(drawingContextObj);
-            return;
-        }
+        var dc = drawingContextObj;
 
         var background = ResolveBackgroundBrush();
         dc.DrawRectangle(background, null, new Rect(RenderSize));

@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Input;
 using Jalium.UI.Interop;
@@ -1079,10 +1079,9 @@ public class NumberBox : TextBoxBase, IImeSupport
     #region Rendering
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc)
-            return;
+        var dc = drawingContext;
 
         var bounds = new Rect(RenderSize);
         var padding = Padding;
@@ -1154,10 +1153,9 @@ public class NumberBox : TextBoxBase, IImeSupport
     }
 
     /// <inheritdoc />
-    internal override void RenderTextContent(object drawingContext)
+    internal override void RenderTextContent(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc)
-            return;
+        var dc = drawingContext;
 
         var lineHeight = Math.Round(GetLineHeight());
         var contentRect = new Rect(0, 0, _textContentSize.Width, _textContentSize.Height);

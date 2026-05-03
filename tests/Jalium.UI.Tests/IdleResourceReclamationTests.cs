@@ -1,4 +1,5 @@
-using System.Reflection;
+﻿using System.Reflection;
+using Jalium.UI.Tests.TestHelpers;
 using Jalium.UI.Controls;
 using Jalium.UI.Hosting;
 using Jalium.UI.Media;
@@ -43,7 +44,7 @@ public class IdleResourceReclamationTests : IDisposable
         Assert.Equal(0, visual.LastRenderedTickMs);
 
         var before = Environment.TickCount64;
-        visual.Render(drawingContext: new object());
+        visual.Render(drawingContext: new StubDrawingContext());
         var after = Environment.TickCount64;
 
         Assert.InRange(visual.LastRenderedTickMs, before, after);
@@ -54,7 +55,7 @@ public class IdleResourceReclamationTests : IDisposable
     {
         var visual = new TestVisual { Visibility = Visibility.Collapsed };
 
-        visual.Render(drawingContext: new object());
+        visual.Render(drawingContext: new StubDrawingContext());
 
         Assert.Equal(0, visual.LastRenderedTickMs);
     }
@@ -64,7 +65,7 @@ public class IdleResourceReclamationTests : IDisposable
     {
         var visual = new TestVisual { Visibility = Visibility.Hidden };
 
-        visual.Render(drawingContext: new object());
+        visual.Render(drawingContext: new StubDrawingContext());
 
         Assert.Equal(0, visual.LastRenderedTickMs);
     }
@@ -76,7 +77,7 @@ public class IdleResourceReclamationTests : IDisposable
         Visual seen = null!;
         Visual.VisualRenderedObserver = v => seen = v;
 
-        visual.Render(drawingContext: new object());
+        visual.Render(drawingContext: new StubDrawingContext());
 
         Assert.Same(visual, seen);
     }
@@ -91,7 +92,7 @@ public class IdleResourceReclamationTests : IDisposable
         var visual = new TestVisual();
         Assert.False(visual.IsTrackedByIdleReclaimer);
 
-        visual.Render(drawingContext: new object());
+        visual.Render(drawingContext: new StubDrawingContext());
 
         Assert.True(visual.IsTrackedByIdleReclaimer);
     }
@@ -104,7 +105,7 @@ public class IdleResourceReclamationTests : IDisposable
         reclaimer.Start();
 
         var visual = new TestVisual();
-        visual.Render(drawingContext: new object());
+        visual.Render(drawingContext: new StubDrawingContext());
         Assert.True(visual.IsTrackedByIdleReclaimer);
 
         reclaimer.Stop();
@@ -113,7 +114,7 @@ public class IdleResourceReclamationTests : IDisposable
         Assert.False(options.Enabled);
 
         // Subsequent renders must not re-track while the reclaimer is stopped.
-        visual.Render(drawingContext: new object());
+        visual.Render(drawingContext: new StubDrawingContext());
         Assert.False(visual.IsTrackedByIdleReclaimer);
     }
 
@@ -131,8 +132,8 @@ public class IdleResourceReclamationTests : IDisposable
         var idle = new ReclaimableTestVisual();
         var live = new ReclaimableTestVisual();
 
-        idle.Render(drawingContext: new object());
-        live.Render(drawingContext: new object());
+        idle.Render(drawingContext: new StubDrawingContext());
+        live.Render(drawingContext: new StubDrawingContext());
 
         // Force idle's last-rendered tick into the past beyond the timeout.
         // Sleeping is reliable but slow; we'd rather adjust state directly,
@@ -140,7 +141,7 @@ public class IdleResourceReclamationTests : IDisposable
         Thread.Sleep(options.IdleTimeoutMs + 100);
 
         // Re-render the "live" visual so its tick is fresh again.
-        live.Render(drawingContext: new object());
+        live.Render(drawingContext: new StubDrawingContext());
 
         reclaimer.ScanAndReclaim();
 
@@ -161,7 +162,7 @@ public class IdleResourceReclamationTests : IDisposable
         reclaimer.Start();
 
         var visual = new ReclaimableTestVisual();
-        visual.Render(drawingContext: new object());
+        visual.Render(drawingContext: new StubDrawingContext());
 
         Thread.Sleep(options.IdleTimeoutMs + 100);
 
@@ -184,8 +185,8 @@ public class IdleResourceReclamationTests : IDisposable
         var throwing = new ThrowingReclaimable();
         var follower = new ReclaimableTestVisual();
 
-        throwing.Render(drawingContext: new object());
-        follower.Render(drawingContext: new object());
+        throwing.Render(drawingContext: new StubDrawingContext());
+        follower.Render(drawingContext: new StubDrawingContext());
 
         Thread.Sleep(options.IdleTimeoutMs + 100);
 
@@ -230,7 +231,7 @@ public class IdleResourceReclamationTests : IDisposable
     private static WeakReference<TestVisual> RenderThenDropStrongReference()
     {
         var v = new TestVisual();
-        v.Render(drawingContext: new object());
+        v.Render(drawingContext: new StubDrawingContext());
         return new WeakReference<TestVisual>(v);
     }
 
@@ -244,19 +245,17 @@ public class IdleResourceReclamationTests : IDisposable
     }
 
     // The GpuCacheEvictionRequested event is `internal static` on ImageSource.
-    // The test assembly is in Jalium.UI.Media's InternalsVisibleTo list, but
+    // The test assembly is in Jalium.UI.Core's InternalsVisibleTo list, but
     // SDK-generated reference assemblies strip internal members from the
     // refint dll the C# compiler reads — so direct `+=` against the event from
     // the test assembly fails CS0117. Reach the runtime add/remove methods via
     // reflection on the implementation assembly instead; that always sees the
     // full type metadata.
     private static MethodInfo s_evictionAdd =
-        typeof(BitmapImage).Assembly
-            .GetType("Jalium.UI.Media.ImageSource", throwOnError: true)!
+        typeof(ImageSource)
             .GetMethod("add_GpuCacheEvictionRequested", BindingFlags.Static | BindingFlags.NonPublic)!;
     private static MethodInfo s_evictionRemove =
-        typeof(BitmapImage).Assembly
-            .GetType("Jalium.UI.Media.ImageSource", throwOnError: true)!
+        typeof(ImageSource)
             .GetMethod("remove_GpuCacheEvictionRequested", BindingFlags.Static | BindingFlags.NonPublic)!;
     private static void SubscribeEviction(Action<ImageSource> h)
         => s_evictionAdd.Invoke(null, new object[] { h });
@@ -408,7 +407,7 @@ public class IdleResourceReclamationTests : IDisposable
 
         try
         {
-            image.Render(drawingContext: new object());
+            image.Render(drawingContext: new StubDrawingContext());
             Thread.Sleep(options.IdleTimeoutMs + 100);
 
             reclaimer.ScanAndReclaim();

@@ -1,4 +1,4 @@
-using Jalium.UI.Media;
+﻿using Jalium.UI.Media;
 
 using Jalium.UI;
 namespace Jalium.UI.Controls.Primitives;
@@ -268,10 +268,9 @@ public class TickBar : FrameworkElement
     #region Rendering
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc)
-            return;
+        var dc = drawingContext;
 
         var range = Maximum - Minimum;
         if (range <= 0)

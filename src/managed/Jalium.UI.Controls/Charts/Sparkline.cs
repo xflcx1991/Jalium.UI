@@ -1,4 +1,4 @@
-using Jalium.UI.Controls.Themes;
+﻿using Jalium.UI.Controls.Themes;
 using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls.Charts;
@@ -325,10 +325,9 @@ public class Sparkline : Control
     #region Rendering
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc)
-            return;
+        var dc = drawingContext;
 
         var values = Values;
         if (values == null || values.Count == 0)

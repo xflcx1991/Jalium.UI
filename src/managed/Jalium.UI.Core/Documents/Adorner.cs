@@ -1,3 +1,5 @@
+using Jalium.UI.Media;
+
 namespace Jalium.UI.Documents;
 
 /// <summary>
@@ -61,11 +63,11 @@ public abstract class Adorner : FrameworkElement
     /// Gets the layout clip for this adorner.
     /// </summary>
     /// <returns>The clipping geometry, or null if clipping is not enabled.</returns>
-    internal override object? GetLayoutClip()
+    internal override Geometry? GetLayoutClip()
     {
         if (IsClipEnabled)
         {
-            return new Rect(0, 0, RenderSize.Width, RenderSize.Height);
+            return new RectangleGeometry(new Rect(0, 0, RenderSize.Width, RenderSize.Height));
         }
         return null;
     }

@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.RegularExpressions;
 using Jalium.UI.Controls.Editor;
 using Jalium.UI.Interop;
@@ -75,12 +75,9 @@ internal sealed class MarkdownCodeBlockView : FrameworkElement
             Padding + (_lines.Count * _lineHeight) + Padding);
     }
 
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc)
-        {
-            return;
-        }
+        var dc = drawingContext;
 
         EnsureMetrics();
 

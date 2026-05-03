@@ -1,7 +1,8 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using Jalium.UI.Input;
+using Jalium.UI.Media;
 using Jalium.UI.Threading;
 using Microsoft.Web.WebView2.Core;
 
@@ -605,20 +606,13 @@ public partial class WebView : FrameworkElement, IDisposable
     {
         clipRect = Rect.Empty;
         var clip = element.GetLayoutClip();
-
-        if (clip is Rect rect && !rect.IsEmpty)
+        if (clip == null || clip.Bounds.IsEmpty)
         {
-            clipRect = rect;
-            return true;
+            return false;
         }
 
-        if (clip is Media.Geometry geometry && !geometry.Bounds.IsEmpty)
-        {
-            clipRect = geometry.Bounds;
-            return true;
-        }
-
-        return false;
+        clipRect = clip.Bounds;
+        return true;
     }
 
     private static PixelRect DipRectToPixelRect(Rect rect, double dpi)
@@ -898,7 +892,7 @@ public partial class WebView : FrameworkElement, IDisposable
 
     #region Input Forwarding
 
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
         base.OnRender(drawingContext);
 
@@ -923,7 +917,7 @@ public partial class WebView : FrameworkElement, IDisposable
         }
     }
 
-    protected override void OnPostRender(object drawingContext)
+    protected override void OnPostRender(DrawingContext drawingContext)
     {
         base.OnPostRender(drawingContext);
 

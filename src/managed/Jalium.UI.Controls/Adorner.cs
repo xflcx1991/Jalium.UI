@@ -1,4 +1,4 @@
-using Jalium.UI.Documents;
+﻿using Jalium.UI.Documents;
 using Jalium.UI.Media;
 
 using System.Runtime.CompilerServices;
@@ -18,9 +18,9 @@ internal sealed class ValidationErrorAdorner : Adorner
         IsHitTestVisible = false;
     }
 
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc) return;
+        var dc = drawingContext;
 
         var rect = new Rect(AdornedElement.RenderSize);
         dc.DrawRectangle(null, _errorPen, rect);

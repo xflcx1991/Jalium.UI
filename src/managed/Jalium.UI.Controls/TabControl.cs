@@ -1,4 +1,4 @@
-using Jalium.UI.Controls.Primitives;
+﻿using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Controls.Themes;
 using Jalium.UI.Input;
 using Jalium.UI.Interop;
@@ -495,13 +495,9 @@ public class TabControl : Selector
 
     #endregion
 
-    protected override void OnRender(object drawingContextObj)
+    protected override void OnRender(DrawingContext drawingContextObj)
     {
-        if (drawingContextObj is not DrawingContext dc)
-        {
-            base.OnRender(drawingContextObj);
-            return;
-        }
+        var dc = drawingContextObj;
 
         var bounds = new Rect(0, 0, ActualWidth, ActualHeight);
         double tabStripSize = TabStripHeight;
@@ -779,13 +775,9 @@ public class TabItem : HeaderedContentControl
         InvalidateVisual();
     }
 
-    protected override void OnRender(object drawingContextObj)
+    protected override void OnRender(DrawingContext drawingContextObj)
     {
-        if (drawingContextObj is not DrawingContext dc)
-        {
-            base.OnRender(drawingContextObj);
-            return;
-        }
+        var dc = drawingContextObj;
 
         var bounds = new Rect(0, 0, ActualWidth, ActualHeight);
 

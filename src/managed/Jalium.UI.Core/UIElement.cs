@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Jalium.UI.Diagnostics;
 using Jalium.UI.Input;
 using Jalium.UI.Input.StylusPlugIns;
+using Jalium.UI.Media;
 
 namespace Jalium.UI;
 
@@ -441,7 +442,7 @@ public abstract partial class UIElement : Visual, IInputElement
     /// </summary>
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Other)]
     public static readonly DependencyProperty RenderTransformProperty =
-        DependencyProperty.Register(nameof(RenderTransform), typeof(object), typeof(UIElement),
+        DependencyProperty.Register(nameof(RenderTransform), typeof(Transform), typeof(UIElement),
             new PropertyMetadata(null, OnRenderPropertyChanged));
 
     /// <summary>
@@ -547,7 +548,7 @@ public abstract partial class UIElement : Visual, IInputElement
     /// </summary>
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Other)]
     public static readonly DependencyProperty ClipProperty =
-        DependencyProperty.Register(nameof(Clip), typeof(object), typeof(UIElement),
+        DependencyProperty.Register(nameof(Clip), typeof(Geometry), typeof(UIElement),
             new PropertyMetadata(null, OnRenderPropertyChanged));
 
     #endregion
@@ -647,9 +648,9 @@ public abstract partial class UIElement : Visual, IInputElement
     /// Gets or sets the render transform.
     /// </summary>
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Appearance)]
-    public object? RenderTransform
+    public Transform? RenderTransform
     {
-        get => GetValue(RenderTransformProperty);
+        get => (Transform?)GetValue(RenderTransformProperty);
         set => SetValue(RenderTransformProperty, value);
     }
 
@@ -727,9 +728,9 @@ public abstract partial class UIElement : Visual, IInputElement
     /// The Clip geometry is applied to the element's rendering.
     /// </summary>
     [DevToolsPropertyCategory(DevToolsPropertyCategory.Appearance)]
-    public object? Clip
+    public Geometry? Clip
     {
-        get => GetValue(ClipProperty);
+        get => (Geometry?)GetValue(ClipProperty);
         set => SetValue(ClipProperty, value);
     }
 
@@ -961,10 +962,10 @@ public abstract partial class UIElement : Visual, IInputElement
     /// <summary>
     /// Returns a geometry for clipping the contents of this element.
     /// Override in derived classes to provide custom clipping (e.g., ScrollViewer).
-    /// When ClipToBounds is true, returns a Rect matching the element's RenderSize.
+    /// When ClipToBounds is true, returns a RectangleGeometry matching the element's RenderSize.
     /// </summary>
-    /// <returns>The clipping geometry (Media.Geometry or Rect), or null if no clipping should be applied.</returns>
-    internal virtual object? GetLayoutClip()
+    /// <returns>The clipping geometry, or null if no clipping should be applied.</returns>
+    internal virtual Geometry? GetLayoutClip()
     {
         // Explicit Clip geometry takes precedence
         var clip = Clip;
@@ -973,7 +974,7 @@ public abstract partial class UIElement : Visual, IInputElement
 
         if (ClipToBounds)
         {
-            return new Rect(0, 0, _renderSize.Width, _renderSize.Height);
+            return new RectangleGeometry(new Rect(0, 0, _renderSize.Width, _renderSize.Height));
         }
         return null;
     }
@@ -984,9 +985,6 @@ public abstract partial class UIElement : Visual, IInputElement
     /// to ensure clicks do not fall through to content that is visually clipped away
     /// (e.g. an input control scrolled out of a ScrollViewer viewport whose VisualBounds
     /// still extend past the viewport edge).
-    ///
-    /// The default implementation handles Rect clips. Subclasses whose GetLayoutClip
-    /// returns a Media.Geometry (e.g. ScrollViewer) override to honor the exact shape.
     /// </summary>
     internal virtual bool IsPointInsideLayoutClip(Point localPoint)
     {
@@ -996,15 +994,7 @@ public abstract partial class UIElement : Visual, IInputElement
             return true;
         }
 
-        if (clip is Rect rect)
-        {
-            return rect.Contains(localPoint);
-        }
-
-        // Non-Rect clip (Geometry) — let Media-aware subclasses interpret the exact
-        // shape. Returning true here keeps the behavior permissive for the base case so
-        // we never block a hit that the renderer would actually display.
-        return true;
+        return clip.FillContains(localPoint);
     }
 
     /// <summary>

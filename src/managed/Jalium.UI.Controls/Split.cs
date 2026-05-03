@@ -130,13 +130,9 @@ public sealed class Split : Control
         InvalidateVisual();
     }
 
-    protected override void OnRender(object drawingContextObj)
+    protected override void OnRender(DrawingContext drawingContextObj)
     {
-        if (drawingContextObj is not DrawingContext dc)
-        {
-            base.OnRender(drawingContextObj);
-            return;
-        }
+        var dc = drawingContextObj;
 
         var bounds = new Rect(0, 0, ActualWidth, ActualHeight);
         var isVerticalBar = Owner?.Orientation == Orientation.Horizontal;

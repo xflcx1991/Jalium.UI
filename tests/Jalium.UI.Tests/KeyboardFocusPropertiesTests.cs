@@ -89,7 +89,7 @@ public class KeyboardFocusPropertiesTests
         var style = new Style(targetType);
         style.Setters.Add(new Setter(FrameworkElement.TagProperty, "Idle"));
 
-        var trigger = new PropertyTrigger
+        var trigger = new Trigger
         {
             Property = UIElement.IsKeyboardFocusedProperty,
             Value = true
@@ -105,7 +105,7 @@ public class KeyboardFocusPropertiesTests
         var style = new Style(targetType);
         style.Setters.Add(new Setter(FrameworkElement.TagProperty, "Outside"));
 
-        var trigger = new PropertyTrigger
+        var trigger = new Trigger
         {
             Property = UIElement.IsKeyboardFocusWithinProperty,
             Value = true

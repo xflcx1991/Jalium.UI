@@ -1,4 +1,4 @@
-using Jalium.UI.Input;
+﻿using Jalium.UI.Input;
 using Jalium.UI.Interop;
 using Jalium.UI.Media;
 using Jalium.UI.Media.Animation;
@@ -445,7 +445,7 @@ public class Border : FrameworkElement
     }
 
     /// <inheritdoc />
-    internal override object? GetLayoutClip()
+    internal override Geometry? GetLayoutClip()
     {
         if (!ClipToBounds)
             return null;
@@ -473,7 +473,7 @@ public class Border : FrameworkElement
             return new RectangleGeometry(clipRect, cornerRadius);
         }
 
-        return clipRect;
+        return new RectangleGeometry(clipRect);
     }
 
     #endregion
@@ -538,10 +538,9 @@ public class Border : FrameworkElement
     }
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc)
-            return;
+        var dc = drawingContext;
 
         var rect = new Rect(RenderSize);
         var rawBorder = BorderThickness;
@@ -952,24 +951,15 @@ public class Border : FrameworkElement
                 }
             }
 
-            if (BorderBrush != null && borderWidth > 0)
-            {
-                var pen = GetOrCreateBorderPen(BorderBrush, borderWidth);
-
-                var borderRect = new Rect(
-                    rect.X + halfBorder,
-                    rect.Y + halfBorder,
-                    Math.Max(0, rect.Width - borderWidth),
-                    Math.Max(0, rect.Height - borderWidth));
-
-                var strokeRadius = new CornerRadius(
-                    Math.Max(0, cornerRadius.TopLeft - halfBorder),
-                    Math.Max(0, cornerRadius.TopRight - halfBorder),
-                    Math.Max(0, cornerRadius.BottomRight - halfBorder),
-                    Math.Max(0, cornerRadius.BottomLeft - halfBorder));
-
-                dc.DrawRoundedRectangle(null, pen, borderRect, strokeRadius);
-            }
+            // Standard rounded rect 路径下，stroke 绘制延迟到 OnPostRender。
+            // 原因：Visual.Render 顺序为 OnRender → children → OnPostRender；
+            // 若 stroke 在 OnRender 中绘制，children 在其上渲染 Background 时
+            // 亚像素抗锯齿区域会盖住 stroke 内半部分（视觉表现："上面 stroke
+            // 看起来 1px、下面看起来 2px"，取决于 child Background 颜色与
+            // stroke 颜色的对比度）。把 stroke 推到 OnPostRender 保证它始终
+            // 是当前 Border subtree 的最上层。
+            // SuperEllipse 路径仍在 OnRender 中绘制（其 children 一般是文字
+            // 或图标，不会出现整片 Background 覆盖到 stroke 边缘的情况）。
         }
 
         // The ScaleTransform pushed AFTER DrawLiquidGlass stays active for children.
@@ -978,13 +968,71 @@ public class Border : FrameworkElement
     }
 
     /// <inheritdoc />
-    protected override void OnPostRender(object drawingContext)
+    /// <remarks>
+    /// 这里做两件事：
+    ///   1. Liquid Glass：弹出 OnRender 中 push 的 ScaleTransform。
+    ///   2. Border stroke：在 children 渲染之后再画一次 stroke。
+    ///      原因：Visual.Render 顺序为 OnRender → children → OnPostRender，
+    ///      若 stroke 只在 OnRender 中绘制，children 的 Background 在亚像素
+    ///      抗锯齿区域会盖住 stroke 内半边（视觉表现："上面 stroke 看起来
+    ///      1px、下面看起来 2px"，取决于 child Background 与 stroke 颜色对比度）。
+    ///      把 stroke 放到 OnPostRender 保证它始终是当前 Border subtree 的最上层。
+    ///      SuperEllipse 路径的 stroke 已经在 OnRender 中由原生渲染器特殊处理，
+    ///      此处不再重画。
+    /// </remarks>
+    protected override void OnPostRender(DrawingContext drawingContext)
     {
-        if (_lgPushedTransform && drawingContext is DrawingContext dc)
+        if (drawingContext is DrawingContext dc)
         {
-            dc.Pop();
-            _lgPushedTransform = false;
+            // 1. Pop liquid-glass ScaleTransform pushed in OnRender.
+            if (_lgPushedTransform)
+            {
+                dc.Pop();
+                _lgPushedTransform = false;
+            }
+
+            // 2. Re-draw stroke on top of children (Standard rounded rect path only).
+            DrawStrokeAboveChildren(dc);
         }
+    }
+
+    /// <summary>
+    /// 把 BorderBrush stroke 画在 children 之上，避免 child 的 Background 把 stroke
+    /// 内半边覆盖掉。仅对 Standard rounded rect 路径生效。
+    /// </summary>
+    private void DrawStrokeAboveChildren(DrawingContext dc)
+    {
+        if (BorderBrush == null) return;
+        if (Shape == BorderShape.SuperEllipse) return;
+
+        var rawBorder = BorderThickness;
+        var border = new Thickness(
+            SnapLayoutValue(rawBorder.Left),
+            SnapLayoutValue(rawBorder.Top),
+            SnapLayoutValue(rawBorder.Right),
+            SnapLayoutValue(rawBorder.Bottom));
+        var borderWidth = Math.Max(border.Left, Math.Max(border.Top, Math.Max(border.Right, border.Bottom)));
+        if (borderWidth <= 0) return;
+
+        var rect = new Rect(RenderSize);
+        var halfBorder = borderWidth / 2;
+        var cornerRadius = CornerRadius;
+
+        var pen = GetOrCreateBorderPen(BorderBrush, borderWidth);
+
+        var borderRect = new Rect(
+            rect.X + halfBorder,
+            rect.Y + halfBorder,
+            Math.Max(0, rect.Width - borderWidth),
+            Math.Max(0, rect.Height - borderWidth));
+
+        var strokeRadius = new CornerRadius(
+            Math.Max(0, cornerRadius.TopLeft - halfBorder),
+            Math.Max(0, cornerRadius.TopRight - halfBorder),
+            Math.Max(0, cornerRadius.BottomRight - halfBorder),
+            Math.Max(0, cornerRadius.BottomLeft - halfBorder));
+
+        dc.DrawRoundedRectangle(null, pen, borderRect, strokeRadius);
     }
 
     #endregion

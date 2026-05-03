@@ -60,22 +60,17 @@ public sealed class BundleRenderer
     /// This is the primary GPU-friendly rendering path.
     /// </summary>
     /// <param name="drawingContext">The drawing context.</param>
-    public void Render(object drawingContext)
+    public void Render(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc)
-        {
-            return;
-        }
-
         // Execute pre-compiled draw commands (GPU command buffer style)
         if (_bundle.DrawCommands.Length > 0)
         {
-            ExecuteDrawCommands(dc);
+            ExecuteDrawCommands(drawingContext);
         }
         else
         {
             // Fallback: render from scene nodes if no draw commands compiled
-            RenderFromNodes(dc);
+            RenderFromNodes(drawingContext);
         }
     }
 

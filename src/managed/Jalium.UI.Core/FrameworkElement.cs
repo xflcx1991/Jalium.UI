@@ -1,5 +1,6 @@
-using System.IO;
+﻿using System.IO;
 using System.Runtime.InteropServices;
+using Jalium.UI.Media;
 
 namespace Jalium.UI;
 
@@ -761,6 +762,13 @@ public partial class FrameworkElement : UIElement
     /// Occurs when the Resources property has changed.
     /// </summary>
     public event EventHandler? ResourcesChanged;
+
+    /// <summary>
+    /// 是否已实例化本地 Resources 字典（包含至少一项）。
+    /// 与直接访问 <see cref="Resources"/> 不同——本属性不会触发懒构造，
+    /// 用于资源快照 / 诊断等场景，避免对每个元素都生成空字典污染查找。
+    /// </summary>
+    internal bool HasResources => _resources != null && _resources.Count > 0;
 
     /// <summary>
     /// Gets or sets the locally-defined resource dictionary.
@@ -1693,9 +1701,8 @@ public partial class FrameworkElement : UIElement
 
     /// <summary>
     /// Render callback for compiled bundle. Set by Jalium.UI.Xaml to inject rendering logic.
-    /// Uses object type to avoid circular dependencies with Jalium.UI.Gpu.
     /// </summary>
-    private Action<object>? _bundleRenderCallback;
+    private Action<DrawingContext>? _bundleRenderCallback;
 
     /// <summary>
     /// Gets the compiled UI bundle associated with this element, if any.
@@ -1721,7 +1728,7 @@ public partial class FrameworkElement : UIElement
     /// Called by XamlReader.ApplyBundle to inject rendering logic from Jalium.UI.Xaml.
     /// </summary>
     /// <param name="callback">The callback that renders the bundle to a DrawingContext.</param>
-    public void SetBundleRenderCallback(Action<object>? callback)
+    public void SetBundleRenderCallback(Action<DrawingContext>? callback)
     {
         _bundleRenderCallback = callback;
     }
@@ -1729,7 +1736,7 @@ public partial class FrameworkElement : UIElement
     /// <summary>
     /// Override to render the compiled bundle.
     /// </summary>
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
         base.OnRender(drawingContext);
 

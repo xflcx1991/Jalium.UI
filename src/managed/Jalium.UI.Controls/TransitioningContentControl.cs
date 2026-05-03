@@ -1,4 +1,4 @@
-using Jalium.UI.Interop;
+﻿using Jalium.UI.Interop;
 using Jalium.UI.Media;
 using Jalium.UI.Media.Animation;
 using Jalium.UI.Threading;
@@ -211,7 +211,7 @@ public class TransitioningContentControl : ContentControl, TransitionHost
     }
 
     /// <inheritdoc />
-    protected override void OnPostRender(object drawingContext)
+    protected override void OnPostRender(DrawingContext drawingContext)
     {
         if (_isTransitioning && drawingContext is DrawingContext dc)
         {

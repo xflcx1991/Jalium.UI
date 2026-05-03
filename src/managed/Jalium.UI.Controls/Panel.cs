@@ -1,4 +1,4 @@
-using Jalium.UI.Media;
+﻿using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
 
@@ -167,14 +167,15 @@ public abstract class Panel : FrameworkElement
     }
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
         base.OnRender(drawingContext);
 
-        if (drawingContext is not DrawingContext dc || Background == null)
+        if (Background == null)
         {
             return;
         }
+        var dc = drawingContext;
 
         var renderSize = RenderSize;
         if (renderSize.Width <= 0 || renderSize.Height <= 0)

@@ -30,6 +30,13 @@ public class DataTemplate
     internal System.Reflection.Assembly? SourceAssembly { get; set; }
 
     /// <summary>
+    /// 模板被 XAML 解析器扫描到时的祖先 ResourceDictionary 快照。
+    /// LoadContent() 时通过 <see cref="TemplateAmbientResourceContext"/> 桥接给延迟解析器，
+    /// 让模板内 <c>{StaticResource ...}</c> 能解析到外层 UserControl.Resources / Window.Resources 等声明的资源。
+    /// </summary>
+    internal IReadOnlyList<ResourceDictionary>? AmbientResourceDictionaries { get; set; }
+
+    /// <summary>
     /// Gets or sets a callback used by LoadContent to parse XAML.
     /// This allows the Controls assembly to remain independent of the Xaml assembly.
     /// </summary>
@@ -86,7 +93,12 @@ public class DataTemplate
         // If we have stored XAML content, parse it
         if (!string.IsNullOrEmpty(VisualTreeXaml) && XamlParser != null)
         {
-            return XamlParser(VisualTreeXaml, SourceAssembly);
+            // 把模板被声明时的祖先 ResourceDictionary 链通过 ThreadStatic 桥
+            // 透传给延迟 XAML 解析器，让模板内 {StaticResource X} 能解析到外层声明的资源。
+            using (TemplateAmbientResourceContext.Push(AmbientResourceDictionaries))
+            {
+                return XamlParser(VisualTreeXaml, SourceAssembly);
+            }
         }
 
         return null;

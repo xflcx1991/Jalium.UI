@@ -77,7 +77,7 @@ public class TemplateBindingPrecedenceTests
             };
         });
 
-        var trigger = new PropertyTrigger
+        var trigger = new Trigger
         {
             Property = FrameworkElement.TagProperty,
             Value = "On"

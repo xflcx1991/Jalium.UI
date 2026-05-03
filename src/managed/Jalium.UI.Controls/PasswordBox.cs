@@ -1,4 +1,4 @@
-using Jalium.UI.Automation;
+﻿using Jalium.UI.Automation;
 using Jalium.UI.Controls.Automation;
 using Jalium.UI.Input;
 using Jalium.UI.Interop;
@@ -634,12 +634,11 @@ public class PasswordBox : Control, IImeSupport
     #region Rendering
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
         base.OnRender(drawingContext);
 
-        if (drawingContext is not DrawingContext dc)
-            return;
+        var dc = drawingContext;
 
         var border = BorderThickness;
         var padding = Padding;

@@ -37,7 +37,7 @@ public class SiblingRenderStateTests
     {
         protected override Size MeasureOverride(Size availableSize) => new(100, 32);
 
-        protected override void OnRender(object drawingContext)
+        protected override void OnRender(DrawingContext drawingContext)
         {
             if (drawingContext is not ProbeDrawingContext dc)
             {

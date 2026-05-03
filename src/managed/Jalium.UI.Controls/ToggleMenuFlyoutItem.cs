@@ -1,4 +1,4 @@
-using Jalium.UI.Media;
+﻿using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
 
@@ -43,9 +43,9 @@ public class ToggleMenuFlyoutItem : MenuFlyoutItem
     }
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc) return;
+        var dc = drawingContext;
         base.OnRender(drawingContext);
 
         // Draw check mark when checked

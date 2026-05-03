@@ -1,3 +1,5 @@
+using Jalium.UI.Media;
+
 namespace Jalium.UI;
 
 /// <summary>
@@ -19,14 +21,14 @@ public interface IClipDrawingContext
     /// <summary>
     /// Pushes a clip region onto the clip stack.
     /// </summary>
-    /// <param name="clipGeometry">The clipping geometry (Media.Geometry).</param>
-    void PushClip(object clipGeometry);
+    /// <param name="clipGeometry">The clipping geometry.</param>
+    void PushClip(Geometry clipGeometry);
 
     /// <summary>
     /// Pushes a rounded-rect clip using element bounds and corner radius.
     /// </summary>
     void PushRoundedRectClip(Rect bounds, CornerRadius cornerRadius) =>
-        PushClip(bounds); // default: fall back to rectangular clip
+        PushClip(new RectangleGeometry(bounds)); // default: fall back to rectangular clip
 
     /// <summary>
     /// Pushes a per-corner rounded-rect clip. Default forwards to
@@ -80,10 +82,10 @@ public interface ITransformDrawingContext
     /// <summary>
     /// Pushes a transform onto the transform stack, applying it around the specified origin.
     /// </summary>
-    /// <param name="transform">The transform to push (Media.Transform).</param>
+    /// <param name="transform">The transform to push.</param>
     /// <param name="originX">The X origin in pixels for the transform center.</param>
     /// <param name="originY">The Y origin in pixels for the transform center.</param>
-    void PushTransform(object transform, double originX, double originY);
+    void PushTransform(Transform transform, double originX, double originY);
 
     /// <summary>
     /// Pops the most recent transform from the transform stack.

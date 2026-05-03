@@ -1,4 +1,4 @@
-using System.Linq;
+﻿using System.Linq;
 using System.Text;
 using Jalium.UI.Input;
 using Jalium.UI.Interop;
@@ -71,12 +71,13 @@ internal sealed class MarkdownTextRenderer : FrameworkElement
         return finalSize;
     }
 
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc || Spans.Count == 0)
+        if (Spans.Count == 0)
         {
             return;
         }
+        var dc = drawingContext;
 
         var widthConstraint = Wrap && RenderSize.Width > 0
             ? RenderSize.Width

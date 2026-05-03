@@ -1,4 +1,4 @@
-using Jalium.UI.Media;
+﻿using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
 
@@ -56,9 +56,9 @@ public class PathIcon : IconElement
     }
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc) return;
+        var dc = drawingContext;
         if (Data == null) return;
         if (RenderSize.Width <= 0 || RenderSize.Height <= 0) return;
 

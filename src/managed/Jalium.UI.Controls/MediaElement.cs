@@ -1,4 +1,4 @@
-using Jalium.UI.Media;
+﻿using Jalium.UI.Media;
 using Jalium.UI.Media.Animation;
 using Jalium.UI.Media.Imaging;
 using Jalium.UI.Media.Native;
@@ -817,10 +817,9 @@ public class MediaElement : FrameworkElement, IDisposable
         return new Size(contentSize.Width * scaleX, contentSize.Height * scaleY);
     }
 
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc)
-            return;
+        var dc = drawingContext;
 
         var rect = new Rect(RenderSize);
 

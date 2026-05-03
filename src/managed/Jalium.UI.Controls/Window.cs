@@ -949,7 +949,13 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
 
     protected virtual void OnActivated(EventArgs e) => Activated?.Invoke(this, e);
     protected virtual void OnDeactivated(EventArgs e) => Deactivated?.Invoke(this, e);
-    protected virtual void OnStateChanged(EventArgs e) => StateChanged?.Invoke(this, e);
+    protected virtual void OnStateChanged(EventArgs e)
+    {
+        // Pause / resume the global frame timer when this window goes
+        // minimized / restored — see UpdateRenderableRegistration.
+        UpdateRenderableRegistration();
+        StateChanged?.Invoke(this, e);
+    }
     protected virtual void OnContentRendered(EventArgs e) => ContentRendered?.Invoke(this, e);
     protected virtual void OnSourceInitialized(EventArgs e) => SourceInitialized?.Invoke(this, e);
     protected virtual void OnLocationChanged(EventArgs e) => LocationChanged?.Invoke(this, e);
@@ -975,7 +981,7 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
     #region Base Class Overrides
 
     protected override void OnPropertyChanged(DependencyPropertyChangedEventArgs e) => base.OnPropertyChanged(e);
-    internal override object? GetLayoutClip() => null;
+    internal override Geometry? GetLayoutClip() => null;
     public override string ToString() => $"Window: \"{Title}\" ({Width:F0}x{Height:F0})";
 
     protected override void OnContentChanged(object? oldContent, object? newContent)
@@ -1047,6 +1053,11 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
                     ? (ShowActivated ? SW_SHOW : SW_SHOWNOACTIVATE)
                     : SW_HIDE);
             }
+
+            // Keep the global frame timer in step with the surface's
+            // visibility — see UpdateRenderableRegistration.
+            _nativeWindowHidden = value != Visibility.Visible;
+            UpdateRenderableRegistration();
         }
     }
 
@@ -2244,6 +2255,13 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
         }
         if (trace) tShowWindow = Stopwatch.GetTimestamp();
 
+        // Now that the surface is on-screen, register with CompositionTarget so
+        // its frame timer thread can run. ShowWindow with SW_SHOW after a hidden
+        // HWND may not produce a WindowState change (Normal → Normal is a no-op
+        // for OnStateChanged), so we cannot rely on the state-changed path here.
+        _nativeWindowHidden = false;
+        UpdateRenderableRegistration();
+
         // First full frame — runs AFTER the window is visible so the user
         // perceives an instant "window opens" rather than a delayed launch.
         // The UI thread blocks here for the visual tree's measure/arrange
@@ -2490,6 +2508,13 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
             else
                 _ = ShowWindow(Handle, SW_HIDE);
         }
+
+        // WPF-style Hide() does not mutate Visibility, so flag the native
+        // hidden state directly and let UpdateRenderableRegistration pick it
+        // up. Otherwise the timer would keep ticking against an HWND that
+        // DWM is no longer painting.
+        _nativeWindowHidden = true;
+        UpdateRenderableRegistration();
     }
 
     /// <summary>
@@ -2508,6 +2533,10 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
             if (WindowState == WindowState.Minimized)
                 _platformWindow.SetState(WindowState.Normal);
             _platformWindow.Show();
+            // Activate() unhides the surface on the cross-platform path —
+            // mirror that for the renderable-count check.
+            _nativeWindowHidden = false;
+            UpdateRenderableRegistration();
             return true;
         }
 
@@ -2673,6 +2702,45 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
     /// </summary>
     private bool _isClosing;
     private bool _isSyncingWindowState;
+    private bool _registeredAsRenderable;
+    // Tracks whether the native HWND has been driven to a hidden state
+    // (SW_HIDE) outside the Visibility DP path. WPF-style Hide() does not
+    // mutate Visibility, so we cannot rely on the DP alone to know whether
+    // the surface is presentable.
+    private bool _nativeWindowHidden;
+
+    /// <summary>
+    /// Synchronises this window's renderability state with
+    /// <see cref="CompositionTarget"/>'s visible-window count. The frame timer
+    /// thread only runs when at least one window is renderable, so an app
+    /// whose only window is minimized (or hidden, or being closed) drops
+    /// to ~0% CPU instead of paying the dispatcher cost of frames that no
+    /// surface can present.
+    /// </summary>
+    /// <remarks>
+    /// Idempotent — invoked from every transition that can flip visibility:
+    /// <c>Show</c>, <c>Hide</c>, the <c>Visibility</c> setter, <c>Close</c>
+    /// (and its cancel path), <c>WM_DESTROY</c>, and <c>OnStateChanged</c>.
+    /// The internal "did the answer change" check makes redundant calls free.
+    /// Must be called on the UI thread because <c>CompositionTarget</c>'s
+    /// counter touches non-thread-safe state.
+    /// </remarks>
+    private void UpdateRenderableRegistration()
+    {
+        bool shouldBe = Handle != nint.Zero
+                        && !_isClosing
+                        && !_nativeWindowHidden
+                        && WindowState != WindowState.Minimized
+                        && base.Visibility == Visibility.Visible;
+
+        if (shouldBe == _registeredAsRenderable) return;
+
+        _registeredAsRenderable = shouldBe;
+        if (shouldBe)
+            CompositionTarget.NotifyRenderableWindowAdded();
+        else
+            CompositionTarget.NotifyRenderableWindowRemoved();
+    }
 
     public virtual void Close()
     {
@@ -2683,6 +2751,9 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
         _isModal = false;
 
         CompositionTarget.FrameStarting -= OnFrameStarting;
+        // Decrement renderable count now — closing windows cannot present
+        // frames even before WM_DESTROY tears the HWND down.
+        UpdateRenderableRegistration();
 
         var closingArgs = new System.ComponentModel.CancelEventArgs();
         OnClosing(closingArgs);
@@ -2690,6 +2761,8 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
         {
             _isClosing = false;
             CompositionTarget.FrameStarting += OnFrameStarting;
+            // Cancelled — restore the renderable registration we just dropped.
+            UpdateRenderableRegistration();
             return;
         }
 
@@ -3150,6 +3223,11 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
 
             case PlatformEventType.Destroyed:
                 _ = _windows.Remove(Handle);
+                // External destruction (system shutdown / native teardown) may
+                // skip Close() — make sure we still pull out of the renderable
+                // count so the frame timer can wind down.
+                _isClosing = true;
+                UpdateRenderableRegistration();
                 break;
 
             case PlatformEventType.Resize:
@@ -5018,6 +5096,10 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
                     // Do NOT call PostQuitMessage here 鈥?it would kill the app
                     // when closing any window in a multi-window scenario.
                     _ = _windows.Remove(hWnd);
+                    // External destruction can bypass Close(); make sure the
+                    // window leaves the renderable-count census even then.
+                    window._isClosing = true;
+                    window.UpdateRenderableRegistration();
                     return nint.Zero;
 
                 case WM_NCCALCSIZE:
@@ -6050,6 +6132,12 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
         _renderThrottleTimer = null;
         throttleTimer?.Dispose();
 
+        // Skip the whole render pipeline while minimized — DWM is not picking
+        // up presents anyway, so layout / dirty-region / present cost is pure
+        // waste. Pending dirty rects stay in place and a full invalidation
+        // runs on restore.
+        if (WindowState == WindowState.Minimized) return;
+
         // No rate-limiting — render as fast as possible.
         RenderFrame();
     }
@@ -6116,6 +6204,11 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
     private void RenderFrame()
     { _debugHud.OnRenderFrame();
         if (HasRenderFlag(RenderFlag_Rendering)) return;
+        // Same rationale as ProcessRender: DWM ignores presents to a minimized
+        // window. The early-out here is defence-in-depth for callers that
+        // bypass ProcessRender (WM_PAINT, ForceRenderFrame on a stale
+        // ShowWindow → minimize race, etc.).
+        if (WindowState == WindowState.Minimized) return;
         SetRenderFlag(RenderFlag_Rendering);
         ClearRenderFlag(RenderFlag_Requested);
 
@@ -6726,6 +6819,12 @@ public partial class Window : ContentControl, IWindowHost, ILayoutManagerHost, I
     /// </summary>
     private void OnFrameStarting()
     {
+        // While the window is minimized there is no surface to present to —
+        // any dirty work just has to be replayed when the window is restored
+        // (RequestFullInvalidation runs on resize anyway). Holding the dirty
+        // flag avoids dropping invalidations that arrived during minimize.
+        if (WindowState == WindowState.Minimized) return;
+
         if (HasRenderFlag(RenderFlag_DirtyBetween))
         {
             ClearRenderFlag(RenderFlag_DirtyBetween);

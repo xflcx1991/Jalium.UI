@@ -1,4 +1,4 @@
-using Jalium.UI.Interop;
+﻿using Jalium.UI.Interop;
 using Jalium.UI.Controls.Themes;
 using Jalium.UI.Media;
 
@@ -232,10 +232,9 @@ public sealed class CalendarDayButton : Button
     }
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc)
-            return;
+        var dc = drawingContext;
 
         var rect = new Rect(RenderSize);
         var inset = new Rect(2, 2, rect.Width - 4, rect.Height - 4);

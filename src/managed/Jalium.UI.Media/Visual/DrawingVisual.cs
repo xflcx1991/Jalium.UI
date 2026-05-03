@@ -1,4 +1,4 @@
-using Jalium.UI.Media;
+﻿using Jalium.UI.Media;
 
 namespace Jalium.UI;
 
@@ -31,7 +31,7 @@ public sealed class DrawingVisual : ContainerVisual
     /// <summary>
     /// Renders the visual content to the specified drawing context.
     /// </summary>
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
         base.OnRender(drawingContext);
 

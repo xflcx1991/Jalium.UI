@@ -1,4 +1,4 @@
-using Jalium.UI.Controls.Themes;
+﻿using Jalium.UI.Controls.Themes;
 using Jalium.UI.Media;
 
 namespace Jalium.UI.Controls;
@@ -415,7 +415,7 @@ public class ProgressBar : Control
     #region Rendering
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
         // Template-based rendering: indicator is updated from property change callbacks
         // and animation ticks (NOT here). Modifying _indicatorBorder.Width during OnRender
@@ -425,8 +425,7 @@ public class ProgressBar : Control
         if (_indicatorBorder != null)
             return;
 
-        if (drawingContext is not DrawingContext dc)
-            return;
+        var dc = drawingContext;
 
         var bounds = new Rect(0, 0, RenderSize.Width, RenderSize.Height);
         var cornerRadius = ResolveCornerRadius();

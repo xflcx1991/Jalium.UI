@@ -1,4 +1,4 @@
-using Jalium.UI.Controls;
+﻿using Jalium.UI.Controls;
 using Jalium.UI.Input;
 using Jalium.UI.Interop;
 using Jalium.UI.Media;
@@ -691,7 +691,7 @@ public abstract class TextBoxBase : Control
     /// Renders the text content. Called by TextBoxContentHost.
     /// Override in subclasses to implement actual text rendering.
     /// </summary>
-    internal abstract void RenderTextContent(object drawingContext);
+    internal abstract void RenderTextContent(DrawingContext drawingContext);
 
     #endregion
 

@@ -75,6 +75,14 @@ public sealed class MultiBindingExpression : BindingExpressionBase
     private readonly List<BindingExpressionBase> _bindingExpressions = new();
     private bool _isUpdating;
 
+    // Converter / ConverterParameter 自身可变状态订阅 —— 与 BindingExpression 同语义：
+    // IMultiValueConverter 上挂 INPC 或 DependencyProperty 时，其属性变化必须触发整组
+    // child binding 的重算，否则会出现“源数据没变但 Converter 状态切换”而 target 不刷新的问题。
+    private INotifyPropertyChanged? _converterNotify;
+    private DependencyObject? _converterDepObj;
+    private INotifyPropertyChanged? _converterParamNotify;
+    private DependencyObject? _converterParamDepObj;
+
     /// <summary>
     /// Gets the MultiBinding object from which this MultiBindingExpression is created.
     /// </summary>
@@ -116,6 +124,9 @@ public sealed class MultiBindingExpression : BindingExpressionBase
         // Subscribe once (not per child binding) to property changes
         Target.PropertyChangedInternal += OnChildBindingChanged;
 
+        // Subscribe to converter/parameter mutations (parity with BindingExpression).
+        SubscribeToConverter();
+
         // Initial update
         UpdateTarget();
     }
@@ -132,12 +143,101 @@ public sealed class MultiBindingExpression : BindingExpressionBase
         // Deactivate and remove child binding expressions
         Target.PropertyChangedInternal -= OnChildBindingChanged;
 
+        UnsubscribeFromConverter();
+
         foreach (var childExpression in _bindingExpressions)
         {
             childExpression.Deactivate();
         }
 
         _bindingExpressions.Clear();
+    }
+
+    private void SubscribeToConverter()
+    {
+        UnsubscribeFromConverter();
+
+        var converter = _multiBinding.Converter;
+        if (converter != null)
+        {
+            // DependencyObject 优先：避免极端实现同时挂 DP + INPC 时一次变化触发两次 UpdateTarget。
+            if (converter is DependencyObject convDo)
+            {
+                _converterDepObj = convDo;
+                convDo.PropertyChangedInternal += OnConverterDependencyPropertyChanged;
+            }
+            else if (converter is INotifyPropertyChanged convNpc)
+            {
+                _converterNotify = convNpc;
+                convNpc.PropertyChanged += OnConverterPropertyChanged;
+            }
+        }
+
+        var parameter = _multiBinding.ConverterParameter;
+        if (parameter != null)
+        {
+            if (parameter is DependencyObject paramDo)
+            {
+                _converterParamDepObj = paramDo;
+                paramDo.PropertyChangedInternal += OnConverterParameterDependencyPropertyChanged;
+            }
+            else if (parameter is INotifyPropertyChanged paramNpc)
+            {
+                _converterParamNotify = paramNpc;
+                paramNpc.PropertyChanged += OnConverterParameterPropertyChanged;
+            }
+        }
+    }
+
+    private void UnsubscribeFromConverter()
+    {
+        if (_converterNotify != null)
+        {
+            _converterNotify.PropertyChanged -= OnConverterPropertyChanged;
+            _converterNotify = null;
+        }
+
+        if (_converterDepObj != null)
+        {
+            _converterDepObj.PropertyChangedInternal -= OnConverterDependencyPropertyChanged;
+            _converterDepObj = null;
+        }
+
+        if (_converterParamNotify != null)
+        {
+            _converterParamNotify.PropertyChanged -= OnConverterParameterPropertyChanged;
+            _converterParamNotify = null;
+        }
+
+        if (_converterParamDepObj != null)
+        {
+            _converterParamDepObj.PropertyChangedInternal -= OnConverterParameterDependencyPropertyChanged;
+            _converterParamDepObj = null;
+        }
+    }
+
+    private void OnConverterPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_isUpdating || !IsActive) return;
+        UpdateTarget();
+    }
+
+    private void OnConverterDependencyPropertyChanged(DependencyProperty dp, object? oldValue, object? newValue)
+    {
+        if (_isUpdating || !IsActive) return;
+        UpdateTarget();
+    }
+
+    private void OnConverterParameterPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_isUpdating || !IsActive) return;
+        UpdateTarget();
+    }
+
+    private void OnConverterParameterDependencyPropertyChanged(DependencyProperty dp, object? oldValue, object? newValue)
+    {
+        if (_isUpdating || !IsActive) return;
+        UpdateTarget();
     }
 
     /// <inheritdoc />

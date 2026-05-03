@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using Jalium.UI.Input;
 using Jalium.UI.Interop;
 using Jalium.UI.Media;
@@ -127,7 +127,7 @@ public partial class DockItem : HeaderedContentControl
     private bool _isReorderDragging;
     private readonly TranslateTransform _reorderDragTransform = new();
     private bool _hasReorderVisualState;
-    private object? _reorderOriginalRenderTransform;
+    private Transform? _reorderOriginalRenderTransform;
     private double _reorderOriginalOpacity = 1.0;
     private int _reorderOriginalZIndex;
 
@@ -1094,13 +1094,9 @@ public partial class DockItem : HeaderedContentControl
         InvalidateVisual();
     }
 
-    protected override void OnRender(object drawingContextObj)
+    protected override void OnRender(DrawingContext drawingContextObj)
     {
-        if (drawingContextObj is not DrawingContext dc)
-        {
-            base.OnRender(drawingContextObj);
-            return;
-        }
+        var dc = drawingContextObj;
 
         var bounds = new Rect(0, 0, ActualWidth, ActualHeight);
         var activeTextBrush = ResolveActiveTextBrush();

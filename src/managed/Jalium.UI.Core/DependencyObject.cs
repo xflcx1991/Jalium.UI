@@ -476,6 +476,16 @@ public class DependencyObject : DispatcherObject
             {
                 OnPropertyChanged(new DependencyPropertyChangedEventArgs(dp, oldValue, newValue));
             }
+
+            // 保险：动画结束后强制重绘。
+            // 当 oldValue 与 newValue 看似 Equals（例如两个返回相同 Color 的 SolidColorBrush，
+            // 或同 Reference 的资源 Brush），OnPropertyChanged 不会触发，但 visual 系统
+            // 可能仍持有 animated value 时期产生的临时 Brush（每帧 GetCurrentValueCore 创建新实例）
+            // 引用，导致渲染未刷新到 base value。显式 InvalidateVisual 兜住这种竞态。
+            if (this is UIElement uiElement)
+            {
+                uiElement.InvalidateVisual();
+            }
         }
     }
 

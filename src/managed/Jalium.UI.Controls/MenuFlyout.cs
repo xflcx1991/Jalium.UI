@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Media;
@@ -98,9 +98,9 @@ internal sealed class MenuFlyoutPresenter : Control
         throw new ArgumentOutOfRangeException(nameof(index));
     }
 
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc) return;
+        var dc = drawingContext;
         base.OnRender(drawingContext);
 
         var background = Background ?? ResolveBrush("OnePopupBackground", "MenuFlyoutPresenterBackground", s_fallbackBackgroundBrush);

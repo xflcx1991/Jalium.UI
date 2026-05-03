@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using Jalium.UI.Automation;
 using Jalium.UI.Controls.TerminalEmulator;
 using Jalium.UI.Controls.Themes;
@@ -2087,10 +2087,10 @@ public sealed class TerminalView : FrameworkElement, IScrollInfo
     }
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
         base.OnRender(drawingContext);
-        if (drawingContext is not DrawingContext dc) return;
+        var dc = drawingContext;
         _owner.RenderView(dc, _viewport);
     }
 }

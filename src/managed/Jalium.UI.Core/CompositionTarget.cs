@@ -18,6 +18,8 @@ public static partial class CompositionTarget
     private static volatile int _refreshRate = 60;
     private static Timer? _frameTimer;
     private static int _subscriberCount;
+    private static int _renderableWindowCount;
+    private static bool _timerRunning;
     private static readonly object _timerLock = new();
     private static volatile bool _inRaiseRendering;
     private static bool _highResolutionTimerRequested;
@@ -104,10 +106,7 @@ public static partial class CompositionTarget
         lock (_timerLock)
         {
             _subscriberCount++;
-            if (_subscriberCount == 1)
-            {
-                StartTimer();
-            }
+            UpdateTimerState();
         }
     }
 
@@ -120,11 +119,68 @@ public static partial class CompositionTarget
         lock (_timerLock)
         {
             _subscriberCount--;
-            if (_subscriberCount <= 0)
+            if (_subscriberCount < 0)
             {
                 _subscriberCount = 0;
-                StopTimer();
             }
+            UpdateTimerState();
+        }
+    }
+
+    /// <summary>
+    /// Notifies the frame timer that a window has become renderable (visible
+    /// and not minimized). Each call must be paired with
+    /// <see cref="NotifyRenderableWindowRemoved"/>. When no renderable window
+    /// remains, the frame timer thread is fully stopped — including the 1ms
+    /// kernel waitable timer — even if subscribers are still registered.
+    /// This is what makes a minimized app drop to ~0% CPU instead of paying
+    /// the cost of dispatching frames that no surface can present.
+    /// </summary>
+    internal static void NotifyRenderableWindowAdded()
+    {
+        lock (_timerLock)
+        {
+            _renderableWindowCount++;
+            UpdateTimerState();
+        }
+    }
+
+    /// <summary>
+    /// Notifies the frame timer that a previously renderable window has gone
+    /// non-renderable (minimized, hidden, or destroyed). When the count
+    /// reaches zero, the frame timer thread is stopped.
+    /// </summary>
+    internal static void NotifyRenderableWindowRemoved()
+    {
+        lock (_timerLock)
+        {
+            _renderableWindowCount--;
+            if (_renderableWindowCount < 0)
+            {
+                _renderableWindowCount = 0;
+            }
+            UpdateTimerState();
+        }
+    }
+
+    /// <summary>
+    /// Decides whether the timer should be running and starts/stops it to
+    /// match. Caller must hold <see cref="_timerLock"/>.
+    /// </summary>
+    private static void UpdateTimerState()
+    {
+        bool shouldRun = _subscriberCount > 0 && _renderableWindowCount > 0;
+        if (shouldRun == _timerRunning) return;
+
+        if (shouldRun)
+        {
+            StartTimer();
+            _timerRunning = true;
+        }
+        else
+        {
+            StopTimer();
+            _timerRunning = false;
         }
     }
 
@@ -344,7 +400,7 @@ public static partial class CompositionTarget
                 if (_subscriberCount > 0)
                 {
                     _subscriberCount = 0;
-                    StopTimer();
+                    UpdateTimerState();
                     return; // Don't re-arm — timer is stopped.
                 }
             }
@@ -416,7 +472,11 @@ public static partial class CompositionTarget
     {
         lock (_timerLock)
         {
-            if (_subscriberCount <= 0) return;
+            // Skip re-arm if the timer was paused (no subscribers, or no
+            // renderable window remains). Without this, a tick that was
+            // already in flight when we decided to stop would keep the
+            // hardware timer ticking after StopTimer() returned.
+            if (!_timerRunning) return;
 
             if (_nativeTimer != null)
             {

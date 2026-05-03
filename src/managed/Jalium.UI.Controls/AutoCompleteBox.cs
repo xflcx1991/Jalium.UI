@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.ObjectModel;
 using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Input;
@@ -1032,7 +1032,7 @@ public class AutoCompleteBox : TextBoxBase, IImeSupport
     #region Rendering
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
         // If using content host, text rendering is handled by TextBoxContentHost
         // In template + popup mode, dropdown is rendered by Popup content.
@@ -1047,8 +1047,7 @@ public class AutoCompleteBox : TextBoxBase, IImeSupport
         }
 
         // Direct rendering mode
-        if (drawingContext is not DrawingContext directDc)
-            return;
+        var directDc = drawingContext;
 
         var inputRect = new Rect(0, 0, RenderSize.Width, DefaultHeight);
         var cornerRadius = CornerRadius;
@@ -1091,10 +1090,9 @@ public class AutoCompleteBox : TextBoxBase, IImeSupport
     }
 
     /// <inheritdoc />
-    internal override void RenderTextContent(object drawingContext)
+    internal override void RenderTextContent(DrawingContext drawingContext)
     {
-        if (drawingContext is not DrawingContext dc)
-            return;
+        var dc = drawingContext;
 
         var lineHeight = Math.Round(GetLineHeight());
         var contentRect = new Rect(0, 0, _textContentSize.Width, _textContentSize.Height);

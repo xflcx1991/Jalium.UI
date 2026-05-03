@@ -30,7 +30,7 @@ public sealed class MediaRenderCacheHost : IRenderCacheHost
     private readonly Stack<DrawingRecorder> _pool = new();
     private readonly object _poolLock = new();
 
-    public object CreateRecorder(object targetDrawingContext)
+    public DrawingContext CreateRecorder(DrawingContext targetDrawingContext)
     {
         DrawingRecorder recorder;
         lock (_poolLock)
@@ -41,7 +41,7 @@ public sealed class MediaRenderCacheHost : IRenderCacheHost
         return recorder;
     }
 
-    public object FinishRecord(object recorder)
+    public object FinishRecord(DrawingContext recorder)
     {
         var r = (DrawingRecorder)recorder;
         var drawing = r.Commit();
@@ -52,9 +52,9 @@ public sealed class MediaRenderCacheHost : IRenderCacheHost
         return drawing;
     }
 
-    public void Replay(object drawing, object targetDrawingContext)
+    public void Replay(object drawing, DrawingContext targetDrawingContext)
     {
-        DrawingReplayer.Replay((Drawing)drawing, (DrawingContext)targetDrawingContext);
+        DrawingReplayer.Replay((Drawing)drawing, targetDrawingContext);
     }
 
     /// <summary>

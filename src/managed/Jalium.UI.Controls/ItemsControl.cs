@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Specialized;
 using Jalium.UI.Controls.Primitives;
 using Jalium.UI.Media;
@@ -458,7 +458,7 @@ public class ItemsControl : Control
     #region Rendering
 
     /// <inheritdoc />
-    protected override void OnRender(object drawingContext)
+    protected override void OnRender(DrawingContext drawingContext)
     {
         // ItemsControl itself doesn't render anything, the items panel does
     }

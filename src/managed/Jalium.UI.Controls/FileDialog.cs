@@ -12,6 +12,9 @@ public abstract class FileDialog
     /// <summary>
     /// Gets or sets the file dialog title.
     /// </summary>
+    /// <remarks>
+    /// Leave this value <see langword="null"/> to let the platform use its native default caption.
+    /// </remarks>
     public string? Title { get; set; }
 
     /// <summary>
@@ -219,7 +222,7 @@ public sealed class OpenFileDialog : FileDialog
         var ofn = new OPENFILENAME();
         ofn.lStructSize = Marshal.SizeOf(ofn);
         ofn.hwndOwner = owner;
-        ofn.lpstrTitle = Title ?? "Open";
+        ofn.lpstrTitle = Title;
         ofn.lpstrInitialDir = InitialDirectory;
         ofn.lpstrDefExt = DefaultExt;
 
@@ -400,7 +403,7 @@ public sealed class SaveFileDialog : FileDialog
         var ofn = new OPENFILENAME();
         ofn.lStructSize = Marshal.SizeOf(ofn);
         ofn.hwndOwner = owner;
-        ofn.lpstrTitle = Title ?? "Save As";
+        ofn.lpstrTitle = Title;
         ofn.lpstrInitialDir = InitialDirectory;
         ofn.lpstrDefExt = DefaultExt;
 
@@ -595,7 +598,7 @@ public sealed class FolderBrowserDialog
         // For simplicity, using shell browse for folder
         var bi = new BROWSEINFO();
         bi.hwndOwner = owner;
-        bi.lpszTitle = Description ?? Title ?? "Select Folder";
+        bi.lpszTitle = Description ?? Title;
         bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
         if (!ShowNewFolderButton) bi.ulFlags |= BIF_NONEWFOLDERBUTTON;
 
@@ -650,7 +653,7 @@ public sealed class FolderBrowserDialog
         public IntPtr hwndOwner;
         public IntPtr pidlRoot;
         public IntPtr pszDisplayName;
-        public string lpszTitle;
+        public string? lpszTitle;
         public uint ulFlags;
         public IntPtr lpfn;
         public IntPtr lParam;
